@@ -158,7 +158,10 @@ useEffect(() => {
       offlineQueue.add({
         type: 'create',
         collection: 'animals',
-        data: animalData  // ← SEM ID, sem arrays vazios
+        data: {
+            ...animalData,// ← SEM ID, sem arrays vazios
+        userId: user.uid  
+        }
       });
 
       // Mostra mensagem
