@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { generateComprehensiveReport } from '../services/geminiService';
+import { generateComprehensiveReport } from '../services/geminiServiceOptimized';
 import Spinner from './common/Spinner';
 import { Animal, ComprehensiveReport } from '../types';
 import { PrinterIcon, SparklesIcon } from './common/Icons';
