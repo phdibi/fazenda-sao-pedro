@@ -109,7 +109,6 @@ const RootComponent = () => {
   const [loading, setLoading] = useState(true);
   const [environmentError, setEnvironmentError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [loginRedirectError, setLoginRedirectError] = useState<string | null>(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -119,9 +118,9 @@ const RootComponent = () => {
     if (!envCheck.supported) {
         setEnvironmentError(envCheck.reason);
         setLoading(false);
-        return; // Interrompe a execução para evitar mais erros.
+        return;
     }
-    
+
     // --- 2. Verificação de Configuração do Firebase ---
     if (!auth) {
         setError(
@@ -131,36 +130,8 @@ const RootComponent = () => {
         setLoading(false);
         return;
     }
-    
-    // --- 3. Fluxo de Autenticação (apenas se o ambiente e a config estiverem OK) ---
-    auth.getRedirectResult()
-        .then((result: any) => {
-            if (isMounted && result && result.user) {
-                // Sucesso. O listener onAuthStateChanged cuidará do resto.
-                setLoginRedirectError(null);
-            }
-        })
-        .catch((error: any) => {
-            if (!isMounted) return;
-            console.error("Erro no login por redirecionamento:", error);
-            
-            let userFriendlyError = `Falha no login (código: ${error.code || 'desconhecido'}). Verifique o console para mais detalhes ou tente novamente.`;
 
-            switch (error.code) {
-                case 'auth/unauthorized-domain':
-                    userFriendlyError = "Este domínio não está autorizado. No Console do Firebase, vá para Authentication > Sign-in method e adicione o domínio do seu site (ex: seu-app.netlify.app) à lista de 'Domínios autorizados'.";
-                    break;
-                case 'auth/operation-not-supported-in-this-environment':
-                     setEnvironmentError(`Ocorreu um erro de ambiente durante o login: ${error.message}. Por favor, verifique se está usando um servidor web e se o armazenamento está ativo.`);
-                     return; // Usa a tela de erro de ambiente, que é mais apropriada.
-                case 'auth/account-exists-with-different-credential':
-                    userFriendlyError = "Já existe uma conta com este e-mail, mas usando um método de login diferente (ex: E-mail e Senha).";
-                    break;
-            }
-
-            setLoginRedirectError(userFriendlyError);
-        });
-    
+    // --- 3. Monitora mudanças no estado de autenticação ---
     const unsubscribe = auth.onAuthStateChanged((firebaseUser: any) => {
       if (!isMounted) return;
 
@@ -184,14 +155,17 @@ const RootComponent = () => {
         unsubscribe();
     };
   }, []);
-  
-  // Utiliza signInWithRedirect para máxima compatibilidade.
-const handleGoogleLogin = async () => {
-    if (!auth || !googleProvider) {
-        throw new Error("Autenticação não inicializada.");
-    }
-    await auth.signInWithPopup(googleProvider);  // ✅ MUDA PARA POPUP
-};
+
+  // ✅ MUDA PARA signInWithPopup
+  const handleGoogleLogin = async () => {
+      if (!auth || !googleProvider) {
+          throw new Error("Autenticação não inicializada.");
+      }
+      await auth.signInWithPopup(googleProvider);  // ✅ USA POPUP
+  };
+
+  // ... resto do código permanece igual ...
+
 
 
   // --- RENDERIZAÇÃO ---
