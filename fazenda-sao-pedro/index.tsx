@@ -186,12 +186,13 @@ const RootComponent = () => {
   }, []);
   
   // Utiliza signInWithRedirect para máxima compatibilidade.
-  const handleGoogleLogin = async () => {
-      if (!auth || !googleProvider) {
-          throw new Error("Autenticação não inicializada.");
-      }
-      await auth.signInWithRedirect(googleProvider);
-  };
+const handleGoogleLogin = async () => {
+    if (!auth || !googleProvider) {
+        throw new Error("Autenticação não inicializada.");
+    }
+    await auth.signInWithPopup(googleProvider);  // ✅ MUDA PARA POPUP
+};
+
 
   // --- RENDERIZAÇÃO ---
   
