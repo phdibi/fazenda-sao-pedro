@@ -62,17 +62,50 @@ const debouncedSetSearch = useMemo(
 useEffect(() => {
   debouncedSetSearch(searchTerm);
 }, [searchTerm, debouncedSetSearch]);
-    useEffect(() => {
-  const handleSync = () => {
+// ✅ Sincronização quando volta online
+useEffect(() => {
+  const handleSync = async () => {
     console.log('🔄 Internet voltou! Sincronizando dados offline...');
-    // Aqui vamos processar a fila quando voltar online
-    // Por enquanto só loga, vamos implementar a sincronização depois
+
+    // Processa a fila usando as funções do hook
+    const queue = offlineQueue.getQueue();
+
+    for (const operation of queue) {
+      try {
+        if (operation.collection === 'animals') {
+          if (operation.type === 'create') {
+            // Remove o ID temporário antes de criar
+            const { id, ...animalData } = operation.data;
+            await addAnimal(animalData);
+            console.log('✅ Animal criado:', operation.data.brinco);
+          } else if (operation.type === 'update') {
+            await updateAnimal(operation.data);
+            console.log('✅ Animal atualizado:', operation.data.brinco);
+          } else if (operation.type === 'delete') {
+            await deleteAnimal(operation.data.id);
+            console.log('✅ Animal deletado:', operation.data.id);
+          }
+        }
+        // Aqui você pode adicionar lógica para outros tipos (tasks, calendar, etc)
+      } catch (error) {
+        console.error('❌ Erro ao sincronizar:', error);
+      }
+    }
+
+    // Limpa a fila após sincronizar
+    offlineQueue.clearQueue();
+
+    // Limpa o localStorage dos animais temporários
+    localStorage.removeItem('animals');
+
+    alert('✅ Dados sincronizados com sucesso!');
   };
 
   window.addEventListener('sync-offline-data', handleSync);
 
   return () => window.removeEventListener('sync-offline-data', handleSync);
-}, []);
+}, [addAnimal, updateAnimal, deleteAnimal]); // ← Adicionar as dependências
+
   const [selectedMedication, setSelectedMedication] = useState('');
   const [selectedReason, setSelectedReason] = useState('');
   const [selectedStatus, setSelectedStatus] = useState('');
