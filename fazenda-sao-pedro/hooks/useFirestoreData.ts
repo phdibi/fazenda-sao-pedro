@@ -580,6 +580,7 @@ export const useFirestoreData = (user: AppUser | null) => {
 
     return {
         state,
+        db,
         addAnimal,
         updateAnimal,
         deleteAnimal,
