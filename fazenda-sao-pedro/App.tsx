@@ -31,6 +31,7 @@ interface AppProps {
 const App = ({ user }: AppProps) => {
   const {
     state,
+    db,
     addAnimal,
     updateAnimal,
     deleteAnimal,
@@ -63,48 +64,24 @@ useEffect(() => {
   debouncedSetSearch(searchTerm);
 }, [searchTerm, debouncedSetSearch]);
 // ✅ Sincronização quando volta online
+// ✅ Sincronização quando volta online
 useEffect(() => {
   const handleSync = async () => {
-    console.log('🔄 Internet voltou! Sincronizando dados offline...');
+    if (db) {
+      console.log('🔄 Internet voltou! Sincronizando dados offline...');
+      await offlineQueue.processQueue(db);
 
-    // Processa a fila usando as funções do hook
-    const queue = offlineQueue.getQueue();
+      // Limpa o localStorage dos animais temporários
+      localStorage.removeItem('animals');
 
-    for (const operation of queue) {
-      try {
-        if (operation.collection === 'animals') {
-          if (operation.type === 'create') {
-            // Remove o ID temporário antes de criar
-            const { id, ...animalData } = operation.data;
-            await addAnimal(animalData);
-            console.log('✅ Animal criado:', operation.data.brinco);
-          } else if (operation.type === 'update') {
-            await updateAnimal(operation.data);
-            console.log('✅ Animal atualizado:', operation.data.brinco);
-          } else if (operation.type === 'delete') {
-            await deleteAnimal(operation.data.id);
-            console.log('✅ Animal deletado:', operation.data.id);
-          }
-        }
-        // Aqui você pode adicionar lógica para outros tipos (tasks, calendar, etc)
-      } catch (error) {
-        console.error('❌ Erro ao sincronizar:', error);
-      }
+      alert('✅ Dados sincronizados com sucesso!');
     }
-
-    // Limpa a fila após sincronizar
-    offlineQueue.clearQueue();
-
-    // Limpa o localStorage dos animais temporários
-    localStorage.removeItem('animals');
-
-    alert('✅ Dados sincronizados com sucesso!');
   };
 
   window.addEventListener('sync-offline-data', handleSync);
 
   return () => window.removeEventListener('sync-offline-data', handleSync);
-}, [addAnimal, updateAnimal, deleteAnimal]); // ← Adicionar as dependências
+}, [db]);
 
   const [selectedMedication, setSelectedMedication] = useState('');
   const [selectedReason, setSelectedReason] = useState('');
