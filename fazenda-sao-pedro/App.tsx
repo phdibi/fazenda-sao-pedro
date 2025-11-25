@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect, lazy, Suspense } from 'react';
 import Header from './components/Header';
+import { offlineQueue } from './utils/offlineSync';
 import Dashboard from './components/Dashboard';
 import AnimalDetailModal from './components/AnimalDetailModal';
 import AddAnimalModal from './components/AddAnimalModal';
@@ -61,6 +62,17 @@ const debouncedSetSearch = useMemo(
 useEffect(() => {
   debouncedSetSearch(searchTerm);
 }, [searchTerm, debouncedSetSearch]);
+    useEffect(() => {
+  const handleSync = () => {
+    console.log('🔄 Internet voltou! Sincronizando dados offline...');
+    // Aqui vamos processar a fila quando voltar online
+    // Por enquanto só loga, vamos implementar a sincronização depois
+  };
+
+  window.addEventListener('sync-offline-data', handleSync);
+
+  return () => window.removeEventListener('sync-offline-data', handleSync);
+}, []);
   const [selectedMedication, setSelectedMedication] = useState('');
   const [selectedReason, setSelectedReason] = useState('');
   const [selectedStatus, setSelectedStatus] = useState('');
@@ -124,10 +136,84 @@ useEffect(() => {
     setSelectedAnimalId(null);
   };
 
-  const handleAddAnimal = (animalData: Omit<Animal, 'id' | 'fotos' | 'historicoSanitario' | 'historicoPesagens'>) => {
-    addAnimal(animalData);
-    setIsAddAnimalModalOpen(false);
-  };
+  const handleAddAnimal = async (animalData: Omit<Animal, 'id' | 'fotos' | 'historicoSanitario' | 'historicoPesagens'>) => {
+  try {
+    // ✅ VERIFICA SE ESTÁ ONLINE
+    if (navigator.onLine) {
+      // 🌐 ONLINE → Salva direto no Firestore
+      await addAnimal(animalData);
+      setIsAddAnimalModalOpen(false);
+
+    } else {
+      // 📡 OFFLINE → Adiciona na fila
+      const tempId = `temp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      const newAnimal = {
+        ...animalData,
+        id: tempId,
+        fotos: [],
+        historicoSanitario: [],
+        historicoPesagens: []
+      };
+
+      // 1. Adiciona na fila de sincronização
+      offlineQueue.add({
+        type: 'create',
+        collection: 'animals',
+        data: newAnimal
+      });
+
+      // 2. Salva localmente para mostrar imediatamente
+      const localAnimals = JSON.parse(localStorage.getItem('animals') || '[]');
+      localAnimals.push(newAnimal);
+      localStorage.setItem('animals', JSON.stringify(localAnimals));
+
+      // 3. Atualiza o estado local (isso vai fazer aparecer na tela)
+      // Nota: você precisa adicionar este animal manualmente no estado
+      // ou recarregar do localStorage
+
+      setIsAddAnimalModalOpen(false);
+
+      // Mostra notificação (você pode criar uma função de notificação)
+      alert('📱 Animal salvo localmente! Será sincronizado quando a internet voltar.');
+    }
+  } catch (error) {
+    console.error('Erro ao adicionar animal:', error);
+    alert('❌ Erro ao adicionar animal');
+  }
+};
+const handleUpdateAnimal = async (animal: Animal) => {
+  try {
+    if (navigator.onLine) {
+      // Online - salva direto
+      await updateAnimal(animal);
+    } else {
+      // Offline - adiciona na fila
+      offlineQueue.add({
+        type: 'update',
+        collection: 'animals',
+        data: animal
+      });
+
+      // Atualiza localStorage
+      const localAnimals = JSON.parse(localStorage.getItem('animals') || '[]');
+      const index = localAnimals.findIndex((a: Animal) => a.id === animal.id);
+
+      if (index >= 0) {
+        localAnimals[index] = animal;
+      } else {
+        localAnimals.push(animal);
+      }
+
+      localStorage.setItem('animals', JSON.stringify(localAnimals));
+
+      alert('📱 Alterações salvas localmente! Serão sincronizadas quando a internet voltar.');
+    }
+  } catch (error) {
+    console.error('Erro ao atualizar animal:', error);
+    alert('❌ Erro ao atualizar animal');
+  }
+};
+
 
   const handleToggleTask = (taskId: string) => {
       const task = state.tasks.find(t => t.id === taskId);
@@ -221,14 +307,15 @@ useEffect(() => {
         )}
 
       </main>
-      <AnimalDetailModal
-        animal={selectedAnimal} isOpen={!!selectedAnimal}
-        onClose={handleCloseModal}
-        onUpdateAnimal={updateAnimal}
-        onDeleteAnimal={handleDeleteAnimal}
-        animals={state.animals}
-        user={user}
-      />
+<AnimalDetailModal
+  animal={selectedAnimal} 
+  isOpen={!!selectedAnimal}
+  onClose={handleCloseModal}
+  onUpdateAnimal={handleUpdateAnimal} // ← MUDE AQUI (antes era só updateAnimal)
+  onDeleteAnimal={handleDeleteAnimal}
+  animals={state.animals}
+  user={user}
+/>
       <AddAnimalModal
         isOpen={isAddAnimalModalOpen} onClose={() => setIsAddAnimalModalOpen(false)}
         onAddAnimal={handleAddAnimal} animals={state.animals}
