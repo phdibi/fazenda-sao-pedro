@@ -1,7 +1,6 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, lazy, Suspense } from 'react';
 import Header from './components/Header';
 import Dashboard from './components/Dashboard';
-import ReportsView from './components/ReportsView';
 import AnimalDetailModal from './components/AnimalDetailModal';
 import AddAnimalModal from './components/AddAnimalModal';
 import { useFirestoreData } from './hooks/useFirestoreData';
@@ -9,15 +8,18 @@ import { Animal, AnimalStatus, AppUser, Task } from './types';
 import FilterBar from './components/FilterBar';
 import Chatbot from './components/Chatbot';
 import StatsDashboard from './components/StatsDashboard';
-import CalendarView from './components/CalendarView';
 import TasksView from './components/TasksView';
 import AgendaPreview from './components/AgendaPreview';
 import TasksPreview from './components/TasksPreview';
 import { exportToCSV } from './utils/fileUtils';
 import { ArrowDownTrayIcon } from './components/common/Icons';
-import ManagementView from './components/ManagementView';
 import Spinner from './components/common/Spinner';
 import MobileNavBar from './components/MobileNavBar';
+
+// Lazy load das views pesadas
+const CalendarView = lazy(() => import('./components/CalendarView'));
+const ReportsView = lazy(() => import('./components/ReportsView'));
+const ManagementView = lazy(() => import('./components/ManagementView'));
 
 interface AppProps {
     user: AppUser;
@@ -38,7 +40,7 @@ const App = ({ user }: AppProps) => {
     deleteManagementArea,
     assignAnimalsToArea,
   } = useFirestoreData(user);
-  
+
   const [currentView, setCurrentView] = useState<'dashboard' | 'reports' | 'calendar' | 'tasks' | 'management'>('dashboard');
   const [selectedAnimalId, setSelectedAnimalId] = useState<string | null>(null);
   const [isAddAnimalModalOpen, setIsAddAnimalModalOpen] = useState(false);
@@ -79,7 +81,7 @@ const App = ({ user }: AppProps) => {
 
         const matchesReason = selectedReason === '' ||
           animal.historicoSanitario.some(med => med.motivo === selectedReason);
-          
+
         const matchesStatus = selectedStatus === '' || animal.status === selectedStatus;
 
         return matchesSearch && matchesMedication && matchesReason && matchesStatus;
@@ -97,7 +99,7 @@ const App = ({ user }: AppProps) => {
   const handleSelectAnimal = (animal: Animal) => {
     setSelectedAnimalId(animal.id);
   };
-  
+
   const handleDeleteAnimal = async (animalId: string) => {
     try {
         await deleteAnimal(animalId);
@@ -110,12 +112,12 @@ const App = ({ user }: AppProps) => {
   const handleCloseModal = () => {
     setSelectedAnimalId(null);
   };
-  
+
   const handleAddAnimal = (animalData: Omit<Animal, 'id' | 'fotos' | 'historicoSanitario' | 'historicoPesagens'>) => {
     addAnimal(animalData);
     setIsAddAnimalModalOpen(false);
   };
-  
+
   const handleToggleTask = (taskId: string) => {
       const task = state.tasks.find(t => t.id === taskId);
       if (task) {
@@ -182,15 +184,29 @@ const App = ({ user }: AppProps) => {
             <Dashboard animals={filteredAnimals} onSelectAnimal={handleSelectAnimal} />
           </>
         )}
-        {currentView === 'reports' && <ReportsView animals={state.animals} />}
-        {currentView === 'calendar' && <CalendarView events={state.calendarEvents} onSave={addOrUpdateCalendarEvent} onDelete={deleteCalendarEvent} />}
+
+        {currentView === 'reports' && (
+          <Suspense fallback={<div className="flex justify-center p-8"><Spinner size="lg" /></div>}>
+            <ReportsView animals={state.animals} />
+          </Suspense>
+        )}
+
+        {currentView === 'calendar' && (
+          <Suspense fallback={<div className="flex justify-center p-8"><Spinner size="lg" /></div>}>
+            <CalendarView events={state.calendarEvents} onSave={addOrUpdateCalendarEvent} onDelete={deleteCalendarEvent} />
+          </Suspense>
+        )}
+
         {currentView === 'tasks' && <TasksView tasks={state.tasks} onAddTask={addTask} onToggleTask={handleToggleTask} onDeleteTask={deleteTask} />}
+
         {currentView === 'management' && (
-            <ManagementView 
+          <Suspense fallback={<div className="flex justify-center p-8"><Spinner size="lg" /></div>}>
+            <ManagementView
                 animals={state.animals} areas={state.managementAreas}
                 onSaveArea={addOrUpdateManagementArea} onDeleteArea={deleteManagementArea}
                 onAssignAnimals={assignAnimalsToArea}
             />
+          </Suspense>
         )}
 
       </main>
