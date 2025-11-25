@@ -15,6 +15,8 @@ import { exportToCSV } from './utils/fileUtils';
 import { ArrowDownTrayIcon } from './components/common/Icons';
 import Spinner from './components/common/Spinner';
 import MobileNavBar from './components/MobileNavBar';
+import { debounce } from './utils/helpers';
+
 
 // Lazy load das views pesadas
 const CalendarView = lazy(() => import('./components/CalendarView'));
@@ -48,6 +50,17 @@ const App = ({ user }: AppProps) => {
   const selectedAnimal = useMemo(() => state.animals.find(a => a.id === selectedAnimalId) || null, [state.animals, selectedAnimalId]);
 
   const [searchTerm, setSearchTerm] = useState('');
+const [debouncedSearch, setDebouncedSearch] = useState('');
+
+const debouncedSetSearch = useMemo(
+  () => debounce((value: string) => setDebouncedSearch(value), 300),
+  []
+);
+
+// Atualiza o debounced quando searchTerm muda
+useEffect(() => {
+  debouncedSetSearch(searchTerm);
+}, [searchTerm, debouncedSetSearch]);
   const [selectedMedication, setSelectedMedication] = useState('');
   const [selectedReason, setSelectedReason] = useState('');
   const [selectedStatus, setSelectedStatus] = useState('');
@@ -69,12 +82,10 @@ const App = ({ user }: AppProps) => {
   }, [state.animals]);
 
   const filteredAnimals = useMemo(() => {
-    return state.animals
-      .filter(animal => {
-        const term = searchTerm.toLowerCase().trim();
-        const matchesSearch = term === '' ||
-          animal.brinco.toLowerCase().includes(term) ||
-          (animal.nome && animal.nome.toLowerCase().includes(term));
+    return state.animals.filter(animal => {
+  const matchesSearch = debouncedSearch === '' || // ← AQUI
+    animal.brinco.toLowerCase().includes(debouncedSearch.toLowerCase()) ||
+    animal.nome?.toLowerCase().includes(debouncedSearch.toLowerCase());
 
         const matchesMedication = selectedMedication === '' ||
           animal.historicoSanitario.some(med => med.medicamento === selectedMedication);
@@ -87,7 +98,7 @@ const App = ({ user }: AppProps) => {
         return matchesSearch && matchesMedication && matchesReason && matchesStatus;
       })
       .sort((a, b) => a.brinco.localeCompare(b.brinco));
-  }, [state.animals, searchTerm, selectedMedication, selectedReason, selectedStatus]);
+  }, [state.animals, debouncedSearch, selectedMedication, selectedReason, selectedStatus]);
 
   const handleClearFilters = () => {
     setSearchTerm('');
