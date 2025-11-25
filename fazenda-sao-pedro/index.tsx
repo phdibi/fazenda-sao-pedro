@@ -156,20 +156,16 @@ const RootComponent = () => {
     };
   }, []);
 
-  // ✅ MUDA PARA signInWithPopup
+  // ✅ USA POPUP (NÃO REDIRECT!)
   const handleGoogleLogin = async () => {
       if (!auth || !googleProvider) {
           throw new Error("Autenticação não inicializada.");
       }
-      await auth.signInWithPopup(googleProvider);  // ✅ USA POPUP
+      await auth.signInWithPopup(googleProvider);  // ✅ POPUP!
   };
 
-  // ... resto do código permanece igual ...
-
-
-
   // --- RENDERIZAÇÃO ---
-  
+
   const renderEnvironmentErrorSolutions = (errorMsg: string) => {
       const isProtocolError = errorMsg.includes("protocolo") || errorMsg.includes("file:");
       const isStorageError = errorMsg.includes("Web Storage");
@@ -205,7 +201,7 @@ const RootComponent = () => {
               </div>
           );
       }
-      
+
       return null;
   }
 
@@ -263,11 +259,12 @@ const RootComponent = () => {
   }
 
   if (!user) {
-      return <LoginScreen onLogin={handleGoogleLogin} initialError={loginRedirectError} />;
+      return <LoginScreen onLogin={handleGoogleLogin} initialError={null} />;  // ✅ PASSA null!
   }
 
   return <App user={user} />;
 };
+
 
 
 const rootElement = document.getElementById('root');
