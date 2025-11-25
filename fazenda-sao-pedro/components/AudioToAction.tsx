@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { structureMedicalDataFromText } from '../services/geminiService';
+import { structureMedicalDataFromText } from '../services/geminiServiceOptimized';
 import Spinner from './common/Spinner';
 import { MicrophoneIcon, SparklesIcon, StopIcon } from './common/Icons';
 import { MedicationAdministration } from '../types';
