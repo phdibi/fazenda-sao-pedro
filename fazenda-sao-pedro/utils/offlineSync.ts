@@ -35,27 +35,28 @@ class OfflineQueue {
 
     console.log(`🔄 Processando ${queue.length} operações offline...`);
 
-    for (const op of queue) {
-      try {
-        const ref = db.collection(op.collection).doc(op.data.id || op.id);
+for (const op of queue) {
+  try {
+    if (op.type === 'create') {
+      await db.collection(op.collection).add(op.data);
+      console.log('✅ Animal criado:', op.data.brinco || op.id);
 
-        switch (op.type) {
-          case 'create':
-          case 'update':
-            await ref.set(op.data, { merge: true });
-            break;
-          case 'delete':
-            await ref.delete();
-            break;
-        }
+    } else if (op.type === 'update') {
+      const ref = db.collection(op.collection).doc(op.data.id);
+      await ref.set(op.data, { merge: true });
+      console.log('✅ Operação atualizada:', op.id);
 
-        console.log('✅ Operação sincronizada:', op.id);
-      } catch (error) {
-        console.error('❌ Erro ao sincronizar:', op.id, error);
-        // Mantém na fila para tentar depois
-        continue;
-      }
+    } else if (op.type === 'delete') {
+      const ref = db.collection(op.collection).doc(op.data.id);
+      await ref.delete();
+      console.log('✅ Operação deletada:', op.id);
     }
+  } catch (error) {
+    console.error('❌ Erro ao sincronizar:', op.id, error);
+    continue;
+  }
+}
+
 
     // Limpa fila após sincronização
     localStorage.removeItem(this.storageKey);
