@@ -1,3 +1,11 @@
+import './index.css';  // ← ADICIONE ESTA LINHA NO TOPO
+
+import React, { useState, useEffect } from 'react';
+import ReactDOM from 'react-dom/client';
+import App from './App';
+import { AppUser } from './types';
+// ... resto dos imports
+
 import React, { useState, useEffect } from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
