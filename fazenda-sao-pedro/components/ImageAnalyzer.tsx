@@ -180,14 +180,76 @@ const ImageAnalyzer = ({ imageUrl, onUploadComplete, animalId, userId }: ImageAn
         }
       );
 
-    } catch (err) {
-        // This catch block is a fallback, but the error listener above is more specific.
-        console.error('[Upload] General catch block error:', err);
-        setError({ message: 'Um erro inesperado ocorreu ao iniciar o upload.' });
-        setUploadStatus('error');
-        URL.revokeObjectURL(localPreviewUrl);
+} catch (uploadError: any) {
+  console.error('❌ Erro no upload:', uploadError);
+
+  // Cancela o timeout se ele ainda estiver ativo
+  if (uploadTimeoutRef.current) {
+    clearTimeout(uploadTimeoutRef.current);
+    uploadTimeoutRef.current = null;
+  }
+
+  // --- TRATAMENTO INTELIGENTE DE CANCELAMENTO ---
+  if (uploadError.code === 'storage/canceled') {
+    if (timeoutTriggeredRef.current) {
+      // Timeout foi atingido = erro real de configuração
+      setError({
+        message: "⏱️ O upload travou em 0%. Isso geralmente indica um erro de configuração do 'storageBucket' no index.html ou problema de CORS.",
+        isConfigError: true
+      });
+      setUploadStatus('error');
+    } else {
+      // Cancelamento normal (usuário fechou modal)
+      console.log("Upload cancelado pelo usuário. Resetando UI.");
+      setUploadStatus('idle');
+      setError(null);
     }
-  };
+    URL.revokeObjectURL(localPreviewUrl);
+    return;
+  }
+
+  // --- TRATAMENTO DE ERROS ESPECÍFICOS ---
+  let detailedMessage: string;
+  let isConfigError = true;
+
+  switch (uploadError.code) {
+    case 'storage/unauthorized':
+      detailedMessage = "🔒 Permissão Negada. Verifique as Regras de Segurança do Firebase Storage (devem permitir write para usuários autenticados).";
+      break;
+
+    case 'storage/object-not-found':
+    case 'storage/bucket-not-found':
+      detailedMessage = "📦 O bucket de armazenamento não foi encontrado. Verifique se o 'storageBucket' no index.html está correto (deve terminar com .appspot.com).";
+      break;
+
+    case 'storage/project-not-found':
+      detailedMessage = "🔍 Projeto Firebase não encontrado. Verifique o 'projectId' no index.html.";
+      break;
+
+    case 'storage/unknown':
+      if (!navigator.onLine) {
+        detailedMessage = "📡 Sem conexão com a internet. Verifique sua rede e tente novamente.";
+        isConfigError = false;
+      } else if (uploadError.message?.toLowerCase().includes('cors')) {
+        detailedMessage = "🌐 Erro de CORS detectado. O bucket precisa permitir requisições da sua origem.";
+      } else {
+        detailedMessage = `❓ Erro desconhecido: ${uploadError.message || 'Verifique o console do navegador (F12) para mais detalhes.'}`;
+      }
+      break;
+
+    default:
+      detailedMessage = `⚠️ Falha no upload (código: ${uploadError.code || 'desconhecido'}). Verifique as configurações do Firebase.`;
+      break;
+  }
+
+  setError({
+    message: detailedMessage,
+    isConfigError
+  });
+  setUploadStatus('error');
+  URL.revokeObjectURL(localPreviewUrl);
+}
+
 
 
   return (
@@ -212,55 +274,106 @@ const ImageAnalyzer = ({ imageUrl, onUploadComplete, animalId, userId }: ImageAn
         )}
         
         {error && (
-            <div className="absolute inset-0 bg-red-900/80 flex flex-col items-center justify-center text-white p-4 text-center">
-                <p className="font-bold text-lg mb-2">🛑 Erro no Upload</p>
-                <p className="text-sm">{error.message}</p>
-                {error.isConfigError && (
-                    <div className="mt-4 bg-base-900/50 p-3 rounded-lg text-xs text-left max-w-xs w-full">
-                        <p className="font-bold mb-1">Checklist de Configuração:</p>
-                        <ol className="list-decimal list-inside space-y-2">
-                            <li>
-                                <strong>`storageBucket` correto (causa comum):</strong>
-                                <ul className="list-disc list-inside ml-4 mt-1 text-xs">
-                                    <li>Abra <code className="bg-base-700 px-1 rounded">index.html</code>.</li>
-                                    <li>Confirme que o valor é <strong className="text-white">exatamente</strong> igual ao do seu console Firebase (ex: `seu-projeto.appspot.com`).</li>
-                                    <li><strong className="text-red-400">NÃO</strong> inclua `gs://`.</li>
-                                </ul>
-                            </li>
-                            <li>
-                                <strong>Verifique o Console do Navegador (CORS):</strong>
-                                 <ul className="list-disc list-inside ml-4 mt-1 text-xs">
-                                    <li>Aperte <strong className="text-white">F12</strong> para abrir as ferramentas de desenvolvedor.</li>
-                                    <li>Vá para a aba <strong className="text-white">"Console"</strong>.</li>
-                                    <li>Procure por erros em <strong className="text-red-400">vermelho</strong> mencionando `CORS`. Se encontrar, você precisa <a href="https://firebase.google.com/docs/storage/web/cors" target="_blank" rel="noopener noreferrer" className="underline hover:text-brand-primary-light">configurar o CORS</a> no seu bucket.</li>
-                                </ul>
-                            </li>
-                            <li>
-                                <strong>Regras do Storage/Firestore:</strong>
-                                <ul className="list-disc list-inside ml-4 mt-1 text-xs">
-                                    <li>No Firebase, vá para <strong className="text-white">Storage &gt; Regras</strong> e <strong className="text-white">Firestore &gt; Regras</strong>.</li>
-                                    <li>Ambas devem permitir escrita para usuários autenticados, como:
-                                        <code className="block mt-1 p-1.5 bg-base-700 rounded text-[10px] whitespace-pre-wrap">
-                                            allow write: if request.auth != null;
-                                        </code>
-                                    </li>
-                                </ul>
-                            </li>
-                            <li>
-                                <strong>API do Storage ativada:</strong>
-                                <ul className="list-disc list-inside ml-4 mt-1 text-xs">
-                                    <li>Verifique no <a href="https://console.cloud.google.com/apis/library/firebasestorage.googleapis.com" target="_blank" rel="noopener noreferrer" className="underline hover:text-brand-primary-light">Google Cloud Console</a> se a API "Cloud Storage for Firebase" está ativa para o seu projeto.</li>
-                                </ul>
-                            </li>
-                        </ol>
-                    </div>
-                )}
-                <label htmlFor="photo-upload-retry" className="mt-4 bg-base-100 text-base-900 text-sm font-bold py-2 px-4 rounded cursor-pointer">
-                    Tentar Novamente
-                    <input id="photo-upload-retry" type="file" accept="image/*" onChange={handleFileChange} className="sr-only" />
-                </label>
-            </div>
-        )}
+  <div className="text-center p-4">
+    <div className="text-red-400 font-semibold mb-2">
+      {error.message}
+    </div>
+
+    {error.isConfigError && (
+      <div className="mt-4 bg-base-900/50 p-4 rounded-lg text-xs text-left max-w-lg mx-auto">
+        <p className="font-bold text-white mb-3 text-sm">
+          📋 Checklist de Configuração:
+        </p>
+
+        <div className="space-y-4">
+          {/* 1. Storage Bucket */}
+          <div className="border-l-2 border-brand-primary pl-3">
+            <p className="font-semibold text-white mb-1">
+              1. Verifique o storageBucket (causa mais comum)
+            </p>
+            <ul className="list-disc list-inside ml-2 space-y-1 text-base-300">
+              <li>Abra <code className="bg-base-800 px-1 rounded text-white">index.html</code></li>
+              <li>Procure por <code className="bg-base-800 px-1 rounded text-white">storageBucket</code> (linha ~49)</li>
+              <li>Deve ser: <code className="bg-base-800 px-1 rounded text-accent-green">seu-projeto.appspot.com</code></li>
+              <li className="text-red-400">❌ NÃO use: <code className="bg-base-800 px-1 rounded line-through">.firebasestorage.app</code></li>
+            </ul>
+          </div>
+
+          {/* 2. Console do navegador */}
+          <div className="border-l-2 border-accent-yellow pl-3">
+            <p className="font-semibold text-white mb-1">
+              2. Verifique erros de CORS no Console
+            </p>
+            <ul className="list-disc list-inside ml-2 space-y-1 text-base-300">
+              <li>Aperte <kbd className="bg-base-800 px-2 py-0.5 rounded text-white font-mono">F12</kbd></li>
+              <li>Vá na aba "Console"</li>
+              <li>Procure erros em vermelho mencionando "CORS"</li>
+              <li>
+                Se encontrar: <a 
+                  href="https://firebase.google.com/docs/storage/web/cors" 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="text-brand-primary-light underline hover:text-brand-primary"
+                >
+                  Configure CORS no bucket
+                </a>
+              </li>
+            </ul>
+          </div>
+
+          {/* 3. Regras de segurança */}
+          <div className="border-l-2 border-accent-blue pl-3">
+            <p className="font-semibold text-white mb-1">
+              3. Regras de Segurança do Storage
+            </p>
+            <ul className="list-disc list-inside ml-2 space-y-1 text-base-300">
+              <li>No Firebase Console: <strong className="text-white">Storage → Rules</strong></li>
+              <li>Deve permitir write para autenticados:</li>
+            </ul>
+            <pre className="mt-2 p-2 bg-base-800 rounded text-[10px] font-mono text-accent-green overflow-x-auto">
+{`service firebase.storage {
+  match /b/{bucket}/o {
+    match /{allPaths=**} {
+      allow write: if request.auth != null;
+    }
+  }
+}`}
+            </pre>
+          </div>
+
+          {/* 4. API ativada */}
+          <div className="border-l-2 border-accent-red pl-3">
+            <p className="font-semibold text-white mb-1">
+              4. API do Storage ativada
+            </p>
+            <ul className="list-disc list-inside ml-2 space-y-1 text-base-300">
+              <li>
+                Acesse o <a 
+                  href="https://console.cloud.google.com/apis/library/firebasestorage.googleapis.com" 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="text-brand-primary-light underline hover:text-brand-primary"
+                >
+                  Google Cloud Console
+                </a>
+              </li>
+              <li>Verifique se "Cloud Storage for Firebase" está ativada</li>
+            </ul>
+          </div>
+        </div>
+
+        <button
+          onClick={() => setError(null)}
+          className="mt-4 w-full bg-base-800 hover:bg-base-700 
+                     text-white py-2 rounded transition-colors text-sm"
+        >
+          Fechar checklist
+        </button>
+      </div>
+    )}
+  </div>
+)}
+
 
 
         {/* File Input - always available unless an error occurred */}
