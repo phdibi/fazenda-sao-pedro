@@ -1,4 +1,4 @@
-import React, { useState, useMemo, lazy, Suspense } from 'react';
+import React, { useState, useMemo, useEffect, lazy, Suspense } from 'react';
 import Header from './components/Header';
 import Dashboard from './components/Dashboard';
 import AnimalDetailModal from './components/AnimalDetailModal';
