@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Animal } from '../types';
-import { startChat } from '../services/geminiService';
+import { startChat } from '../services/geminiServiceOptimized';
 import { ChatBubbleOvalLeftEllipsisIcon, XMarkIcon } from './common/Icons';
 import Spinner from './common/Spinner';
 
