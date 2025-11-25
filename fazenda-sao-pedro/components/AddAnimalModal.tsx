@@ -3,7 +3,7 @@ import { Animal, Raca, Sexo, AnimalStatus } from '../types';
 import Modal from './common/Modal';
 import { PlusIcon, MicrophoneIcon, StopIcon } from './common/Icons';
 // FIX: Removed unused import for getAnimalRegistrationTranscriptionFromAudio as it doesn't exist.
-import { structureAnimalDataFromText } from '../services/geminiService';
+import { structureAnimalDataFromText } from '../services/geminiServiceOptimized';
 import Spinner from './common/Spinner';
 import useSpeechRecognition from '../hooks/useSpeechRecognition';
 
