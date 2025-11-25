@@ -4,7 +4,7 @@ import { offlineQueue } from './utils/offlineSync';
 import Dashboard from './components/Dashboard';
 import AnimalDetailModal from './components/AnimalDetailModal';
 import AddAnimalModal from './components/AddAnimalModal';
-import { useFirestoreData } from './hooks/useFirestoreData';
+import { useFirestoreOptimized } from './hooks/useFirestoreOptimized';
 import { Animal, AnimalStatus, AppUser, Task } from './types';
 import FilterBar from './components/FilterBar';
 import Chatbot from './components/Chatbot';
@@ -43,7 +43,7 @@ const App = ({ user }: AppProps) => {
     addOrUpdateManagementArea,
     deleteManagementArea,
     assignAnimalsToArea,
-  } = useFirestoreData(user);
+  } = useFirestoreOptimized(user);
 
   const [currentView, setCurrentView] = useState<'dashboard' | 'reports' | 'calendar' | 'tasks' | 'management'>('dashboard');
   const [selectedAnimalId, setSelectedAnimalId] = useState<string | null>(null);
