@@ -69,6 +69,11 @@ class OfflineQueue {
   }
 }
 
+  clearQueue() {
+    localStorage.removeItem(this.storageKey);
+    console.log('🗑️ Fila offline limpa');
+  }
+
 export const offlineQueue = new OfflineQueue();
 
 // Listener para detectar quando voltar online
