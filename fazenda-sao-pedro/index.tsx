@@ -5,6 +5,8 @@ import { AppUser } from './types';
 import { auth, googleProvider } from './services/firebase';
 import Spinner from './components/common/Spinner';
 import { SparklesIcon } from './components/common/Icons';
+import ErrorBoundary from './components/ErrorBoundary';
+
 
 // --- GOOGLE AUTHENTICATION ---
 // O sistema de autenticação anônima foi substituído por "Login com Google".
@@ -275,6 +277,9 @@ if (!rootElement) {
 const root = ReactDOM.createRoot(rootElement);
 root.render(
   <React.StrictMode>
-    <RootComponent />
+    <ErrorBoundary>
+      <RootComponent />
+    </ErrorBoundary>
   </React.StrictMode>
 );
+
