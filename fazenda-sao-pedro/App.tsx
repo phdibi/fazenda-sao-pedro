@@ -1,0 +1,215 @@
+import React, { useState, useMemo } from 'react';
+import Header from './components/Header';
+import Dashboard from './components/Dashboard';
+import ReportsView from './components/ReportsView';
+import AnimalDetailModal from './components/AnimalDetailModal';
+import AddAnimalModal from './components/AddAnimalModal';
+import { useFirestoreData } from './hooks/useFirestoreData';
+import { Animal, AnimalStatus, AppUser, Task } from './types';
+import FilterBar from './components/FilterBar';
+import Chatbot from './components/Chatbot';
+import StatsDashboard from './components/StatsDashboard';
+import CalendarView from './components/CalendarView';
+import TasksView from './components/TasksView';
+import AgendaPreview from './components/AgendaPreview';
+import TasksPreview from './components/TasksPreview';
+import { exportToCSV } from './utils/fileUtils';
+import { ArrowDownTrayIcon } from './components/common/Icons';
+import ManagementView from './components/ManagementView';
+import Spinner from './components/common/Spinner';
+import MobileNavBar from './components/MobileNavBar';
+
+interface AppProps {
+    user: AppUser;
+}
+
+const App = ({ user }: AppProps) => {
+  const {
+    state,
+    addAnimal,
+    updateAnimal,
+    deleteAnimal,
+    addOrUpdateCalendarEvent,
+    deleteCalendarEvent,
+    addTask,
+    toggleTaskCompletion,
+    deleteTask,
+    addOrUpdateManagementArea,
+    deleteManagementArea,
+    assignAnimalsToArea,
+  } = useFirestoreData(user);
+  
+  const [currentView, setCurrentView] = useState<'dashboard' | 'reports' | 'calendar' | 'tasks' | 'management'>('dashboard');
+  const [selectedAnimalId, setSelectedAnimalId] = useState<string | null>(null);
+  const [isAddAnimalModalOpen, setIsAddAnimalModalOpen] = useState(false);
+
+  const selectedAnimal = useMemo(() => state.animals.find(a => a.id === selectedAnimalId) || null, [state.animals, selectedAnimalId]);
+
+  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedMedication, setSelectedMedication] = useState('');
+  const [selectedReason, setSelectedReason] = useState('');
+  const [selectedStatus, setSelectedStatus] = useState('');
+
+  const allMedications = useMemo(() => {
+    const meds = new Set<string>();
+    state.animals.forEach(animal => {
+      animal.historicoSanitario.forEach(med => meds.add(med.medicamento));
+    });
+    return Array.from(meds).sort();
+  }, [state.animals]);
+
+  const allReasons = useMemo(() => {
+    const reasons = new Set<string>();
+    state.animals.forEach(animal => {
+      animal.historicoSanitario.forEach(med => reasons.add(med.motivo));
+    });
+    return Array.from(reasons).sort();
+  }, [state.animals]);
+
+  const filteredAnimals = useMemo(() => {
+    return state.animals
+      .filter(animal => {
+        const term = searchTerm.toLowerCase().trim();
+        const matchesSearch = term === '' ||
+          animal.brinco.toLowerCase().includes(term) ||
+          (animal.nome && animal.nome.toLowerCase().includes(term));
+
+        const matchesMedication = selectedMedication === '' ||
+          animal.historicoSanitario.some(med => med.medicamento === selectedMedication);
+
+        const matchesReason = selectedReason === '' ||
+          animal.historicoSanitario.some(med => med.motivo === selectedReason);
+          
+        const matchesStatus = selectedStatus === '' || animal.status === selectedStatus;
+
+        return matchesSearch && matchesMedication && matchesReason && matchesStatus;
+      })
+      .sort((a, b) => a.brinco.localeCompare(b.brinco));
+  }, [state.animals, searchTerm, selectedMedication, selectedReason, selectedStatus]);
+
+  const handleClearFilters = () => {
+    setSearchTerm('');
+    setSelectedMedication('');
+    setSelectedReason('');
+    setSelectedStatus('');
+  };
+
+  const handleSelectAnimal = (animal: Animal) => {
+    setSelectedAnimalId(animal.id);
+  };
+  
+  const handleDeleteAnimal = async (animalId: string) => {
+    try {
+        await deleteAnimal(animalId);
+    } catch (error) {
+        alert(`Ocorreu um erro ao excluir o animal. A alteração pode ter sido revertida. Verifique sua conexão e tente novamente.`);
+        console.error("Deletion failed:", error);
+    }
+  }
+
+  const handleCloseModal = () => {
+    setSelectedAnimalId(null);
+  };
+  
+  const handleAddAnimal = (animalData: Omit<Animal, 'id' | 'fotos' | 'historicoSanitario' | 'historicoPesagens'>) => {
+    addAnimal(animalData);
+    setIsAddAnimalModalOpen(false);
+  };
+  
+  const handleToggleTask = (taskId: string) => {
+      const task = state.tasks.find(t => t.id === taskId);
+      if (task) {
+          toggleTaskCompletion(task);
+      }
+  }
+
+  const handleExportCSV = () => {
+    if (filteredAnimals.length === 0) {
+        alert("Nenhum animal para exportar com os filtros atuais.");
+        return;
+    }
+    const dataToExport = filteredAnimals.map(animal => ({
+        brinco: animal.brinco, nome: animal.nome || '', raca: animal.raca, sexo: animal.sexo, dataNascimento: new Date(animal.dataNascimento).toLocaleDateString('pt-BR'), pesoKg: animal.pesoKg, status: animal.status, paiNome: animal.paiNome || '', maeNome: animal.maeNome || '',
+        numMedicacoes: animal.historicoSanitario.length, numPesagens: animal.historicoPesagens.length, numPrenhez: animal.historicoPrenhez?.length || 0, numAbortos: animal.historicoAborto?.length || 0, numProgenie: animal.historicoProgenie?.length || 0,
+    }));
+    const headers = { brinco: 'Brinco', nome: 'Nome', raca: 'Raça', sexo: 'Sexo', dataNascimento: 'Data de Nascimento', pesoKg: 'Peso Atual (kg)', status: 'Status', paiNome: 'Pai', maeNome: 'Mãe', numMedicacoes: 'Nº Medicações', numPesagens: 'Nº Pesagens', numPrenhez: 'Nº Prenhez', numAbortos: 'Nº Abortos', numProgenie: 'Nº Crias' };
+    const timestamp = new Date().toISOString().slice(0, 10);
+    exportToCSV(dataToExport, headers, `relatorio_rebanho_${timestamp}.csv`);
+  };
+
+  const isAppLoading = state.loading.animals || state.loading.calendar || state.loading.tasks || state.loading.areas;
+  if (isAppLoading) {
+    return (
+      <div className="min-h-screen bg-base-900 flex flex-col justify-center items-center text-white">
+        <Spinner />
+        <p className="mt-4">Carregando dados da fazenda...</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-base-900 font-sans pb-20 md:pb-0">
+      <Header
+        currentView={currentView}
+        setCurrentView={setCurrentView}
+        onAddAnimalClick={() => setIsAddAnimalModalOpen(true)}
+        user={user}
+      />
+      <main className="p-4 md:p-8 max-w-7xl mx-auto">
+        {currentView === 'dashboard' && (
+          <>
+            <div className="flex flex-col sm:flex-row justify-between sm:items-center mb-6 gap-4">
+                <h1 className="text-3xl font-bold text-white">Painel do Rebanho</h1>
+                <button
+                    onClick={handleExportCSV}
+                    className="inline-flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-green-700 hover:bg-green-800 transition-colors"
+                >
+                    <ArrowDownTrayIcon className="w-5 h-5 mr-2" />
+                    Exportar CSV
+                </button>
+            </div>
+            <StatsDashboard animals={filteredAnimals} />
+            <AgendaPreview events={state.calendarEvents} />
+            <TasksPreview tasks={state.tasks} />
+            <FilterBar
+              searchTerm={searchTerm} setSearchTerm={setSearchTerm}
+              selectedMedication={selectedMedication} setSelectedMedication={setSelectedMedication}
+              selectedReason={selectedReason} setSelectedReason={setSelectedReason}
+              allMedications={allMedications} allReasons={allReasons}
+              selectedStatus={selectedStatus} setSelectedStatus={setSelectedStatus}
+              onClear={handleClearFilters}
+            />
+            <Dashboard animals={filteredAnimals} onSelectAnimal={handleSelectAnimal} />
+          </>
+        )}
+        {currentView === 'reports' && <ReportsView animals={state.animals} />}
+        {currentView === 'calendar' && <CalendarView events={state.calendarEvents} onSave={addOrUpdateCalendarEvent} onDelete={deleteCalendarEvent} />}
+        {currentView === 'tasks' && <TasksView tasks={state.tasks} onAddTask={addTask} onToggleTask={handleToggleTask} onDeleteTask={deleteTask} />}
+        {currentView === 'management' && (
+            <ManagementView 
+                animals={state.animals} areas={state.managementAreas}
+                onSaveArea={addOrUpdateManagementArea} onDeleteArea={deleteManagementArea}
+                onAssignAnimals={assignAnimalsToArea}
+            />
+        )}
+
+      </main>
+      <AnimalDetailModal
+        animal={selectedAnimal} isOpen={!!selectedAnimal}
+        onClose={handleCloseModal}
+        onUpdateAnimal={updateAnimal}
+        onDeleteAnimal={handleDeleteAnimal}
+        animals={state.animals}
+        user={user}
+      />
+      <AddAnimalModal
+        isOpen={isAddAnimalModalOpen} onClose={() => setIsAddAnimalModalOpen(false)}
+        onAddAnimal={handleAddAnimal} animals={state.animals}
+      />
+      <Chatbot animals={state.animals} />
+      <MobileNavBar currentView={currentView} setCurrentView={setCurrentView} />
+    </div>
+  );
+};
+
+export default App;

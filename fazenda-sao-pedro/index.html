@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>São Pedro IA</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              'brand-primary': {
+                light: '#b84f45', // Lighter Pine Nut Red
+                DEFAULT: '#9d3c32', // Pine Nut Red
+                dark: '#812f28',   // Darker Pine Nut Red
+              },
+              'brand-accent': {
+                light: '#6b594b', // Lighter Dark Brown
+                DEFAULT: '#4d4036', // Dark Brown
+                dark: '#3a3029',   // Darker Dark Brown
+              },
+              'base': {
+                100: '#f0f0f0', // Off-white text
+                200: '#dcdcdc', // Lighter gray text
+                300: '#b0b0b0', // Medium gray text
+                600: '#505259', // Light gray for borders/hovers
+                700: '#3c3d44', // Mid-dark gray
+                800: '#2a2b30', // Dark gray for panels/cards
+                900: '#1c1d21', // Grayish-black background
+              }
+            },
+          }
+        }
+      }
+    </script>
+    
+    <!-- ================================================================== -->
+    <!-- 🚨 AÇÃO NECESSÁRIA: ATUALIZE SUA CONFIGURAÇÃO DO FIREBASE 🚨        -->
+    <!-- ================================================================== -->
+    <!-- O objeto `__FIREBASE_CONFIG__` abaixo contém valores de exemplo.   -->
+    <!-- Você PRECISA substituí-los pelos valores do SEU projeto Firebase. -->
+    <!--                                                                   -->
+    <!-- ONDE ENCONTRAR:                                                   -->
+    <!-- 1. Acesse seu Console do Firebase: https://console.firebase.google.com/ -->
+    <!-- 2. Selecione seu projeto.                                         -->
+    <!-- 3. Clique no ícone de engrenagem (⚙️) -> "Configurações do Projeto". -->
+    <!-- 4. Na aba "Geral", role para baixo até "Seus apps".               -->
+    <!-- 5. Selecione seu app da web e escolha a opção "Config".           -->
+    <!-- 6. Copie o objeto de configuração inteiro e cole aqui,            -->
+    <!--    substituindo o objeto de exemplo.                              -->
+    <!--                                                                   -->
+    <!-- 💡 DICA PARA O ERRO DE UPLOAD TRAVADO:                              -->
+    <!-- Este erro acontece quando o valor de 'storageBucket' está errado. -->
+    <!-- Confirme que ele corresponde EXATAMENTE ao do seu projeto.        -->
+    <!--                                                                   -->
+    <!-- ✅ CORRETO:   'seu-projeto-12345.appspot.com'                      -->
+    <!-- ❌ ERRADO:    'gs://seu-projeto-12345.appspot.com' (sem o gs://)    -->
+    <!-- ================================================================== -->
+    <script>
+      // Esta configuração PRECISA ser atribuída a window.__FIREBASE_CONFIG__
+      // para que os outros arquivos do aplicativo possam encontrá-la.
+      window.__FIREBASE_CONFIG__ = {
+        apiKey: "AIzaSyC7oqm8NkbRqh2yGdgfkI-orGtqadcJuaw", // ATENÇÃO: Substitua pela sua chave real.
+        authDomain: "fazenda-sao-pedro-home.firebaseapp.com",
+        projectId: "fazenda-sao-pedro-home",
+        storageBucket: "fazenda-sao-pedro-home.firebasestorage.app", // CORRIGIDO: O bucket de exemplo estava errado.
+        messagingSenderId: "24202795399",
+        appId: "1:24202795399:web:4321f14c896a38cb3adb22",
+        measurementId: "G-6KKVTF0DV3"
+      };
+    </script>
+    <!-- ================================================================== -->
+    
+  <!-- Load Firebase via traditional script tags to ensure it's globally available -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-storage-compat.js"></script>
+
+  <script type="importmap">
+{
+  "imports": {
+    "react/": "https://aistudiocdn.com/react@18.2.0/",
+    "react": "https://aistudiocdn.com/react@18.2.0",
+    "react-dom/": "https://aistudiocdn.com/react-dom@18.2.0/",
+    "react-dom": "https://aistudiocdn.com/react-dom@18.2.0",
+    "@google/genai": "https://aistudiocdn.com/@google/genai@1.29.0"
+  }
+}
+</script>
+<style>
+    @media print {
+      body * {
+        visibility: hidden;
+      }
+      .print-area, .print-area * {
+        visibility: visible;
+      }
+      .print-area {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 100%;
+        padding: 2rem;
+        color: #000 !important; /* Ensure text is black for printing */
+      }
+      .print-hide {
+        display: none !important;
+      }
+       /* Ensure background colors print */
+      .print-bg-visible {
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+        background-color: #fff !important; /* Force white background for report cards */
+        border: 1px solid #ccc;
+      }
+      h1, h2, h3, h4 {
+        color: #000 !important;
+      }
+      p, span, div, li {
+        color: #333 !important;
+      }
+    }
+  </style>
+</head>
+  <body class="bg-base-900 text-base-100">
+    <div id="root"></div>
+    <script type="module" src="./index.tsx"></script>
+  </body>
+</html>

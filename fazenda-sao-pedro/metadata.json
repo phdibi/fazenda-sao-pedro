@@ -1,0 +1,7 @@
+{
+  "name": "Fazenda São Pedro",
+  "description": "Um aplicativo para gestão de rebanho bovino com cadastro por brinco, fotos, registros por voz, e relatórios sanitários, tudo aprimorado com a IA do Gemini.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
