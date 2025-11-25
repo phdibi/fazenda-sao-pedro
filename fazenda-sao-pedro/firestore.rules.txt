@@ -1,0 +1,109 @@
+// ============================================
+// 🔧 REGRAS OTIMIZADAS DO FIRESTORE
+// ============================================
+// Copie este conteúdo para o Console do Firebase:
+// Firebase Console > Firestore Database > Rules
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // ============================================
+    // REGRA BASE: Usuário autenticado
+    // ============================================
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    // ============================================
+    // ANIMAIS
+    // ============================================
+    match /animals/{animalId} {
+      // Leitura: apenas dono
+      allow read: if isOwner(resource.data.userId);
+      
+      // Criação: usuário autenticado, deve ter userId
+      allow create: if isAuthenticated() 
+                    && request.resource.data.userId == request.auth.uid;
+      
+      // Atualização: apenas dono
+      allow update: if isOwner(resource.data.userId);
+      
+      // Deleção: apenas dono
+      allow delete: if isOwner(resource.data.userId);
+    }
+    
+    // ============================================
+    // CALENDÁRIO
+    // ============================================
+    match /calendar/{eventId} {
+      allow read: if isOwner(resource.data.userId);
+      allow create: if isAuthenticated() 
+                    && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if isOwner(resource.data.userId);
+    }
+    
+    // ============================================
+    // TAREFAS
+    // ============================================
+    match /tasks/{taskId} {
+      allow read: if isOwner(resource.data.userId);
+      allow create: if isAuthenticated() 
+                    && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if isOwner(resource.data.userId);
+    }
+    
+    // ============================================
+    // ÁREAS DE MANEJO
+    // ============================================
+    match /areas/{areaId} {
+      allow read: if isOwner(resource.data.userId);
+      allow create: if isAuthenticated() 
+                    && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if isOwner(resource.data.userId);
+    }
+    
+    // ============================================
+    // BLOQUEIA ACESSO A OUTRAS COLEÇÕES
+    // ============================================
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
+
+// ============================================
+// 🔧 REGRAS DO STORAGE
+// ============================================
+// Copie para: Firebase Console > Storage > Rules
+
+/*
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    
+    // Fotos de animais
+    match /animal_photos/{userId}/{animalId}/{fileName} {
+      // Leitura: qualquer autenticado (para compartilhamento futuro)
+      allow read: if request.auth != null;
+      
+      // Escrita: apenas o dono
+      allow write: if request.auth != null 
+                   && request.auth.uid == userId
+                   // Limite de 5MB por arquivo
+                   && request.resource.size < 5 * 1024 * 1024
+                   // Apenas imagens
+                   && request.resource.contentType.matches('image/.*');
+    }
+    
+    // Bloqueia outros paths
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}
+*/
