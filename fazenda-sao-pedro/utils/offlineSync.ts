@@ -67,12 +67,13 @@ class OfflineQueue {
     const queue = this.getQueue().filter(op => op.id !== id);
     localStorage.setItem(this.storageKey, JSON.stringify(queue));
   }
-}
 
+  // ✅ ADICIONE O clearQueue() AQUI, DENTRO DA CLASSE
   clearQueue() {
     localStorage.removeItem(this.storageKey);
     console.log('🗑️ Fila offline limpa');
   }
+} 
 
 export const offlineQueue = new OfflineQueue();
 
