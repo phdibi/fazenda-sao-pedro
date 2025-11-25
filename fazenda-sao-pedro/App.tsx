@@ -148,42 +148,21 @@ useEffect(() => {
 
   const handleAddAnimal = async (animalData: Omit<Animal, 'id' | 'fotos' | 'historicoSanitario' | 'historicoPesagens'>) => {
   try {
-    // ✅ VERIFICA SE ESTÁ ONLINE
     if (navigator.onLine) {
-      // 🌐 ONLINE → Salva direto no Firestore
+      // Online - salva direto
       await addAnimal(animalData);
-      setIsAddAnimalModalOpen(false);
+      setAddAnimalModalOpen(false);
 
     } else {
-      // 📡 OFFLINE → Adiciona na fila
-      const tempId = `temp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-      const newAnimal = {
-        ...animalData,
-        id: tempId,
-        fotos: [],
-        historicoSanitario: [],
-        historicoPesagens: []
-      };
-
-      // 1. Adiciona na fila de sincronização
+      // Offline - adiciona na fila SEM ID temporário
       offlineQueue.add({
         type: 'create',
         collection: 'animals',
-        data: newAnimal
+        data: animalData  // ← SEM ID, sem arrays vazios
       });
 
-      // 2. Salva localmente para mostrar imediatamente
-      const localAnimals = JSON.parse(localStorage.getItem('animals') || '[]');
-      localAnimals.push(newAnimal);
-      localStorage.setItem('animals', JSON.stringify(localAnimals));
-
-      // 3. Atualiza o estado local (isso vai fazer aparecer na tela)
-      // Nota: você precisa adicionar este animal manualmente no estado
-      // ou recarregar do localStorage
-
+      // Mostra mensagem
       setIsAddAnimalModalOpen(false);
-
-      // Mostra notificação (você pode criar uma função de notificação)
       alert('📱 Animal salvo localmente! Será sincronizado quando a internet voltar.');
     }
   } catch (error) {
@@ -191,6 +170,7 @@ useEffect(() => {
     alert('❌ Erro ao adicionar animal');
   }
 };
+
 const handleUpdateAnimal = async (animal: Animal) => {
   try {
     if (navigator.onLine) {
