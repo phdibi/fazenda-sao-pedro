@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Animal, MedicationAdministration, WeightEntry, Raca, Sexo, AnimalStatus, PregnancyRecord, PregnancyType, OffspringWeightRecord, WeighingType, AbortionRecord, AppUser } from '../types';
 import Modal from './common/Modal';
-import ImageAnalyzer from './ImageAnalyzer';
+import ImageAnalyzerOptimized from './ImageAnalyzerOptimized';
 import AudioToAction from './AudioToAction';
 import { TrashIcon } from './common/Icons';
 import GenealogyTree from './GenealogyTree';
@@ -394,7 +394,7 @@ const AnimalDetailModal = ({
         {activeTab === 'general' && 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
-              <ImageAnalyzer 
+              <ImageAnalyzerOptimized 
                   imageUrl={editableAnimal.fotos[0]} 
                   onUploadComplete={handleUploadComplete}
                   animalId={animal.id}
