@@ -36,6 +36,7 @@ export interface MedicationAdministration {
 
 export enum WeighingType {
   None = 'Nenhum',
+  Birth = 'Nascimento',      // ✅ NOVO: Tipo nascimento
   Weaning = 'Desmame',
   Yearling = 'Sobreano',
 }
@@ -109,11 +110,10 @@ export interface CalendarEvent {
     description?: string;
 }
 
-interface Task {
+export interface Task {
   id: string;
-  title: string;
-  description?: string;
-  dueDate?: Date;       // ✅ agora opcional (?)
+  description: string;
+  dueDate?: Date;
   isCompleted: boolean;
 }
 
