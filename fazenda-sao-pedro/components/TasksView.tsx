@@ -5,7 +5,7 @@ import { TrashIcon } from './common/Icons';
 interface TasksViewProps {
   tasks: Task[];
   onAddTask: (task: Omit<Task, 'id' | 'isCompleted'>) => void;
-  onToggleTask: (taskId: string) => void;
+  onToggleTask: (task: Task) => void;
   onDeleteTask: (taskId: string) => void;
 }
 
@@ -16,7 +16,13 @@ const TasksView = ({ tasks, onAddTask, onToggleTask, onDeleteTask }: TasksViewPr
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!description.trim()) return;
-    onAddTask({ description, dueDate: dueDate ? new Date(dueDate + 'T00:00:00') : undefined });
+    
+    // Data é opcional - só envia se foi preenchida
+    onAddTask({ 
+      description, 
+      dueDate: dueDate ? new Date(dueDate + 'T00:00:00') : undefined 
+    });
+    
     setDescription('');
     setDueDate('');
   };
@@ -29,14 +35,25 @@ const TasksView = ({ tasks, onAddTask, onToggleTask, onDeleteTask }: TasksViewPr
         <input 
             type="checkbox" 
             checked={task.isCompleted} 
-            onChange={() => onToggleTask(task.id)}
+            onChange={() => onToggleTask(task)}
             className="h-5 w-5 rounded-full border-gray-500 text-brand-primary focus:ring-brand-primary-dark bg-base-900"
         />
         <div className="ml-3 flex-1">
-            <p className={`text-sm ${task.isCompleted ? 'text-gray-500 line-through' : 'text-gray-200'}`}>{task.description}</p>
-            {task.dueDate && <p className="text-xs text-gray-400">Vencimento: {new Date(task.dueDate).toLocaleDateString('pt-BR')}</p>}
+            <p className={`text-sm ${task.isCompleted ? 'text-gray-500 line-through' : 'text-gray-200'}`}>
+              {task.description}
+            </p>
+            {task.dueDate ? (
+              <p className="text-xs text-gray-400">
+                Vencimento: {new Date(task.dueDate).toLocaleDateString('pt-BR')}
+              </p>
+            ) : (
+              <p className="text-xs text-gray-500 italic">Sem prazo definido</p>
+            )}
         </div>
-        <button onClick={() => onDeleteTask(task.id)} className="text-gray-500 hover:text-red-500 transition-colors">
+        <button 
+          onClick={() => onDeleteTask(task.id)} 
+          className="text-gray-500 hover:text-red-500 transition-colors"
+        >
             <TrashIcon className="w-5 h-5"/>
         </button>
     </div>
@@ -63,16 +80,20 @@ const TasksView = ({ tasks, onAddTask, onToggleTask, onDeleteTask }: TasksViewPr
                 />
             </div>
             <div className="w-full md:w-auto">
-                <label htmlFor="dueDate" className="text-xs text-gray-400">Prazo</label>
+                <label htmlFor="dueDate" className="text-xs text-gray-400">Prazo (opcional)</label>
                 <input
                     id="dueDate"
                     type="date"
                     value={dueDate}
                     onChange={e => setDueDate(e.target.value)}
                     className="w-full bg-base-700 border-base-600 rounded-md p-2"
+                    // Sem 'required' - data é opcional
                 />
             </div>
-            <button type="submit" className="w-full md:w-auto bg-brand-primary hover:bg-brand-primary-light text-white font-bold py-2 px-4 rounded transition-colors">
+            <button 
+              type="submit" 
+              className="w-full md:w-auto bg-brand-primary hover:bg-brand-primary-light text-white font-bold py-2 px-4 rounded transition-colors"
+            >
                 Adicionar
             </button>
         </form>
