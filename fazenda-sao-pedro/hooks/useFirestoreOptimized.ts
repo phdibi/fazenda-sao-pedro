@@ -566,7 +566,9 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
         if (!userId || !db) return;
         
         const { id, ...eventData } = event;
-        const dataWithTimestamp = convertDatesToTimestamps(eventData);
+        // Remove campos undefined (Firebase não aceita undefined)
+        const cleanedEventData = removeUndefined(eventData);
+        const dataWithTimestamp = convertDatesToTimestamps(cleanedEventData);
         
         try {
             if (id) {
@@ -627,8 +629,9 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
     const addTask = useCallback(async (task: Omit<Task, 'id' | 'isCompleted'>) => {
         if (!userId || !db) return;
         
-        const newTaskData = { ...task, isCompleted: false, userId };
-        const dataWithTimestamp = convertDatesToTimestamps(newTaskData);
+        // Remove campos undefined (Firebase não aceita undefined)
+        const cleanedTask = removeUndefined({ ...task, isCompleted: false, userId });
+        const dataWithTimestamp = convertDatesToTimestamps(cleanedTask);
         
         try {
             const newDocRef = await db.collection('tasks').add(dataWithTimestamp);
@@ -702,6 +705,8 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
         if (!userId || !db) return;
         
         const { id, ...areaData } = area;
+        // Remove campos undefined (Firebase não aceita undefined)
+        const cleanedAreaData = removeUndefined(areaData);
         
         try {
             if (id) {
@@ -711,14 +716,14 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
                 // Atualização otimista IMEDIATA
                 dispatch({ type: 'LOCAL_UPDATE_AREA', payload: updatedArea });
                 
-                await db.collection('areas').doc(id).update(areaData);
+                await db.collection('areas').doc(id).update(cleanedAreaData);
                 
                 // Atualiza cache
                 const updatedAreas = state.managementAreas.map(a => a.id === id ? updatedArea : a);
                 await updateLocalCache('managementAreas', updatedAreas);
             } else {
                 // CRIAÇÃO
-                const newDocRef = await db.collection('areas').add({ ...areaData, userId });
+                const newDocRef = await db.collection('areas').add({ ...cleanedAreaData, userId });
                 const newArea: ManagementArea = { 
                     id: newDocRef.id, 
                     ...areaData 
