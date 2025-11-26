@@ -522,11 +522,95 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
         dispatch({ type: 'LOCAL_UPDATE_ANIMAL', payload: { animalId, updatedData } });
         
         try {
+            const batch = db.batch();
             const animalRef = db.collection('animals').doc(animalId);
             const sanitizedData = removeUndefined(updatedData);
             const dataWithTimestamp = convertDatesToTimestamps(sanitizedData);
             
-            await animalRef.update(dataWithTimestamp);
+            batch.update(animalRef, dataWithTimestamp);
+            
+            // ============================================
+            // 🔧 PROPAGAR PESOS ESPECIAIS PARA PROGÊNIE DA MÃE
+            // ============================================
+            if (updatedData.historicoPesagens) {
+                const animal = state.animals.find(a => a.id === animalId);
+                if (animal?.maeNome) {
+                    // Busca a mãe pelo brinco
+                    const maeBrinco = animal.maeNome.toLowerCase().trim();
+                    const mae = state.animals.find(a => 
+                        a.brinco.toLowerCase().trim() === maeBrinco && 
+                        a.sexo === Sexo.Femea
+                    );
+                    
+                    if (mae) {
+                        // Procura por pesos especiais (Nascimento, Desmame, Sobreano)
+                        const pesagens = updatedData.historicoPesagens;
+                        
+                        let birthWeight: number | undefined;
+                        let weaningWeight: number | undefined;
+                        let yearlingWeight: number | undefined;
+                        
+                        pesagens.forEach(p => {
+                            if (p.type === WeighingType.Birth) {
+                                birthWeight = p.weightKg;
+                            } else if (p.type === WeighingType.Weaning) {
+                                weaningWeight = p.weightKg;
+                            } else if (p.type === WeighingType.Yearling) {
+                                yearlingWeight = p.weightKg;
+                            }
+                        });
+                        
+                        // Se tem algum peso especial, atualiza a progênie da mãe
+                        if (birthWeight !== undefined || weaningWeight !== undefined || yearlingWeight !== undefined) {
+                            const maeProgenie = mae.historicoProgenie || [];
+                            const existingRecord = maeProgenie.find(r => r.offspringBrinco.toLowerCase() === animal.brinco.toLowerCase());
+                            
+                            let updatedProgenie: typeof maeProgenie;
+                            
+                            if (existingRecord) {
+                                // Atualiza registro existente
+                                updatedProgenie = maeProgenie.map(r => {
+                                    if (r.offspringBrinco.toLowerCase() === animal.brinco.toLowerCase()) {
+                                        return {
+                                            ...r,
+                                            birthWeightKg: birthWeight ?? r.birthWeightKg,
+                                            weaningWeightKg: weaningWeight ?? r.weaningWeightKg,
+                                            yearlingWeightKg: yearlingWeight ?? r.yearlingWeightKg,
+                                        };
+                                    }
+                                    return r;
+                                });
+                            } else {
+                                // Cria novo registro
+                                const newRecord = {
+                                    id: `prog_${animalId}`,
+                                    offspringBrinco: animal.brinco,
+                                    birthWeightKg: birthWeight,
+                                    weaningWeightKg: weaningWeight,
+                                    yearlingWeightKg: yearlingWeight,
+                                };
+                                updatedProgenie = [...maeProgenie, newRecord];
+                            }
+                            
+                            // Atualiza a mãe no batch
+                            const maeRef = db.collection('animals').doc(mae.id);
+                            const cleanedProgenie = removeUndefined(updatedProgenie);
+                            batch.update(maeRef, { historicoProgenie: cleanedProgenie });
+                            
+                            // Atualização otimista da mãe
+                            dispatch({ 
+                                type: 'LOCAL_UPDATE_ANIMAL', 
+                                payload: { 
+                                    animalId: mae.id, 
+                                    updatedData: { historicoProgenie: updatedProgenie } 
+                                } 
+                            });
+                        }
+                    }
+                }
+            }
+            
+            await batch.commit();
             
             // Atualiza cache
             const updatedAnimals = state.animals.map(a => 
