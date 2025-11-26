@@ -109,11 +109,12 @@ export interface CalendarEvent {
     description?: string;
 }
 
-export interface Task {
-    id: string;
-    description: string;
-    dueDate?: Date;
-    isCompleted: boolean;
+interface Task {
+  id: string;
+  title: string;
+  description?: string;
+  dueDate?: Date;       // ✅ agora opcional (?)
+  isCompleted: boolean;
 }
 
 export interface ManagementArea {
