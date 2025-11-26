@@ -37,7 +37,7 @@ const App = ({ user }: AppProps) => {
     const {
         state,
         db,
-        forceSync,  // 👈 NOVA FUNÇÃO
+        forceSync,
         addAnimal,
         updateAnimal,
         deleteAnimal,
@@ -192,13 +192,6 @@ const App = ({ user }: AppProps) => {
         }
     };
 
-    const handleToggleTask = (taskId: string) => {
-        const task = state.tasks.find(t => t.id === taskId);
-        if (task) {
-            toggleTaskCompletion(task);
-        }
-    };
-
     const handleExportCSV = () => {
         if (filteredAnimals.length === 0) {
             alert("Nenhum animal para exportar com os filtros atuais.");
@@ -247,7 +240,6 @@ const App = ({ user }: AppProps) => {
             <div className="min-h-screen bg-base-900 flex flex-col justify-center items-center text-white">
                 <Spinner />
                 <p className="mt-4">Carregando dados da fazenda...</p>
-                {/* 🔧 MUDANÇA: Mostra se está carregando do cache */}
                 <p className="mt-2 text-sm text-gray-400">
                     Carregando do cache local...
                 </p>
@@ -265,8 +257,8 @@ const App = ({ user }: AppProps) => {
                 setCurrentView={setCurrentView}
                 onAddAnimalClick={() => setIsAddAnimalModalOpen(true)}
                 user={user}
-                onForceSync={forceSync}      // 👈 PASSA A FUNÇÃO
-                lastSync={state.lastSync}     // 👈 PASSA ÚLTIMA SYNC
+                onForceSync={forceSync}
+                lastSync={state.lastSync}
             />
 
             <main className="p-4 md:p-8 max-w-7xl mx-auto">
@@ -322,7 +314,7 @@ const App = ({ user }: AppProps) => {
                     <TasksView 
                         tasks={state.tasks} 
                         onAddTask={addTask} 
-                        onToggleTask={handleToggleTask} 
+                        onToggleTask={toggleTaskCompletion}
                         onDeleteTask={deleteTask} 
                     />
                 )}
