@@ -10,8 +10,8 @@ interface HeaderProps {
     setCurrentView: (view: ViewType) => void;
     onAddAnimalClick: () => void;
     user: AppUser;
-    onForceSync?: () => Promise<void>;  // 👈 NOVA PROP
-    lastSync?: number | null;            // 👈 NOVA PROP
+    onForceSync?: () => Promise<void>;
+    lastSync?: number | null;
 }
 
 interface NavButtonProps {
@@ -41,6 +41,19 @@ const RefreshIcon = ({ className }: { className?: string }) => (
     </svg>
 );
 
+// Logo do boi (SVG)
+const CowLogo = ({ className }: { className?: string }) => (
+    <svg 
+        xmlns="http://www.w3.org/2000/svg" 
+        viewBox="0 0 200 200" 
+        className={className || 'w-10 h-10'}
+        fill="currentColor"
+    >
+        <path d="M100 40 C70 40 50 60 50 90 L50 120 C50 150 70 170 100 170 C130 170 150 150 150 120 L150 90 C150 60 130 40 100 40 Z M75 80 C80 80 85 85 85 90 C85 95 80 100 75 100 C70 100 65 95 65 90 C65 85 70 80 75 80 Z M125 80 C130 80 135 85 135 90 C135 95 130 100 125 100 C120 100 115 95 115 90 C115 85 120 80 125 80 Z M70 110 L80 110 L80 130 L70 130 Z M120 110 L130 110 L130 130 L120 130 Z M90 140 C90 145 95 150 100 150 C105 150 110 145 110 140 L90 140 Z" />
+        <ellipse cx="100" cy="45" rx="25" ry="15" opacity="0.3" />
+    </svg>
+);
+
 const Header = ({ 
     currentView, 
     setCurrentView, 
@@ -57,7 +70,6 @@ const Header = ({
         }
     };
 
-    // Função para executar o sync com feedback visual
     const handleSync = async () => {
         if (!onForceSync || isSyncing) return;
         
@@ -71,7 +83,6 @@ const Header = ({
         }
     };
 
-    // Formata a última sincronização
     const formatLastSync = () => {
         if (!lastSync) return 'Nunca sincronizado';
         
@@ -92,12 +103,12 @@ const Header = ({
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                 <div className="flex items-center justify-between h-16">
                     {/* Logo */}
-                    <div className="flex items-center">
-                        <SparklesIcon className="h-8 w-8 text-brand-primary-light" />
-                        <span className="ml-3 text-xl font-bold text-white">São Pedro IA</span>
+                    <div className="flex items-center gap-3">
+                        <CowLogo className="w-10 h-10 text-brand-primary-light cow-logo" />
+                        <span className="hidden sm:inline text-xl font-bold text-white">São Pedro IA</span>
                     </div>
 
-                    <div className="flex items-center">
+                    <div className="flex items-center gap-2">
                         {/* Navegação Desktop */}
                         <nav className="hidden md:flex space-x-1 sm:space-x-2">
                             <NavButton view="dashboard" label="Painel" currentView={currentView} setCurrentView={setCurrentView}>
@@ -121,14 +132,25 @@ const Header = ({
 
                         <div className="hidden md:block border-l border-base-600 mx-4 h-8"></div>
 
-                        {/* ============================================ */}
-                        {/* 🔄 BOTÃO DE SINCRONIZAÇÃO - NOVA FEATURE */}
-                        {/* ============================================ */}
+                        {/* Botão de Relatórios - MOBILE ONLY */}
+                        <button
+                            onClick={() => setCurrentView('reports')}
+                            className={`md:hidden flex items-center justify-center p-2 rounded-md transition-colors ${
+                                currentView === 'reports' 
+                                    ? 'bg-brand-primary text-white' 
+                                    : 'text-gray-300 hover:text-white hover:bg-base-700'
+                            }`}
+                            aria-label="Relatórios"
+                        >
+                            <DocumentChartBarIcon className="w-6 h-6" />
+                        </button>
+
+                        {/* Botão de Sincronização */}
                         {onForceSync && (
                             <button
                                 onClick={handleSync}
                                 disabled={isSyncing}
-                                className={`hidden md:flex items-center gap-2 px-3 py-2 text-sm rounded-md transition-all mr-2 ${
+                                className={`flex items-center gap-2 px-3 py-2 text-sm rounded-md transition-all ${
                                     isSyncing 
                                         ? 'bg-brand-primary/20 text-brand-primary-light cursor-wait' 
                                         : 'text-gray-300 hover:text-white hover:bg-base-700'
@@ -144,7 +166,7 @@ const Header = ({
                             </button>
                         )}
 
-                        {/* Botão Adicionar Animal */}
+                        {/* Botão Adicionar Animal - DESKTOP ONLY */}
                         <div className="hidden md:block">
                             <button 
                                 onClick={onAddAnimalClick} 
@@ -156,7 +178,7 @@ const Header = ({
                         </div>
                         
                         {/* Avatar e Logout */}
-                        <div className="flex items-center ml-4">
+                        <div className="flex items-center ml-2">
                             <div className="relative">
                                 <div className="flex items-center">
                                     <img 
@@ -166,7 +188,6 @@ const Header = ({
                                     />
                                     <div className="ml-3 hidden sm:block">
                                         <div className="text-sm font-medium text-white">{user.displayName}</div>
-                                        {/* Indicador de última sync (mobile friendly) */}
                                         {lastSync && (
                                             <div className="text-xs text-gray-400">
                                                 Sync: {formatLastSync()}
@@ -185,33 +206,6 @@ const Header = ({
                                 </svg>
                             </button>
                         </div>
-
-                        {/* Botão Mobile - Adicionar Animal */}
-                        <div className="md:hidden ml-2">
-                            <button 
-                                onClick={onAddAnimalClick} 
-                                className="flex-shrink-0 bg-brand-primary p-2 text-white rounded-full hover:bg-brand-primary-light focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-base-800 focus:ring-white"
-                            >
-                                <PlusIcon className="h-6 w-6" />
-                            </button>
-                        </div>
-
-                        {/* Botão Mobile - Sync */}
-                        {onForceSync && (
-                            <div className="md:hidden ml-2">
-                                <button 
-                                    onClick={handleSync}
-                                    disabled={isSyncing}
-                                    className={`flex-shrink-0 p-2 rounded-full focus:outline-none ${
-                                        isSyncing 
-                                            ? 'bg-brand-primary/20 text-brand-primary-light' 
-                                            : 'text-gray-400 hover:text-white hover:bg-base-700'
-                                    }`}
-                                >
-                                    <RefreshIcon className={`h-6 w-6 ${isSyncing ? 'animate-spin' : ''}`} />
-                                </button>
-                            </div>
-                        )}
                     </div>
                 </div>
             </div>

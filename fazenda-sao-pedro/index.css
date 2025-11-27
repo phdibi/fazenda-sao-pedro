@@ -1,3 +1,45 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+/* ============================================ */
+/* 🎨 ESTILOS ADICIONAIS PARA O LOGO DO BOI   */
+/* ============================================ */
+
+/* Animação suave do logo ao passar o mouse */
+.cow-logo {
+    transition: transform 0.3s ease, color 0.3s ease;
+}
+
+.cow-logo:hover {
+    transform: scale(1.1) rotate(5deg);
+}
+
+/* Em telas maiores, adiciona uma animação sutil contínua */
+@media (min-width: 768px) {
+    .cow-logo {
+        animation: gentle-float 3s ease-in-out infinite;
+    }
+    
+    .cow-logo:hover {
+        animation: none;
+    }
+}
+
+@keyframes gentle-float {
+    0%, 100% {
+        transform: translateY(0px) rotate(0deg);
+    }
+    50% {
+        transform: translateY(-3px) rotate(2deg);
+    }
+}
+
+/* Melhora visual do header em mobile */
+@media (max-width: 767px) {
+    header {
+        position: sticky;
+        top: 0;
+        z-index: 40;
+    }
+}
+
