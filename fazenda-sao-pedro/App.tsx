@@ -4,9 +4,6 @@ import { offlineQueue } from './utils/offlineSync';
 import Dashboard from './components/Dashboard';
 import AnimalDetailModal from './components/AnimalDetailModal';
 import AddAnimalModal from './components/AddAnimalModal';
-// ============================================
-// 🔧 MUDANÇA: Usar hook otimizado
-// ============================================
 import { useFirestoreOptimized } from './hooks/useFirestoreOptimized';
 import { Animal, AnimalStatus, AppUser, Task } from './types';
 import FilterBar from './components/FilterBar';
@@ -31,9 +28,6 @@ interface AppProps {
 }
 
 const App = ({ user }: AppProps) => {
-    // ============================================
-    // 🔧 MUDANÇA: Hook otimizado com forceSync
-    // ============================================
     const {
         state,
         db,
@@ -76,10 +70,7 @@ const App = ({ user }: AppProps) => {
                 console.log('🔄 Internet voltou! Sincronizando dados offline...');
                 await offlineQueue.processQueue(db);
                 localStorage.removeItem('animals');
-                
-                // 🔧 MUDANÇA: Força sync após voltar online
                 await forceSync();
-                
                 alert('✅ Dados sincronizados com sucesso!');
             }
         };
@@ -233,6 +224,11 @@ const App = ({ user }: AppProps) => {
         exportToCSV(dataToExport, headers, `relatorio_rebanho_${timestamp}.csv`);
     };
 
+    // Handler para abrir modal de adicionar animal
+    const handleOpenAddAnimalModal = () => {
+        setIsAddAnimalModalOpen(true);
+    };
+
     const isAppLoading = state.loading.animals || state.loading.calendar || state.loading.tasks || state.loading.areas;
     
     if (isAppLoading) {
@@ -248,14 +244,11 @@ const App = ({ user }: AppProps) => {
     }
 
     return (
-        <div className="min-h-screen bg-base-900 font-sans pb-20 md:pb-0">
-            {/* ============================================ */}
-            {/* 🔧 MUDANÇA: Header com forceSync e lastSync */}
-            {/* ============================================ */}
+        <div className="min-h-screen bg-base-900 font-sans pb-24 md:pb-0">
             <Header
                 currentView={currentView}
                 setCurrentView={setCurrentView}
-                onAddAnimalClick={() => setIsAddAnimalModalOpen(true)}
+                onAddAnimalClick={handleOpenAddAnimalModal}
                 user={user}
                 onForceSync={forceSync}
                 lastSync={state.lastSync}
@@ -264,19 +257,28 @@ const App = ({ user }: AppProps) => {
             <main className="p-4 md:p-8 max-w-7xl mx-auto">
                 {currentView === 'dashboard' && (
                     <>
-                        <div className="flex flex-col sm:flex-row justify-between sm:items-center mb-6 gap-4">
-                            <h1 className="text-3xl font-bold text-white">Painel do Rebanho</h1>
+                        {/* Header do painel - mais limpo no mobile */}
+                        <div className="flex flex-col sm:flex-row justify-between sm:items-center mb-4 md:mb-6 gap-3">
+                            <h1 className="text-2xl md:text-3xl font-bold text-white">Painel do Rebanho</h1>
                             <button
                                 onClick={handleExportCSV}
-                                className="inline-flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-green-700 hover:bg-green-800 transition-colors"
+                                className="hidden sm:inline-flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-green-700 hover:bg-green-800 transition-colors"
                             >
                                 <ArrowDownTrayIcon className="w-5 h-5 mr-2" />
                                 Exportar CSV
                             </button>
                         </div>
+                        
+                        {/* Stats resumidos */}
                         <StatsDashboard animals={filteredAnimals} />
-                        <AgendaPreview events={state.calendarEvents} />
-                        <TasksPreview tasks={state.tasks} />
+                        
+                        {/* Previews de agenda e tarefas - escondidos no mobile para layout mais limpo */}
+                        <div className="hidden md:block">
+                            <AgendaPreview events={state.calendarEvents} />
+                            <TasksPreview tasks={state.tasks} />
+                        </div>
+                        
+                        {/* Filtros colapsáveis */}
                         <FilterBar
                             searchTerm={searchTerm}
                             setSearchTerm={setSearchTerm}
@@ -290,7 +292,20 @@ const App = ({ user }: AppProps) => {
                             setSelectedStatus={setSelectedStatus}
                             onClear={handleClearFilters}
                         />
+                        
+                        {/* Dashboard de animais */}
                         <Dashboard animals={filteredAnimals} onSelectAnimal={handleSelectAnimal} />
+                        
+                        {/* Botão de exportar CSV - mobile (fixo no fim) */}
+                        <div className="sm:hidden mt-6">
+                            <button
+                                onClick={handleExportCSV}
+                                className="w-full flex items-center justify-center px-4 py-3 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-green-700 hover:bg-green-800 transition-colors"
+                            >
+                                <ArrowDownTrayIcon className="w-5 h-5 mr-2" />
+                                Exportar CSV
+                            </button>
+                        </div>
                     </>
                 )}
 
@@ -349,9 +364,15 @@ const App = ({ user }: AppProps) => {
                 animals={state.animals}
             />
 
+            {/* Chatbot - com posição ajustada para mobile */}
             <Chatbot animals={state.animals} />
             
-            <MobileNavBar currentView={currentView} setCurrentView={setCurrentView} />
+            {/* Navbar mobile com botão de adicionar integrado */}
+            <MobileNavBar 
+                currentView={currentView} 
+                setCurrentView={setCurrentView}
+                onAddAnimalClick={handleOpenAddAnimalModal}
+            />
         </div>
     );
 };
