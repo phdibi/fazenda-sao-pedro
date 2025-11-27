@@ -41,19 +41,6 @@ const RefreshIcon = ({ className }: { className?: string }) => (
     </svg>
 );
 
-// Logo do boi (SVG)
-const CowLogo = ({ className }: { className?: string }) => (
-    <svg 
-        xmlns="http://www.w3.org/2000/svg" 
-        viewBox="0 0 200 200" 
-        className={className || 'w-10 h-10'}
-        fill="currentColor"
-    >
-        <path d="M100 40 C70 40 50 60 50 90 L50 120 C50 150 70 170 100 170 C130 170 150 150 150 120 L150 90 C150 60 130 40 100 40 Z M75 80 C80 80 85 85 85 90 C85 95 80 100 75 100 C70 100 65 95 65 90 C65 85 70 80 75 80 Z M125 80 C130 80 135 85 135 90 C135 95 130 100 125 100 C120 100 115 95 115 90 C115 85 120 80 125 80 Z M70 110 L80 110 L80 130 L70 130 Z M120 110 L130 110 L130 130 L120 130 Z M90 140 C90 145 95 150 100 150 C105 150 110 145 110 140 L90 140 Z" />
-        <ellipse cx="100" cy="45" rx="25" ry="15" opacity="0.3" />
-    </svg>
-);
-
 const Header = ({ 
     currentView, 
     setCurrentView, 
@@ -102,10 +89,13 @@ const Header = ({
         <header className="bg-base-800 shadow-md">
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                 <div className="flex items-center justify-between h-16">
-                    {/* Logo */}
-                    <div className="flex items-center gap-3">
-                        <CowLogo className="w-10 h-10 text-brand-primary-light cow-logo" />
-                        <span className="hidden sm:inline text-xl font-bold text-white">São Pedro IA</span>
+                    {/* Logo - SEM TEXTO */}
+                    <div className="flex items-center">
+                        <img 
+                            src="/logo.png" 
+                            alt="São Pedro IA" 
+                            className="h-12 w-auto cow-logo"
+                        />
                     </div>
 
                     <div className="flex items-center gap-2">
