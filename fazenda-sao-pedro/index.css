@@ -42,5 +42,179 @@
         z-index: 40;
     }
 }
+/* ========================================
+   CORREÇÃO: Botões escondidos atrás da navbar
+   ======================================== */
+
+/* 
+  PROBLEMA: Formulários em mobile têm botões escondidos 
+  atrás da navbar inferior fixa
+  
+  SOLUÇÃO: Adicionar padding-bottom adequado
+*/
+
+/* Container principal de páginas/formulários */
+.page-container,
+.form-container,
+main {
+  /* Adiciona espaço na parte inferior para a navbar */
+  padding-bottom: 120px !important;
+}
+
+/* Especificamente para modais/dialogs de formulários */
+.dialog-content,
+.modal-content,
+[role="dialog"] > div {
+  padding-bottom: 100px !important;
+}
+
+/* Garante que os botões de ação fiquem visíveis */
+.action-buttons,
+.form-actions,
+.button-group {
+  margin-bottom: 24px !important;
+}
+
+/* Container de scroll para formulários longos */
+.scrollable-form {
+  max-height: calc(100vh - 180px);
+  overflow-y: auto;
+  padding-bottom: 120px;
+}
+
+/* Ajuste para formulários dentro de Sheet/Drawer */
+.sheet-content,
+.drawer-content {
+  padding-bottom: 120px !important;
+  overflow-y: auto;
+}
+
+/* ========================================
+   AJUSTES ESPECÍFICOS PARA COMPONENTES
+   ======================================== */
+
+/* Formulário de Animal (Cadastro e Edição) */
+.animal-form {
+  padding-bottom: 120px !important;
+}
+
+.animal-form .form-buttons {
+  position: relative;
+  margin-top: 24px;
+  margin-bottom: 40px;
+  z-index: 10;
+}
+
+/* Formulário de Medicamento */
+.medication-form {
+  padding-bottom: 120px !important;
+}
+
+/* Detalhes do Animal (Modal que abre ao clicar) */
+.animal-details-modal {
+  padding-bottom: 100px !important;
+}
+
+/* ========================================
+   NAVBAR INFERIOR - GARANTIR VISIBILIDADE
+   ======================================== */
+
+/* Navbar deve ficar sempre no topo (z-index alto) */
+.bottom-navbar,
+nav[class*="bottom"],
+.mobile-nav {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 50 !important;
+  background: var(--background);
+  box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.1);
+}
+
+/* ========================================
+   BOTÃO FAB (Adicionar Animal Centralizado)
+   ======================================== */
+
+.fab-button,
+button[class*="fab"] {
+  z-index: 51 !important; /* Acima da navbar */
+}
+
+/* ========================================
+   AJUSTES PARA DIFERENTES TAMANHOS DE TELA
+   ======================================== */
+
+/* Mobile pequeno (até 375px) */
+@media (max-width: 375px) {
+  .page-container,
+  .form-container,
+  main {
+    padding-bottom: 140px !important;
+  }
+}
+
+/* Mobile médio (376px a 767px) */
+@media (min-width: 376px) and (max-width: 767px) {
+  .page-container,
+  .form-container,
+  main {
+    padding-bottom: 120px !important;
+  }
+}
+
+/* Tablet e Desktop - remover padding extra */
+@media (min-width: 768px) {
+  .page-container,
+  .form-container,
+  main {
+    padding-bottom: 24px !important;
+  }
+  
+  .dialog-content,
+  .modal-content {
+    padding-bottom: 24px !important;
+  }
+}
+
+/* ========================================
+   SCROLL SUAVE E ACESSIBILIDADE
+   ======================================== */
+
+/* Scroll suave em mobile */
+@media (max-width: 767px) {
+  body {
+    overflow-x: hidden;
+  }
+  
+  main,
+  .page-container {
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch; /* Scroll suave no iOS */
+  }
+}
+
+/* ========================================
+   CLASSES UTILITÁRIAS
+   ======================================== */
+
+/* Para adicionar manualmente em componentes específicos */
+.pb-navbar {
+  padding-bottom: 120px !important;
+}
+
+.pb-navbar-lg {
+  padding-bottom: 140px !important;
+}
+
+.mb-navbar {
+  margin-bottom: 120px !important;
+}
+
+/* Garante que último elemento tenha margem */
+.form-last-element,
+.last-button {
+  margin-bottom: 32px !important;
+}
 
 
