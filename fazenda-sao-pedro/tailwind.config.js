@@ -7,12 +7,13 @@ export default {
   theme: {
     extend: {
       colors: {
-        'brand-primary': {
-          light: '#501c15',
-          DEFAULT: '#381b18',
-          dark: '#220d0b',
-        },
-        'brand-secondary': '#d4a373',
+        // ✅ FORMATO COMPATÍVEL com o código existente
+        'brand-primary': '#381b18',           // Cor principal (marrom escuro)
+        'brand-primary-light': '#501c15',     // Hover (marrom mais claro)
+        'brand-accent': '#d4a373',            // Cor de destaque (bege)
+        'brand-accent-dark': '#220d0b',       // Destaque escuro
+        
+        // Tons de fundo/base
         'base': {
           950: '#0a0a0a',
           900: '#1a1a1a',
@@ -26,6 +27,8 @@ export default {
           100: '#f5f5f5',
           50: '#fafafa',
         },
+        
+        // Cores de status
         'accent-green': '#4ade80',
         'accent-yellow': '#facc15',
         'accent-red': '#f87171',
