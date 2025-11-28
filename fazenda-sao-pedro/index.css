@@ -43,178 +43,260 @@
     }
 }
 /* ========================================
-   CORREÇÃO: Botões escondidos atrás da navbar
+   CORREÇÃO DEFINITIVA: Botões Acessíveis em Mobile
    ======================================== */
 
 /* 
-  PROBLEMA: Formulários em mobile têm botões escondidos 
-  atrás da navbar inferior fixa
-  
-  SOLUÇÃO: Adicionar padding-bottom adequado
+  PROBLEMA: Sheets/Modais não permitem scroll até o final
+  SOLUÇÃO: Forçar altura máxima e habilitar scroll
 */
 
-/* Container principal de páginas/formulários */
-.page-container,
-.form-container,
-main {
-  /* Adiciona espaço na parte inferior para a navbar */
-  padding-bottom: 120px !important;
-}
+/* ========================================
+   1. SHEET/MODAL DE CADASTRO E EDIÇÃO
+   ======================================== */
 
-/* Especificamente para modais/dialogs de formulários */
-.dialog-content,
-.modal-content,
-[role="dialog"] > div {
-  padding-bottom: 100px !important;
-}
-
-/* Garante que os botões de ação fiquem visíveis */
-.action-buttons,
-.form-actions,
-.button-group {
-  margin-bottom: 24px !important;
-}
-
-/* Container de scroll para formulários longos */
-.scrollable-form {
-  max-height: calc(100vh - 180px);
-  overflow-y: auto;
-  padding-bottom: 120px;
-}
-
-/* Ajuste para formulários dentro de Sheet/Drawer */
+/* Sheet Content - Container principal */
+[data-state="open"] > div[role="dialog"],
 .sheet-content,
-.drawer-content {
-  padding-bottom: 120px !important;
-  overflow-y: auto;
+[class*="SheetContent"],
+[class*="DialogContent"] {
+  display: flex !important;
+  flex-direction: column !important;
+  max-height: calc(100vh - 20px) !important;
+  height: auto !important;
+}
+
+/* Área scrollável dentro do Sheet */
+[data-state="open"] > div[role="dialog"] > div,
+.sheet-content > div,
+[class*="SheetContent"] > div {
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  -webkit-overflow-scrolling: touch !important;
+  padding-bottom: 140px !important; /* Espaço GRANDE para navbar */
+  max-height: calc(100vh - 100px) !important;
 }
 
 /* ========================================
-   AJUSTES ESPECÍFICOS PARA COMPONENTES
+   2. FORMULÁRIOS ESPECÍFICOS
    ======================================== */
 
-/* Formulário de Animal (Cadastro e Edição) */
-.animal-form {
-  padding-bottom: 120px !important;
-}
-
-.animal-form .form-buttons {
-  position: relative;
-  margin-top: 24px;
-  margin-bottom: 40px;
-  z-index: 10;
-}
-
-/* Formulário de Medicamento */
-.medication-form {
-  padding-bottom: 120px !important;
-}
-
-/* Detalhes do Animal (Modal que abre ao clicar) */
-.animal-details-modal {
-  padding-bottom: 100px !important;
-}
-
-/* ========================================
-   NAVBAR INFERIOR - GARANTIR VISIBILIDADE
-   ======================================== */
-
-/* Navbar deve ficar sempre no topo (z-index alto) */
-.bottom-navbar,
-nav[class*="bottom"],
-.mobile-nav {
-  position: fixed;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  z-index: 50 !important;
-  background: var(--background);
-  box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.1);
-}
-
-/* ========================================
-   BOTÃO FAB (Adicionar Animal Centralizado)
-   ======================================== */
-
-.fab-button,
-button[class*="fab"] {
-  z-index: 51 !important; /* Acima da navbar */
-}
-
-/* ========================================
-   AJUSTES PARA DIFERENTES TAMANHOS DE TELA
-   ======================================== */
-
-/* Mobile pequeno (até 375px) */
-@media (max-width: 375px) {
-  .page-container,
-  .form-container,
-  main {
-    padding-bottom: 140px !important;
-  }
-}
-
-/* Mobile médio (376px a 767px) */
-@media (min-width: 376px) and (max-width: 767px) {
-  .page-container,
-  .form-container,
-  main {
-    padding-bottom: 120px !important;
-  }
-}
-
-/* Tablet e Desktop - remover padding extra */
-@media (min-width: 768px) {
-  .page-container,
-  .form-container,
-  main {
-    padding-bottom: 24px !important;
-  }
-  
-  .dialog-content,
-  .modal-content {
-    padding-bottom: 24px !important;
-  }
-}
-
-/* ========================================
-   SCROLL SUAVE E ACESSIBILIDADE
-   ======================================== */
-
-/* Scroll suave em mobile */
-@media (max-width: 767px) {
-  body {
-    overflow-x: hidden;
-  }
-  
-  main,
-  .page-container {
-    overflow-y: auto;
-    -webkit-overflow-scrolling: touch; /* Scroll suave no iOS */
-  }
-}
-
-/* ========================================
-   CLASSES UTILITÁRIAS
-   ======================================== */
-
-/* Para adicionar manualmente em componentes específicos */
-.pb-navbar {
-  padding-bottom: 120px !important;
-}
-
-.pb-navbar-lg {
+/* Formulário de Animal (Detalhes, Edição, Cadastro) */
+form,
+.animal-form,
+.form-container {
   padding-bottom: 140px !important;
+  min-height: auto !important;
 }
 
-.mb-navbar {
-  margin-bottom: 120px !important;
+/* Container de campos do formulário */
+.space-y-4,
+.space-y-6,
+[class*="space-y"] {
+  padding-bottom: 40px !important;
 }
 
-/* Garante que último elemento tenha margem */
-.form-last-element,
-.last-button {
-  margin-bottom: 32px !important;
+/* ========================================
+   3. BOTÕES DE AÇÃO
+   ======================================== */
+
+/* Botões "Salvar", "Excluir", "Editar" */
+.flex.gap-2,
+.flex.gap-4,
+.button-group,
+[class*="flex"][class*="gap"] {
+  margin-bottom: 80px !important;
+  margin-top: 24px !important;
+  position: relative !important;
+  z-index: 10 !important;
 }
+
+/* Garante que botões sejam clicáveis */
+button {
+  position: relative !important;
+  z-index: 11 !important;
+}
+
+/* ========================================
+   4. NAVBAR INFERIOR - Não cobrir botões
+   ======================================== */
+
+/* Navbar fixa no bottom */
+nav[class*="bottom"],
+.bottom-nav,
+.mobile-navbar {
+  position: fixed !important;
+  bottom: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  z-index: 40 !important;
+  pointer-events: auto !important;
+}
+
+/* Botão FAB central */
+button[class*="fab"],
+.fab-button {
+  z-index: 41 !important;
+  pointer-events: auto !important;
+}
+
+/* ========================================
+   5. SCROLL HABILITADO
+   ======================================== */
+
+/* Permitir scroll em TODAS as telas mobile */
+@media (max-width: 767px) {
+  
+  /* Body pode scrollar */
+  body {
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    position: relative !important;
+  }
+  
+  /* Main content scrollável */
+  main {
+    overflow-y: auto !important;
+    padding-bottom: 140px !important;
+    min-height: 100vh !important;
+  }
+  
+  /* Sheets/Modais scrolláveis */
+  [role="dialog"] {
+    overflow-y: auto !important;
+    max-height: 100vh !important;
+  }
+  
+  /* Conteúdo dentro do modal */
+  [role="dialog"] > * {
+    overflow-y: auto !important;
+  }
+}
+
+/* ========================================
+   6. CLASSES UTILITÁRIAS FORÇADAS
+   ======================================== */
+
+/* Adicione estas classes manualmente nos componentes */
+
+/* Para o container do formulário */
+.mobile-safe-bottom {
+  padding-bottom: 160px !important;
+}
+
+/* Para grupo de botões */
+.mobile-buttons-safe {
+  margin-bottom: 100px !important;
+  margin-top: 24px !important;
+}
+
+/* Para permitir scroll */
+.mobile-scrollable {
+  overflow-y: auto !important;
+  -webkit-overflow-scrolling: touch !important;
+  max-height: calc(100vh - 100px) !important;
+}
+
+/* ========================================
+   7. FIX ESPECÍFICO - SHEET RADIX UI
+   ======================================== */
+
+/* Se estiver usando Radix UI Sheet */
+.radix-sheet-content,
+[data-radix-sheet-content] {
+  overflow-y: auto !important;
+  max-height: calc(100vh - 40px) !important;
+}
+
+.radix-sheet-content > div {
+  padding-bottom: 160px !important;
+}
+
+/* ========================================
+   8. FIX ESPECÍFICO - DIALOG RADIX UI
+   ======================================== */
+
+/* Se estiver usando Radix UI Dialog */
+.radix-dialog-content,
+[data-radix-dialog-content] {
+  overflow-y: auto !important;
+  max-height: calc(100vh - 60px) !important;
+}
+
+.radix-dialog-content > div {
+  padding-bottom: 160px !important;
+}
+
+/* ========================================
+   9. ÚLTIMO RECURSO - !important em tudo
+   ======================================== */
+
+/* Força espaço em QUALQUER formulário mobile */
+@media (max-width: 767px) {
+  
+  /* Qualquer div com botões dentro */
+  div:has(> button),
+  div:has(> .flex > button) {
+    padding-bottom: 20px !important;
+  }
+  
+  /* Último filho de qualquer container */
+  div > *:last-child {
+    margin-bottom: 60px !important;
+  }
+  
+  /* Formulários */
+  form > *:last-child {
+    margin-bottom: 100px !important;
+  }
+}
+
+/* ========================================
+   10. COR DO HEADER (FUNDO DO LOGO)
+   ======================================== */
+
+/* Header/Navbar superior */
+header,
+.header,
+nav.top-nav,
+[class*="Header"] {
+  background-color: #CC9966 !important;
+}
+
+/* Se o header tiver classes específicas do Tailwind */
+.bg-background,
+header.bg-background {
+  background-color: #CC9966 !important;
+}
+
+/* Container do logo */
+.logo-container,
+header > div {
+  background-color: #CC9966 !important;
+}
+
+/* ========================================
+   11. DEBUG - Para visualizar problemas
+   ======================================== */
+
+/* Descomente para ver bordas e debugar */
+/*
+[role="dialog"] {
+  border: 3px solid red !important;
+}
+
+[role="dialog"] > div {
+  border: 3px solid blue !important;
+}
+
+form {
+  border: 3px solid green !important;
+}
+
+.flex.gap-2 {
+  border: 3px solid yellow !important;
+}
+*/
+
 
 
