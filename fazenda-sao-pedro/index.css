@@ -68,7 +68,7 @@ button.bg-brand-primary,
 button:hover.bg-brand-primary,
 button.hover\:bg-brand-primary-light:hover,
 .hover\:bg-brand-primary-light:hover {
-  background-color: #501c15 !important;
+  background-color: #5b483f !important;
 }
 
 /* Botão FAB central */
@@ -84,5 +84,5 @@ button[class*="fab"]:hover,
 
 /* Texto de destaque */
 .text-brand-primary-light {
-  color: #501c15 !important;
+  color: #5b483f !important;
 }
