@@ -50,7 +50,7 @@
 
 /* Força a cor de fundo do header */
 header {
-  background-color: #8c5639 !important;
+  background-color: #ad6f4e !important;
 }
 
 /* Garante que elementos filhos herdem o fundo */
@@ -61,93 +61,89 @@ header > div {
 /* Se tiver classes do Tailwind sobrescrevendo */
 header.bg-background,
 header[class*="bg-"] {
-  background-color: #46220f !important;
+  background-color: #ad6e4d !important;
 }
 
 /* ========================================
-   CORREÇÃO MOBILE: APENAS MODAIS/SHEETS
-   NÃO AFETA: Páginas principais (Painel, etc)
+   CORREÇÃO MOBILE: APENAS Formulários
+   (Cadastro e Edição de Animais)
    ======================================== */
 
 /* Apenas em mobile */
 @media (max-width: 767px) {
   
-  /* ===== IMPORTANTE: SÓ AFETA MODAIS/DIALOGS ===== */
-  /* Não afeta o conteúdo principal da página */
+  /* ===== APENAS modais que contém FORM ===== */
   
-  /* Detecta quando um modal está ABERTO */
-  /* [data-state="open"] garante que só afeta modais abertos */
-  
-  /* Container do Sheet/Dialog ABERTO */
-  [data-state="open"][role="dialog"],
-  [data-state="open"] > div[role="dialog"] {
+  /* Modal/Sheet que tem formulário dentro */
+  [role="dialog"]:has(form),
+  [data-state="open"] > div[role="dialog"]:has(form) {
     overflow-y: auto !important;
     max-height: calc(100vh - 20px) !important;
   }
   
-  /* Conteúdo scrollável DENTRO do modal ABERTO */
-  [data-state="open"][role="dialog"] > div,
-  [data-state="open"] > div[role="dialog"] > div {
+  /* Conteúdo scrollável - APENAS se tiver form */
+  [role="dialog"]:has(form) > div,
+  [data-state="open"] > div[role="dialog"]:has(form) > div {
     overflow-y: auto !important;
-    -webkit-overflow-scrolling: touch !important;
     padding-bottom: 180px !important;
     max-height: calc(100vh - 80px) !important;
+    -webkit-overflow-scrolling: touch !important;
   }
   
-  /* Formulários DENTRO de modais abertos */
-  [data-state="open"] form,
-  [role="dialog"][data-state="open"] form {
+  /* ===== FORMULÁRIOS ===== */
+  
+  /* Qualquer formulário (cadastro ou edição) */
+  form {
     padding-bottom: 160px !important;
   }
   
-  /* Botões DENTRO de formulários em modais */
-  [data-state="open"] form > div:last-child,
-  [data-state="open"] form .flex {
+  /* ===== BOTÕES dentro de FORMULÁRIOS ===== */
+  
+  /* Último elemento do form (botões) */
+  form > div:last-child {
     margin-bottom: 100px !important;
     margin-top: 24px !important;
   }
   
-  /* ===== NAVBAR INFERIOR ===== */
-  
-  /* Garante que navbar fique fixa no bottom */
-  nav[class*="bottom"] {
-    position: fixed !important;
-    bottom: 0 !important;
-    left: 0 !important;
-    right: 0 !important;
-    z-index: 50 !important;
+  /* Grupos de botões DENTRO de form */
+  form .flex.gap-2,
+  form .flex.gap-4,
+  form div[class*="flex"][class*="gap"] {
+    margin-bottom: 100px !important;
+    margin-top: 24px !important;
   }
   
-  /* Botão FAB (+) central */
-  button[class*="fab"] {
-    z-index: 51 !important;
+  /* ===== NÃO AFETA outros modais ===== */
+  
+  /* Modais sem form mantêm comportamento normal */
+  [role="dialog"]:not(:has(form)) {
+    padding-bottom: 0 !important;
+  }
+  
+  [role="dialog"]:not(:has(form)) > div {
+    padding-bottom: 0 !important;
   }
 }
 
 /* ========================================
-   DESKTOP: Comportamento normal
+   DESKTOP: Normal
    ======================================== */
 
 @media (min-width: 768px) {
-  /* Em desktop, tudo normal - sem padding extra */
-  [role="dialog"] {
+  form {
     padding-bottom: 24px !important;
   }
 }
 
 /* ========================================
-   CLASSES UTILITÁRIAS MANUAIS
-   Use apenas se precisar adicionar manualmente
+   CLASSES UTILITÁRIAS (uso manual)
    ======================================== */
 
-/* Para containers de modal que precisam scroll */
-.modal-scrollable {
-  overflow-y: auto !important;
-  -webkit-overflow-scrolling: touch !important;
-  max-height: calc(100vh - 100px) !important;
+/* Se precisar adicionar manualmente em componentes específicos */
+.form-mobile-safe {
+  padding-bottom: 180px !important;
 }
 
-/* Para adicionar padding extra em modais específicos */
-.modal-safe-bottom {
-  padding-bottom: 180px !important;
+.buttons-mobile-safe {
+  margin-bottom: 100px !important;
 }
