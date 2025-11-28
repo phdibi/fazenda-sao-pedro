@@ -45,77 +45,166 @@
 }
 
 /* ========================================
-   COR DO HEADER - ESPECÍFICO
+   COR DO HEADER: #46220f (Marrom Escuro)
    ======================================== */
 
-/* APENAS a cor de fundo do header - NÃO mexe em mais nada */
-header.sticky {
-  background-color: #CC9966 !important;
+/* Força a cor de fundo do header */
+header {
+  background-color: #46220f !important;
 }
 
-/* Se o header não tiver a classe "sticky", força mesmo assim */
-body > div > header,
-#root > header {
-  background-color: #CC9966 !important;
+/* Garante que elementos filhos herdem o fundo */
+header > div {
+  background-color: transparent !important;
+}
+
+/* Se tiver classes do Tailwind sobrescrevendo */
+header.bg-background,
+header[class*="bg-"] {
+  background-color: #88583d !important;
 }
 
 /* ========================================
-   CORREÇÃO MOBILE: Botões Acessíveis
+   CORREÇÃO MOBILE: Scroll e Botões Acessíveis
+   INCLUI: Cadastro E Edição de Animais
    ======================================== */
 
-/* Apenas em mobile (não afeta desktop) */
+/* Apenas em mobile */
 @media (max-width: 767px) {
   
-  /* Sheets/Modais scrolláveis */
-  [data-state="open"] > div[role="dialog"] {
+  /* ===== SHEETS/MODAIS (Cadastro e Edição) ===== */
+  
+  /* Container principal do Sheet/Modal */
+  [data-state="open"] > div[role="dialog"],
+  [role="dialog"],
+  [data-radix-dialog-content],
+  [data-radix-sheet-content] {
+    display: flex !important;
+    flex-direction: column !important;
     overflow-y: auto !important;
     max-height: calc(100vh - 20px) !important;
   }
   
-  /* Área scrollável dentro do Sheet */
-  [data-state="open"] > div[role="dialog"] > div {
+  /* Área scrollável dentro do Sheet/Modal */
+  [data-state="open"] > div[role="dialog"] > div,
+  [role="dialog"] > div,
+  [data-radix-dialog-content] > div,
+  [data-radix-sheet-content] > div {
     overflow-y: auto !important;
-    padding-bottom: 160px !important;
-    max-height: calc(100vh - 100px) !important;
+    overflow-x: hidden !important;
+    -webkit-overflow-scrolling: touch !important;
+    padding-bottom: 180px !important; /* ESPAÇO GRANDE */
+    max-height: calc(100vh - 80px) !important;
   }
   
-  /* Formulários */
+  /* ===== FORMULÁRIOS (Dentro dos Modais) ===== */
+  
+  /* Qualquer formulário */
   form {
-    padding-bottom: 140px !important;
+    padding-bottom: 160px !important;
+    min-height: auto !important;
   }
   
-  /* Botões de ação (Salvar, Excluir, etc) */
+  /* Container de campos */
+  form > div,
+  .space-y-4,
+  .space-y-6 {
+    padding-bottom: 40px !important;
+  }
+  
+  /* ===== BOTÕES DE AÇÃO ===== */
+  
+  /* Último elemento do formulário (onde geralmente estão os botões) */
   form > div:last-child,
-  form .flex.gap-2,
-  form .flex.gap-4 {
-    margin-bottom: 80px !important;
+  form > *:last-child {
+    margin-bottom: 100px !important;
     margin-top: 24px !important;
   }
   
-  /* Main content scrollável */
+  /* Grupos de botões (Salvar, Excluir, Cancelar, etc) */
+  .flex.gap-2,
+  .flex.gap-4,
+  .flex.justify-end,
+  .flex.justify-between,
+  div[class*="flex"][class*="gap"] {
+    margin-bottom: 100px !important;
+    margin-top: 24px !important;
+    padding-bottom: 20px !important;
+  }
+  
+  /* Garante que botões individuais sejam clicáveis */
+  button {
+    position: relative !important;
+    z-index: 15 !important;
+  }
+  
+  /* ===== SCROLL NO MAIN CONTENT ===== */
+  
   main {
     overflow-y: auto !important;
     padding-bottom: 140px !important;
+    min-height: 100vh !important;
   }
   
-  /* Navbar inferior fixa */
-  nav[class*="bottom"] {
+  /* ===== NAVBAR INFERIOR ===== */
+  
+  /* Garante que navbar fique fixa no bottom */
+  nav[class*="bottom"],
+  .bottom-nav,
+  .mobile-navbar {
     position: fixed !important;
     bottom: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
     z-index: 50 !important;
+  }
+  
+  /* Botão FAB (+) central */
+  button[class*="fab"],
+  .fab-button {
+    z-index: 51 !important;
+  }
+  
+  /* ===== BODY SCROLLÁVEL ===== */
+  
+  body {
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
   }
 }
 
 /* ========================================
-   CLASSES UTILITÁRIAS OPCIONAIS
+   DESKTOP: Remove padding extra
    ======================================== */
 
-/* Adicione manualmente se precisar */
-.mobile-safe-bottom {
-  padding-bottom: 160px !important;
+@media (min-width: 768px) {
+  /* Em desktop, não precisa padding extra */
+  form,
+  [role="dialog"] {
+    padding-bottom: 24px !important;
+  }
 }
 
+/* ========================================
+   CLASSES UTILITÁRIAS MANUAIS
+   ======================================== */
+
+/* Adicione estas classes manualmente se precisar */
+
+/* Para containers que precisam de espaço extra */
+.mobile-safe-bottom {
+  padding-bottom: 180px !important;
+}
+
+/* Para habilitar scroll */
 .mobile-scrollable {
   overflow-y: auto !important;
+  -webkit-overflow-scrolling: touch !important;
   max-height: calc(100vh - 100px) !important;
+}
+
+/* Para grupos de botões */
+.mobile-buttons-safe {
+  margin-bottom: 120px !important;
+  margin-top: 24px !important;
 }
