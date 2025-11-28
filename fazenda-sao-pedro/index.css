@@ -1,6 +1,7 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
 /* ============================================ */
 /* 🎨 ESTILOS ADICIONAIS PARA O LOGO DO BOI   */
 /* ============================================ */
@@ -42,261 +43,79 @@
         z-index: 40;
     }
 }
-/* ========================================
-   CORREÇÃO DEFINITIVA: Botões Acessíveis em Mobile
-   ======================================== */
-
-/* 
-  PROBLEMA: Sheets/Modais não permitem scroll até o final
-  SOLUÇÃO: Forçar altura máxima e habilitar scroll
-*/
 
 /* ========================================
-   1. SHEET/MODAL DE CADASTRO E EDIÇÃO
+   COR DO HEADER - ESPECÍFICO
    ======================================== */
 
-/* Sheet Content - Container principal */
-[data-state="open"] > div[role="dialog"],
-.sheet-content,
-[class*="SheetContent"],
-[class*="DialogContent"] {
-  display: flex !important;
-  flex-direction: column !important;
-  max-height: calc(100vh - 20px) !important;
-  height: auto !important;
+/* APENAS a cor de fundo do header - NÃO mexe em mais nada */
+header.sticky {
+  background-color: #CC9966 !important;
 }
 
-/* Área scrollável dentro do Sheet */
-[data-state="open"] > div[role="dialog"] > div,
-.sheet-content > div,
-[class*="SheetContent"] > div {
-  overflow-y: auto !important;
-  overflow-x: hidden !important;
-  -webkit-overflow-scrolling: touch !important;
-  padding-bottom: 140px !important; /* Espaço GRANDE para navbar */
-  max-height: calc(100vh - 100px) !important;
+/* Se o header não tiver a classe "sticky", força mesmo assim */
+body > div > header,
+#root > header {
+  background-color: #CC9966 !important;
 }
 
 /* ========================================
-   2. FORMULÁRIOS ESPECÍFICOS
+   CORREÇÃO MOBILE: Botões Acessíveis
    ======================================== */
 
-/* Formulário de Animal (Detalhes, Edição, Cadastro) */
-form,
-.animal-form,
-.form-container {
-  padding-bottom: 140px !important;
-  min-height: auto !important;
-}
-
-/* Container de campos do formulário */
-.space-y-4,
-.space-y-6,
-[class*="space-y"] {
-  padding-bottom: 40px !important;
-}
-
-/* ========================================
-   3. BOTÕES DE AÇÃO
-   ======================================== */
-
-/* Botões "Salvar", "Excluir", "Editar" */
-.flex.gap-2,
-.flex.gap-4,
-.button-group,
-[class*="flex"][class*="gap"] {
-  margin-bottom: 80px !important;
-  margin-top: 24px !important;
-  position: relative !important;
-  z-index: 10 !important;
-}
-
-/* Garante que botões sejam clicáveis */
-button {
-  position: relative !important;
-  z-index: 11 !important;
-}
-
-/* ========================================
-   4. NAVBAR INFERIOR - Não cobrir botões
-   ======================================== */
-
-/* Navbar fixa no bottom */
-nav[class*="bottom"],
-.bottom-nav,
-.mobile-navbar {
-  position: fixed !important;
-  bottom: 0 !important;
-  left: 0 !important;
-  right: 0 !important;
-  z-index: 40 !important;
-  pointer-events: auto !important;
-}
-
-/* Botão FAB central */
-button[class*="fab"],
-.fab-button {
-  z-index: 41 !important;
-  pointer-events: auto !important;
-}
-
-/* ========================================
-   5. SCROLL HABILITADO
-   ======================================== */
-
-/* Permitir scroll em TODAS as telas mobile */
+/* Apenas em mobile (não afeta desktop) */
 @media (max-width: 767px) {
   
-  /* Body pode scrollar */
-  body {
+  /* Sheets/Modais scrolláveis */
+  [data-state="open"] > div[role="dialog"] {
     overflow-y: auto !important;
-    overflow-x: hidden !important;
-    position: relative !important;
+    max-height: calc(100vh - 20px) !important;
+  }
+  
+  /* Área scrollável dentro do Sheet */
+  [data-state="open"] > div[role="dialog"] > div {
+    overflow-y: auto !important;
+    padding-bottom: 160px !important;
+    max-height: calc(100vh - 100px) !important;
+  }
+  
+  /* Formulários */
+  form {
+    padding-bottom: 140px !important;
+  }
+  
+  /* Botões de ação (Salvar, Excluir, etc) */
+  form > div:last-child,
+  form .flex.gap-2,
+  form .flex.gap-4 {
+    margin-bottom: 80px !important;
+    margin-top: 24px !important;
   }
   
   /* Main content scrollável */
   main {
     overflow-y: auto !important;
     padding-bottom: 140px !important;
-    min-height: 100vh !important;
   }
   
-  /* Sheets/Modais scrolláveis */
-  [role="dialog"] {
-    overflow-y: auto !important;
-    max-height: 100vh !important;
-  }
-  
-  /* Conteúdo dentro do modal */
-  [role="dialog"] > * {
-    overflow-y: auto !important;
+  /* Navbar inferior fixa */
+  nav[class*="bottom"] {
+    position: fixed !important;
+    bottom: 0 !important;
+    z-index: 50 !important;
   }
 }
 
 /* ========================================
-   6. CLASSES UTILITÁRIAS FORÇADAS
+   CLASSES UTILITÁRIAS OPCIONAIS
    ======================================== */
 
-/* Adicione estas classes manualmente nos componentes */
-
-/* Para o container do formulário */
+/* Adicione manualmente se precisar */
 .mobile-safe-bottom {
   padding-bottom: 160px !important;
 }
 
-/* Para grupo de botões */
-.mobile-buttons-safe {
-  margin-bottom: 100px !important;
-  margin-top: 24px !important;
-}
-
-/* Para permitir scroll */
 .mobile-scrollable {
   overflow-y: auto !important;
-  -webkit-overflow-scrolling: touch !important;
   max-height: calc(100vh - 100px) !important;
 }
-
-/* ========================================
-   7. FIX ESPECÍFICO - SHEET RADIX UI
-   ======================================== */
-
-/* Se estiver usando Radix UI Sheet */
-.radix-sheet-content,
-[data-radix-sheet-content] {
-  overflow-y: auto !important;
-  max-height: calc(100vh - 40px) !important;
-}
-
-.radix-sheet-content > div {
-  padding-bottom: 160px !important;
-}
-
-/* ========================================
-   8. FIX ESPECÍFICO - DIALOG RADIX UI
-   ======================================== */
-
-/* Se estiver usando Radix UI Dialog */
-.radix-dialog-content,
-[data-radix-dialog-content] {
-  overflow-y: auto !important;
-  max-height: calc(100vh - 60px) !important;
-}
-
-.radix-dialog-content > div {
-  padding-bottom: 160px !important;
-}
-
-/* ========================================
-   9. ÚLTIMO RECURSO - !important em tudo
-   ======================================== */
-
-/* Força espaço em QUALQUER formulário mobile */
-@media (max-width: 767px) {
-  
-  /* Qualquer div com botões dentro */
-  div:has(> button),
-  div:has(> .flex > button) {
-    padding-bottom: 20px !important;
-  }
-  
-  /* Último filho de qualquer container */
-  div > *:last-child {
-    margin-bottom: 60px !important;
-  }
-  
-  /* Formulários */
-  form > *:last-child {
-    margin-bottom: 100px !important;
-  }
-}
-
-/* ========================================
-   10. COR DO HEADER (FUNDO DO LOGO)
-   ======================================== */
-
-/* Header/Navbar superior */
-header,
-.header,
-nav.top-nav,
-[class*="Header"] {
-  background-color: #CC9966 !important;
-}
-
-/* Se o header tiver classes específicas do Tailwind */
-.bg-background,
-header.bg-background {
-  background-color: #CC9966 !important;
-}
-
-/* Container do logo */
-.logo-container,
-header > div {
-  background-color: #CC9966 !important;
-}
-
-/* ========================================
-   11. DEBUG - Para visualizar problemas
-   ======================================== */
-
-/* Descomente para ver bordas e debugar */
-/*
-[role="dialog"] {
-  border: 3px solid red !important;
-}
-
-[role="dialog"] > div {
-  border: 3px solid blue !important;
-}
-
-form {
-  border: 3px solid green !important;
-}
-
-.flex.gap-2 {
-  border: 3px solid yellow !important;
-}
-*/
-
-
-
