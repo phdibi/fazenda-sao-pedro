@@ -3,17 +3,24 @@ export default {
   content: [
     "./index.html",
     "./src/**/*.{js,ts,jsx,tsx}",
+    "./components/**/*.{js,ts,jsx,tsx}",  // ← ADICIONADO
+  ],
+  safelist: [
+    // Força o Tailwind a incluir estas classes
+    'bg-brand-primary',
+    'bg-brand-primary-light',
+    'hover:bg-brand-primary-light',
+    'text-brand-primary-light',
+    'border-brand-primary',
   ],
   theme: {
     extend: {
       colors: {
-        // ✅ FORMATO COMPATÍVEL com o código existente
-        'brand-primary': '#381b18',           // Cor principal (marrom escuro)
-        'brand-primary-light': '#501c15',     // Hover (marrom mais claro)
-        'brand-accent': '#d4a373',            // Cor de destaque (bege)
-        'brand-accent-dark': '#220d0b',       // Destaque escuro
+        'brand-primary': '#381b18',           // Marrom escuro
+        'brand-primary-light': '#501c15',     // Marrom claro
+        'brand-accent': '#d4a373',            // Bege
+        'brand-accent-dark': '#220d0b',       // Marrom muito escuro
         
-        // Tons de fundo/base
         'base': {
           950: '#0a0a0a',
           900: '#1a1a1a',
@@ -28,7 +35,6 @@ export default {
           50: '#fafafa',
         },
         
-        // Cores de status
         'accent-green': '#4ade80',
         'accent-yellow': '#facc15',
         'accent-red': '#f87171',
