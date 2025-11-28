@@ -17,7 +17,7 @@ export default {
     extend: {
       colors: {
         'brand-primary': '#381b18',           // Marrom escuro
-        'brand-primary-light': '#501c15',     // Marrom claro
+        'brand-primary-light': '#ab9185ff',     // Marrom claro
         'brand-accent': '#d4a373',            // Bege
         'brand-accent-dark': '#220d0b',       // Marrom muito escuro
         
