@@ -445,11 +445,12 @@ const AnimalDetailModal = ({
                 <div className="sm:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                         <label className="block text-sm font-medium text-gray-400">Brinco da Mãe</label>
-                        <input type="text" name="maeNome" value={editableAnimal.maeNome || ''} onChange={handleAnimalFormChange} className="bg-base-700 w-full p-1 rounded border border-base-600" disabled={!isEditing}/>
+                        <input type="text" name="maeNome" value={editableAnimal.maeNome || ''} onChange={handleAnimalFormChange} className="bg-base-700 w-full p-1 rounded border border-base-600" disabled={!isEditing} placeholder="Ex: 2024"/>
+                        <p className="text-xs text-gray-500 mt-1">A raça será puxada automaticamente</p>
                     </div>
                     <div>
                         <label className="block text-sm font-medium text-gray-400">Pai (Brinco ou Nome)</label>
-                        <input type="text" name="paiNome" value={editableAnimal.paiNome || ''} onChange={handleAnimalFormChange} className="bg-base-700 w-full p-1 rounded border border-base-600" disabled={!isEditing}/>
+                        <input type="text" name="paiNome" value={editableAnimal.paiNome || ''} onChange={handleAnimalFormChange} className="bg-base-700 w-full p-1 rounded border border-base-600" disabled={!isEditing} placeholder="Ex: Touro 001"/>
                     </div>
                 </div>
 

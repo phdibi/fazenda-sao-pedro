@@ -156,6 +156,7 @@ const AddAnimalModal = ({ isOpen, onClose, onAddAnimal, animals }: AddAnimalModa
                 [name]: value,
             };
 
+            // AUTOMÁTICO: Puxar raça da mãe quando brinco é preenchido
             if (name === 'maeNome') {
                 const mother = animals.find(a => a.brinco.toLowerCase() === value.trim().toLowerCase());
                 if (mother) {
@@ -221,7 +222,9 @@ const AddAnimalModal = ({ isOpen, onClose, onAddAnimal, animals }: AddAnimalModa
     return (
         <Modal isOpen={isOpen} onClose={onClose} title="Cadastrar Novo Animal">
             <AudioForAnimalAdd onDataExtracted={handleDataExtracted} />
-            <form onSubmit={handleSubmit} className="space-y-6">
+            
+            {/* ADICIONEI pb-48 md:pb-4 aqui ↓ */}
+            <form onSubmit={handleSubmit} className="space-y-6 pb-48 md:pb-4">
                  <div className="relative border border-base-700 p-4 rounded-lg">
                     <h3 className="absolute -top-3 left-4 bg-base-800 px-2 text-md font-semibold text-brand-primary-light">Identificação do Animal</h3>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
@@ -270,17 +273,29 @@ const AddAnimalModal = ({ isOpen, onClose, onAddAnimal, animals }: AddAnimalModa
                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
                         <div>
                             <label htmlFor="maeNome" className="block text-sm font-medium text-gray-300">Brinco da Mãe</label>
-                            <input type="text" name="maeNome" id="maeNome" value={formData.maeNome} onChange={handleChange} className="mt-1 block w-full bg-base-700 border-base-600 rounded-md shadow-sm focus:ring-brand-primary focus:border-brand-primary sm:text-sm p-2" />
+                            <input 
+                                type="text" 
+                                name="maeNome" 
+                                id="maeNome" 
+                                value={formData.maeNome} 
+                                onChange={handleChange} 
+                                className="mt-1 block w-full bg-base-700 border-base-600 rounded-md shadow-sm focus:ring-brand-primary focus:border-brand-primary sm:text-sm p-2" 
+                                placeholder="Ex: 2024"
+                            />
+                            <p className="text-xs text-gray-500 mt-1">A raça será puxada automaticamente</p>
                         </div>
-                        <div>
-                            <label htmlFor="maeRaca" className="block text-sm font-medium text-gray-300">Raça da Mãe</label>
-                            <select name="maeRaca" id="maeRaca" value={formData.maeRaca} onChange={handleChange} className="mt-1 block w-full bg-base-700 border-base-600 rounded-md shadow-sm focus:ring-brand-primary focus:border-brand-primary sm:text-sm p-2">
-                                {Object.values(Raca).map(r => <option key={r} value={r}>{r}</option>)}
-                            </select>
-                        </div>
+                        {/* CAMPO RAÇA DA MÃE REMOVIDO - Agora é automático! */}
                         <div className="md:col-span-2">
                             <label htmlFor="paiNome" className="block text-sm font-medium text-gray-300">Pai (Brinco ou Nome)</label>
-                            <input type="text" name="paiNome" id="paiNome" value={formData.paiNome} onChange={handleChange} className="mt-1 block w-full bg-base-700 border-base-600 rounded-md shadow-sm focus:ring-brand-primary focus:border-brand-primary sm:text-sm p-2" />
+                            <input 
+                                type="text" 
+                                name="paiNome" 
+                                id="paiNome" 
+                                value={formData.paiNome} 
+                                onChange={handleChange} 
+                                className="mt-1 block w-full bg-base-700 border-base-600 rounded-md shadow-sm focus:ring-brand-primary focus:border-brand-primary sm:text-sm p-2" 
+                                placeholder="Ex: Touro 001"
+                            />
                         </div>
                     </div>
                 </div>
@@ -295,7 +310,8 @@ const AddAnimalModal = ({ isOpen, onClose, onAddAnimal, animals }: AddAnimalModa
                     </div>
                 </div>
                 
-                <div className="pt-4 flex justify-end">
+                {/* ADICIONEI mb-24 aqui ↓ */}
+                <div className="pt-4 flex justify-end mb-24">
                     <button type="button" onClick={onClose} className="bg-base-700 text-gray-300 hover:bg-base-600 font-bold py-2 px-4 rounded transition-colors mr-2">
                         Cancelar
                     </button>
