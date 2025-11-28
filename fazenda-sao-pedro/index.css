@@ -6,7 +6,6 @@
 /* 🎨 ESTILOS ADICIONAIS PARA O LOGO DO BOI   */
 /* ============================================ */
 
-/* Animação suave do logo ao passar o mouse */
 .cow-logo {
     transition: transform 0.3s ease, color 0.3s ease;
 }
@@ -15,7 +14,6 @@
     transform: scale(1.1) rotate(5deg);
 }
 
-/* Em telas maiores, adiciona uma animação sutil contínua */
 @media (min-width: 768px) {
     .cow-logo {
         animation: gentle-float 3s ease-in-out infinite;
@@ -35,7 +33,6 @@
     }
 }
 
-/* Melhora visual do header em mobile */
 @media (max-width: 767px) {
     header {
         position: sticky;
@@ -49,7 +46,7 @@
    ======================================== */
 
 header {
-  background-color: #87604b !important;
+  background-color: #715749 !important;
 }
 
 header > div {
@@ -58,121 +55,5 @@ header > div {
 
 header.bg-background,
 header[class*="bg-"] {
-  background-color: #87604b !important;
-}
-
-/* ========================================
-   CORREÇÃO MOBILE: Sheets/Modais com Scroll
-   Estratégia: Detectar por altura mínima
-   ======================================== */
-
-@media (max-width: 767px) {
-  
-  /* ===== TODOS os Sheets/Dialogs grandes ===== */
-  
-  /* Sheet/Dialog que ocupa mais de 60% da tela = precisa scroll */
-  [role="dialog"],
-  [data-state="open"] > div[role="dialog"],
-  [data-radix-dialog-content],
-  [data-radix-sheet-content] {
-    display: flex !important;
-    flex-direction: column !important;
-    overflow-y: auto !important;
-    max-height: calc(100vh - 20px) !important;
-    -webkit-overflow-scrolling: touch !important;
-  }
-  
-  /* Conteúdo interno scrollável */
-  [role="dialog"] > div:first-child,
-  [data-state="open"] > div[role="dialog"] > div:first-child {
-    overflow-y: auto !important;
-    overflow-x: hidden !important;
-    flex: 1 !important;
-    -webkit-overflow-scrolling: touch !important;
-  }
-  
-  /* ===== PADDING GRANDE apenas em conteúdo com muitos elementos ===== */
-  
-  /* Sheets/Dialogs que têm mais de 5 elementos filhos = provavelmente formulário */
-  [role="dialog"] > div:first-child:has(> *:nth-child(5)),
-  [role="dialog"] > div:first-child:has(form) {
-    padding-bottom: 200px !important;
-  }
-  
-  /* ===== FORMULÁRIOS sempre recebem padding ===== */
-  
-  form {
-    padding-bottom: 160px !important;
-  }
-  
-  /* Botões dentro de form */
-  form > div:last-child,
-  form .flex.gap-2,
-  form .flex.gap-4 {
-    margin-bottom: 100px !important;
-    margin-top: 24px !important;
-  }
-  
-  /* ===== DIVS com botões (fora de form) ===== */
-  
-  /* Detecta divs que têm botões "Excluir", "Salvar", "Editar" */
-  div:has(> button[class*="destructive"]),
-  div:has(> .flex > button[class*="destructive"]),
-  div.flex.gap-2:has(button),
-  div.flex.gap-4:has(button) {
-    margin-bottom: 100px !important;
-    margin-top: 24px !important;
-  }
-  
-  /* ===== CARDS pequenos do painel NÃO recebem padding ===== */
-  
-  /* Cards com menos de 3 elementos = não precisa padding extra */
-  [role="dialog"] > div:first-child:not(:has(> *:nth-child(4))) {
-    padding-bottom: 20px !important;
-  }
-  
-  /* Elementos com classe "card" sem form dentro */
-  .card:not(:has(form)),
-  [class*="card"]:not(:has(form)) {
-    padding-bottom: 20px !important;
-  }
-}
-
-/* ========================================
-   DESKTOP: Normal
-   ======================================== */
-
-@media (min-width: 768px) {
-  [role="dialog"],
-  form {
-    padding-bottom: 24px !important;
-  }
-}
-
-/* ========================================
-   CLASSES MANUAIS (use se necessário)
-   ======================================== */
-
-/* Adicione estas classes manualmente em componentes problemáticos */
-
-/* Para forçar espaço */
-.force-mobile-scroll {
-  padding-bottom: 200px !important;
-}
-
-@media (max-width: 767px) {
-  .force-mobile-scroll {
-    padding-bottom: 200px !important;
-  }
-}
-
-/* Para remover espaço */
-.no-mobile-scroll {
-  padding-bottom: 0 !important;
-}
-
-@media (max-width: 767px) {
-  .no-mobile-scroll {
-    padding-bottom: 0 !important;
-  }
+  background-color: #715749 !important;
 }

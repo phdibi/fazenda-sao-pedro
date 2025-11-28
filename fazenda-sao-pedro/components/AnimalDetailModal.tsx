@@ -390,7 +390,8 @@ const AnimalDetailModal = ({
          </nav>
       </div>
 
-      <div className="mt-4 min-h-[50vh]">
+      {/* ADICIONEI pb-48 md:pb-4 aqui ↓ */}
+      <div className="mt-4 min-h-[50vh] pb-48 md:pb-4">
         {activeTab === 'general' && 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
@@ -714,8 +715,8 @@ const AnimalDetailModal = ({
         </div>
       )}
 
-       {/* Modal Action Buttons */}
-       <div className="flex justify-between items-center gap-2 p-4 mt-4 border-t border-base-700">
+       {/* ADICIONEI mb-24 mt-6 aqui ↓ */}
+       <div className="flex justify-between items-center gap-2 p-4 mt-6 mb-24 border-t border-base-700">
             <div>
                 {!isEditing && (
                     <button onClick={handleRequestDelete} className="bg-red-800 hover:bg-red-700 text-white font-bold py-2 px-4 rounded transition-colors flex items-center gap-2">
