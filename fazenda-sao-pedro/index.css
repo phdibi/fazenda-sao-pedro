@@ -48,80 +48,93 @@
    COR DO HEADER: #46220f (Marrom Escuro)
    ======================================== */
 
-/* Força a cor de fundo do header */
 header {
-  background-color: #ad6f4e !important;
+  background-color: #87604b !important;
 }
 
-/* Garante que elementos filhos herdem o fundo */
 header > div {
   background-color: transparent !important;
 }
 
-/* Se tiver classes do Tailwind sobrescrevendo */
 header.bg-background,
 header[class*="bg-"] {
-  background-color: #ad6e4d !important;
+  background-color: #87604b !important;
 }
 
 /* ========================================
-   CORREÇÃO MOBILE: APENAS Formulários
-   (Cadastro e Edição de Animais)
+   CORREÇÃO MOBILE: Sheets/Modais com Scroll
+   Estratégia: Detectar por altura mínima
    ======================================== */
 
-/* Apenas em mobile */
 @media (max-width: 767px) {
   
-  /* ===== APENAS modais que contém FORM ===== */
+  /* ===== TODOS os Sheets/Dialogs grandes ===== */
   
-  /* Modal/Sheet que tem formulário dentro */
-  [role="dialog"]:has(form),
-  [data-state="open"] > div[role="dialog"]:has(form) {
+  /* Sheet/Dialog que ocupa mais de 60% da tela = precisa scroll */
+  [role="dialog"],
+  [data-state="open"] > div[role="dialog"],
+  [data-radix-dialog-content],
+  [data-radix-sheet-content] {
+    display: flex !important;
+    flex-direction: column !important;
     overflow-y: auto !important;
     max-height: calc(100vh - 20px) !important;
-  }
-  
-  /* Conteúdo scrollável - APENAS se tiver form */
-  [role="dialog"]:has(form) > div,
-  [data-state="open"] > div[role="dialog"]:has(form) > div {
-    overflow-y: auto !important;
-    padding-bottom: 180px !important;
-    max-height: calc(100vh - 80px) !important;
     -webkit-overflow-scrolling: touch !important;
   }
   
-  /* ===== FORMULÁRIOS ===== */
+  /* Conteúdo interno scrollável */
+  [role="dialog"] > div:first-child,
+  [data-state="open"] > div[role="dialog"] > div:first-child {
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    flex: 1 !important;
+    -webkit-overflow-scrolling: touch !important;
+  }
   
-  /* Qualquer formulário (cadastro ou edição) */
+  /* ===== PADDING GRANDE apenas em conteúdo com muitos elementos ===== */
+  
+  /* Sheets/Dialogs que têm mais de 5 elementos filhos = provavelmente formulário */
+  [role="dialog"] > div:first-child:has(> *:nth-child(5)),
+  [role="dialog"] > div:first-child:has(form) {
+    padding-bottom: 200px !important;
+  }
+  
+  /* ===== FORMULÁRIOS sempre recebem padding ===== */
+  
   form {
     padding-bottom: 160px !important;
   }
   
-  /* ===== BOTÕES dentro de FORMULÁRIOS ===== */
-  
-  /* Último elemento do form (botões) */
-  form > div:last-child {
-    margin-bottom: 100px !important;
-    margin-top: 24px !important;
-  }
-  
-  /* Grupos de botões DENTRO de form */
+  /* Botões dentro de form */
+  form > div:last-child,
   form .flex.gap-2,
-  form .flex.gap-4,
-  form div[class*="flex"][class*="gap"] {
+  form .flex.gap-4 {
     margin-bottom: 100px !important;
     margin-top: 24px !important;
   }
   
-  /* ===== NÃO AFETA outros modais ===== */
+  /* ===== DIVS com botões (fora de form) ===== */
   
-  /* Modais sem form mantêm comportamento normal */
-  [role="dialog"]:not(:has(form)) {
-    padding-bottom: 0 !important;
+  /* Detecta divs que têm botões "Excluir", "Salvar", "Editar" */
+  div:has(> button[class*="destructive"]),
+  div:has(> .flex > button[class*="destructive"]),
+  div.flex.gap-2:has(button),
+  div.flex.gap-4:has(button) {
+    margin-bottom: 100px !important;
+    margin-top: 24px !important;
   }
   
-  [role="dialog"]:not(:has(form)) > div {
-    padding-bottom: 0 !important;
+  /* ===== CARDS pequenos do painel NÃO recebem padding ===== */
+  
+  /* Cards com menos de 3 elementos = não precisa padding extra */
+  [role="dialog"] > div:first-child:not(:has(> *:nth-child(4))) {
+    padding-bottom: 20px !important;
+  }
+  
+  /* Elementos com classe "card" sem form dentro */
+  .card:not(:has(form)),
+  [class*="card"]:not(:has(form)) {
+    padding-bottom: 20px !important;
   }
 }
 
@@ -130,20 +143,36 @@ header[class*="bg-"] {
    ======================================== */
 
 @media (min-width: 768px) {
+  [role="dialog"],
   form {
     padding-bottom: 24px !important;
   }
 }
 
 /* ========================================
-   CLASSES UTILITÁRIAS (uso manual)
+   CLASSES MANUAIS (use se necessário)
    ======================================== */
 
-/* Se precisar adicionar manualmente em componentes específicos */
-.form-mobile-safe {
-  padding-bottom: 180px !important;
+/* Adicione estas classes manualmente em componentes problemáticos */
+
+/* Para forçar espaço */
+.force-mobile-scroll {
+  padding-bottom: 200px !important;
 }
 
-.buttons-mobile-safe {
-  margin-bottom: 100px !important;
+@media (max-width: 767px) {
+  .force-mobile-scroll {
+    padding-bottom: 200px !important;
+  }
+}
+
+/* Para remover espaço */
+.no-mobile-scroll {
+  padding-bottom: 0 !important;
+}
+
+@media (max-width: 767px) {
+  .no-mobile-scroll {
+    padding-bottom: 0 !important;
+  }
 }
