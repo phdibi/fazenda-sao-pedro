@@ -57,32 +57,3 @@ header.bg-background,
 header[class*="bg-"] {
   background-color: #5b483f !important;
 }
-/* ADICIONE NO FINAL DO index.css */
-
-/* FORÇA cores dos botões */
-button.bg-brand-primary,
-.bg-brand-primary {
-  background-color: #381b18 !important;
-}
-
-button:hover.bg-brand-primary,
-button.hover\:bg-brand-primary-light:hover,
-.hover\:bg-brand-primary-light:hover {
-  background-color: #aa9991 !important;
-}
-
-/* Botão FAB central */
-button[class*="fab"],
-.fab-button {
-  background-color: #381b18 !important;
-}
-
-button[class*="fab"]:hover,
-.fab-button:hover {
-  background-color: #501c15 !important;
-}
-
-/* Texto de destaque */
-.text-brand-primary-light {
-  color: #5b483f !important;
-}
