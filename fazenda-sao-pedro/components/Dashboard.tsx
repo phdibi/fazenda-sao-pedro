@@ -26,12 +26,11 @@ const Dashboard = ({ animals, onSelectAnimal }: DashboardProps) => {
   );
 };
 
+// Corrigido: Removidas props inexistentes (onEdit, onDelete)
 export default React.memo(Dashboard, (prevProps, nextProps) => {
-  // Só re-renderiza se os animais ou callbacks mudarem
   return (
     prevProps.animals.length === nextProps.animals.length &&
     prevProps.animals === nextProps.animals &&
-    prevProps.onEdit === nextProps.onEdit &&
-    prevProps.onDelete === nextProps.onDelete
+    prevProps.onSelectAnimal === nextProps.onSelectAnimal
   );
 });

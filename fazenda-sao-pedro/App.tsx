@@ -82,6 +82,7 @@ const App = ({ user }: AppProps) => {
     const [selectedMedication, setSelectedMedication] = useState('');
     const [selectedReason, setSelectedReason] = useState('');
     const [selectedStatus, setSelectedStatus] = useState('');
+    const [selectedSexo, setSelectedSexo] = useState(''); // NOVO: Estado para filtro de sexo
 
     const allMedications = useMemo(() => {
         const meds = new Set<string>();
@@ -113,16 +114,20 @@ const App = ({ user }: AppProps) => {
 
             const matchesStatus = selectedStatus === '' || animal.status === selectedStatus;
 
-            return matchesSearch && matchesMedication && matchesReason && matchesStatus;
+            // NOVO: Filtro de sexo
+            const matchesSexo = selectedSexo === '' || animal.sexo === selectedSexo;
+
+            return matchesSearch && matchesMedication && matchesReason && matchesStatus && matchesSexo;
         })
         .sort((a, b) => a.brinco.localeCompare(b.brinco));
-    }, [state.animals, debouncedSearch, selectedMedication, selectedReason, selectedStatus]);
+    }, [state.animals, debouncedSearch, selectedMedication, selectedReason, selectedStatus, selectedSexo]);
 
     const handleClearFilters = () => {
         setSearchTerm('');
         setSelectedMedication('');
         setSelectedReason('');
         setSelectedStatus('');
+        setSelectedSexo(''); // NOVO: Limpa filtro de sexo
     };
 
     const handleSelectAnimal = (animal: Animal) => {
@@ -278,7 +283,7 @@ const App = ({ user }: AppProps) => {
                             <TasksPreview tasks={state.tasks} />
                         </div>
                         
-                        {/* Filtros colapsáveis */}
+                        {/* Filtros colapsáveis - ATUALIZADO com filtro de Sexo */}
                         <FilterBar
                             searchTerm={searchTerm}
                             setSearchTerm={setSearchTerm}
@@ -290,6 +295,8 @@ const App = ({ user }: AppProps) => {
                             allReasons={allReasons}
                             selectedStatus={selectedStatus}
                             setSelectedStatus={setSelectedStatus}
+                            selectedSexo={selectedSexo}
+                            setSelectedSexo={setSelectedSexo}
                             onClear={handleClearFilters}
                         />
                         

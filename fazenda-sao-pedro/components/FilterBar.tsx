@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { AnimalStatus } from '../types';
+import { AnimalStatus, Sexo } from '../types';
 import { ChevronDownIcon, ChevronUpIcon } from './common/Icons';
 
 // Ícone de filtro
@@ -20,6 +20,8 @@ interface FilterBarProps {
   allReasons: string[];
   selectedStatus: string;
   setSelectedStatus: (status: string) => void;
+  selectedSexo: string;
+  setSelectedSexo: (sexo: string) => void;
   onClear: () => void;
 }
 
@@ -34,6 +36,8 @@ const FilterBar = ({
   allReasons,
   selectedStatus,
   setSelectedStatus,
+  selectedSexo,
+  setSelectedSexo,
   onClear,
 }: FilterBarProps) => {
   const [isExpanded, setIsExpanded] = useState(false);
@@ -42,7 +46,8 @@ const FilterBar = ({
   const activeFiltersCount = [
     selectedMedication,
     selectedReason,
-    selectedStatus
+    selectedStatus,
+    selectedSexo
   ].filter(Boolean).length;
 
   return (
@@ -97,11 +102,43 @@ const FilterBar = ({
 
       {/* Filtros expandíveis - colapsado por padrão no mobile */}
       <div className={`
-        ${isExpanded ? 'max-h-96 opacity-100' : 'max-h-0 opacity-0 md:max-h-96 md:opacity-100'}
+        ${isExpanded ? 'max-h-[500px] opacity-100' : 'max-h-0 opacity-0 md:max-h-[500px] md:opacity-100'}
         transition-all duration-300 ease-in-out overflow-hidden
       `}>
         <div className="px-4 pb-4 pt-0 md:pt-0 border-t border-base-700 md:border-t-0">
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 pt-3 md:pt-0">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-3 pt-3 md:pt-0">
+            {/* Sexo Filter - NOVO */}
+            <div>
+              <label htmlFor="sexo" className="block text-xs font-medium text-gray-400 mb-1">
+                Sexo
+              </label>
+              <select
+                id="sexo"
+                value={selectedSexo}
+                onChange={(e) => setSelectedSexo(e.target.value)}
+                className="w-full bg-base-700 border-base-600 rounded-md shadow-sm focus:ring-brand-primary focus:border-brand-primary text-sm p-2"
+              >
+                <option value="">Todos</option>
+                {Object.values(Sexo).map(sexo => <option key={sexo} value={sexo}>{sexo}</option>)}
+              </select>
+            </div>
+
+            {/* Status Filter */}
+            <div>
+              <label htmlFor="status" className="block text-xs font-medium text-gray-400 mb-1">
+                Status
+              </label>
+              <select
+                id="status"
+                value={selectedStatus}
+                onChange={(e) => setSelectedStatus(e.target.value)}
+                className="w-full bg-base-700 border-base-600 rounded-md shadow-sm focus:ring-brand-primary focus:border-brand-primary text-sm p-2"
+              >
+                <option value="">Todos</option>
+                {Object.values(AnimalStatus).map(status => <option key={status} value={status}>{status}</option>)}
+              </select>
+            </div>
+
             {/* Medication Filter */}
             <div>
               <label htmlFor="medication" className="block text-xs font-medium text-gray-400 mb-1">
@@ -131,22 +168,6 @@ const FilterBar = ({
               >
                 <option value="">Todos</option>
                 {allReasons.map(reason => <option key={reason} value={reason}>{reason}</option>)}
-              </select>
-            </div>
-
-            {/* Status Filter */}
-            <div>
-              <label htmlFor="status" className="block text-xs font-medium text-gray-400 mb-1">
-                Status
-              </label>
-              <select
-                id="status"
-                value={selectedStatus}
-                onChange={(e) => setSelectedStatus(e.target.value)}
-                className="w-full bg-base-700 border-base-600 rounded-md shadow-sm focus:ring-brand-primary focus:border-brand-primary text-sm p-2"
-              >
-                <option value="">Todos</option>
-                {Object.values(AnimalStatus).map(status => <option key={status} value={status}>{status}</option>)}
               </select>
             </div>
             

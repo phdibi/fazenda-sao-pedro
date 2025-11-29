@@ -1,11 +1,11 @@
 {
-  "name": "São Pedro IA - Gestão de Rebanho",
-  "short_name": "São Pedro IA",
+  "name": "Fazenda+ - Gestão de Rebanho",
+  "short_name": "Fazenda+",
   "description": "Gerencie seu rebanho com inteligência artificial",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#1a1a1a",
-  "theme_color": "#9d3c32",
+  "theme_color": "#5b483f",
   "orientation": "portrait-primary",
   "icons": [
     {

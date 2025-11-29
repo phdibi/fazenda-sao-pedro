@@ -1,10 +1,4 @@
-import './index.css';  // ← ADICIONE ESTA LINHA NO TOPO
-
-import React, { useState, useEffect } from 'react';
-import ReactDOM from 'react-dom/client';
-import App from './App';
-import { AppUser } from './types';
-// ... resto dos imports
+import './index.css';
 
 import React, { useState, useEffect } from 'react';
 import ReactDOM from 'react-dom/client';
@@ -12,7 +6,6 @@ import App from './App';
 import { AppUser } from './types';
 import { auth, googleProvider } from './services/firebase';
 import Spinner from './components/common/Spinner';
-import { SparklesIcon } from './components/common/Icons';
 import ErrorBoundary from './components/ErrorBoundary';
 
 
@@ -60,8 +53,13 @@ const LoginScreen = ({ onLogin, initialError }: { onLogin: () => Promise<void>; 
 
     return (
         <div className="min-h-screen bg-base-900 flex flex-col justify-center items-center text-white p-8 text-center">
-            <SparklesIcon className="h-16 w-16 text-brand-primary-light mb-4" />
-            <h1 className="text-4xl font-bold">São Pedro IA</h1>
+            {/* Logo do aplicativo em vez do ícone de estrelas */}
+            <img 
+                src="/logo.png" 
+                alt="Fazenda+" 
+                className="h-24 w-auto mb-6 cow-logo"
+            />
+            <h1 className="text-4xl font-bold">Fazenda+</h1>
             <p className="text-base-300 mt-2">Gerencie seu rebanho com inteligência.</p>
             <div className="mt-12">
                 <button
@@ -171,7 +169,7 @@ const RootComponent = () => {
       if (!auth || !googleProvider) {
           throw new Error("Autenticação não inicializada.");
       }
-      await auth.signInWithPopup(googleProvider);  // ✅ POPUP!
+      await auth.signInWithPopup(googleProvider);
   };
 
   // --- RENDERIZAÇÃO ---
@@ -269,7 +267,7 @@ const RootComponent = () => {
   }
 
   if (!user) {
-      return <LoginScreen onLogin={handleGoogleLogin} initialError={null} />;  // ✅ PASSA null!
+      return <LoginScreen onLogin={handleGoogleLogin} initialError={null} />;
   }
 
   return <App user={user} />;
@@ -290,4 +288,3 @@ root.render(
     </ErrorBoundary>
   </React.StrictMode>
 );
-

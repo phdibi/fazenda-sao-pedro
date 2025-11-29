@@ -20,7 +20,12 @@ const AnimalCard = ({ animal, onClick }: AnimalCardProps) => {
       className="bg-base-800 rounded-lg shadow-lg overflow-hidden cursor-pointer transform hover:-translate-y-1 transition-transform duration-300 group relative"
     >
       <div className="relative aspect-square w-full">
-        <img className="w-full h-full object-cover" src={animal.fotos[0]} alt={`Animal ${animal.brinco}`} />
+        <img 
+          className="w-full h-full object-cover" 
+          src={animal.fotos[0]} 
+          alt={`Animal ${animal.brinco}`}
+          loading="lazy" // Lazy loading nativo para performance
+        />
         <div className={`absolute top-2 right-2 px-2 py-0.5 text-xs font-bold text-white rounded-full ${statusColor[animal.status]}`}>
             {animal.status}
         </div>
@@ -39,4 +44,13 @@ const AnimalCard = ({ animal, onClick }: AnimalCardProps) => {
   );
 };
 
-export default AnimalCard;
+// Memoização para evitar re-renders desnecessários
+export default React.memo(AnimalCard, (prevProps, nextProps) => {
+  return (
+    prevProps.animal.id === nextProps.animal.id &&
+    prevProps.animal.fotos[0] === nextProps.animal.fotos[0] &&
+    prevProps.animal.nome === nextProps.animal.nome &&
+    prevProps.animal.status === nextProps.animal.status &&
+    prevProps.animal.pesoKg === nextProps.animal.pesoKg
+  );
+});
