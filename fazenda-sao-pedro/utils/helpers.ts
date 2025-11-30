@@ -41,3 +41,14 @@ export function formatDateBR(date: Date | string): string {
 export function formatNumber(num: number): string {
   return num.toLocaleString('pt-BR');
 }
+// utils/helpers.ts
+export const debounce = <T extends (...args: any[]) => any>(
+  func: T,
+  wait: number
+): ((...args: Parameters<T>) => void) => {
+  let timeout: NodeJS.Timeout | null = null;
+  return (...args: Parameters<T>) => {
+    if (timeout) clearTimeout(timeout);
+    timeout = setTimeout(() => func(...args), wait);
+  };
+};

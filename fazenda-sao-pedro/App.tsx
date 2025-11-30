@@ -5,20 +5,21 @@ import Dashboard from './components/Dashboard';
 import AnimalDetailModal from './components/AnimalDetailModal';
 import AddAnimalModal from './components/AddAnimalModal';
 import { useFirestoreOptimized } from './hooks/useFirestoreOptimized';
-import { Animal, AnimalStatus, AppUser, Task } from './types';
+import { Animal, AppUser } from './types';
 import FilterBar from './components/FilterBar';
 import Chatbot from './components/Chatbot';
 import StatsDashboard from './components/StatsDashboard';
 import TasksView from './components/TasksView';
 import AgendaPreview from './components/AgendaPreview';
 import TasksPreview from './components/TasksPreview';
-import { exportToCSV } from './utils/fileUtils';
 import { ArrowDownTrayIcon } from './components/common/Icons';
 import Spinner from './components/common/Spinner';
 import MobileNavBar from './components/MobileNavBar';
-import { debounce } from './utils/helpers';
+import { useAdvancedFilters } from './hooks/useAdvancedFilters';
+import { useDashboardConfig } from './hooks/useDashboardConfig';
+import ExportButtons from './components/ExportButtons';
+import DashboardSettings from './components/DashboardSettings';
 
-// Lazy load das views pesadas
 const CalendarView = lazy(() => import('./components/CalendarView'));
 const ReportsView = lazy(() => import('./components/ReportsView'));
 const ManagementView = lazy(() => import('./components/ManagementView'));
@@ -48,20 +49,43 @@ const App = ({ user }: AppProps) => {
     const [currentView, setCurrentView] = useState<'dashboard' | 'reports' | 'calendar' | 'tasks' | 'management'>('dashboard');
     const [selectedAnimalId, setSelectedAnimalId] = useState<string | null>(null);
     const [isAddAnimalModalOpen, setIsAddAnimalModalOpen] = useState(false);
+    const [showDashboardSettings, setShowDashboardSettings] = useState(false);
 
     const selectedAnimal = useMemo(() => state.animals.find(a => a.id === selectedAnimalId) || null, [state.animals, selectedAnimalId]);
 
-    const [searchTerm, setSearchTerm] = useState('');
-    const [debouncedSearch, setDebouncedSearch] = useState('');
+    // Hook de filtros avançados
+    const {
+        filters,
+        filteredAnimals,
+        stats,
+        setSearchTerm,
+        setSelectedMedication,
+        setSelectedReason,
+        setSelectedStatus,
+        setSelectedSexo,
+        setSelectedRaca,
+        setSelectedAreaId,
+        setWeightRange,
+        setAgeRange,
+        setSearchFields,
+        setSortConfig,
+        clearAllFilters,
+        activeFiltersCount,
+        allMedications,
+        allReasons,
+    } = useAdvancedFilters({ 
+        animals: state.animals, 
+        areas: state.managementAreas 
+    });
 
-    const debouncedSetSearch = useMemo(
-        () => debounce((value: string) => setDebouncedSearch(value), 300),
-        []
-    );
-
-    useEffect(() => {
-        debouncedSetSearch(searchTerm);
-    }, [searchTerm, debouncedSetSearch]);
+    // Hook de configuração do dashboard
+    const { 
+        config, 
+        enabledWidgets, 
+        toggleWidget, 
+        setWidgetSize, 
+        resetToDefault 
+    } = useDashboardConfig();
 
     // Sincronização quando volta online
     useEffect(() => {
@@ -78,57 +102,6 @@ const App = ({ user }: AppProps) => {
         window.addEventListener('sync-offline-data', handleSync);
         return () => window.removeEventListener('sync-offline-data', handleSync);
     }, [db, forceSync]);
-
-    const [selectedMedication, setSelectedMedication] = useState('');
-    const [selectedReason, setSelectedReason] = useState('');
-    const [selectedStatus, setSelectedStatus] = useState('');
-    const [selectedSexo, setSelectedSexo] = useState(''); // NOVO: Estado para filtro de sexo
-
-    const allMedications = useMemo(() => {
-        const meds = new Set<string>();
-        state.animals.forEach(animal => {
-            animal.historicoSanitario.forEach(med => meds.add(med.medicamento));
-        });
-        return Array.from(meds).sort();
-    }, [state.animals]);
-
-    const allReasons = useMemo(() => {
-        const reasons = new Set<string>();
-        state.animals.forEach(animal => {
-            animal.historicoSanitario.forEach(med => reasons.add(med.motivo));
-        });
-        return Array.from(reasons).sort();
-    }, [state.animals]);
-
-    const filteredAnimals = useMemo(() => {
-        return state.animals.filter(animal => {
-            const matchesSearch = debouncedSearch === '' ||
-                animal.brinco.toLowerCase().includes(debouncedSearch.toLowerCase()) ||
-                animal.nome?.toLowerCase().includes(debouncedSearch.toLowerCase());
-
-            const matchesMedication = selectedMedication === '' ||
-                animal.historicoSanitario.some(med => med.medicamento === selectedMedication);
-
-            const matchesReason = selectedReason === '' ||
-                animal.historicoSanitario.some(med => med.motivo === selectedReason);
-
-            const matchesStatus = selectedStatus === '' || animal.status === selectedStatus;
-
-            // NOVO: Filtro de sexo
-            const matchesSexo = selectedSexo === '' || animal.sexo === selectedSexo;
-
-            return matchesSearch && matchesMedication && matchesReason && matchesStatus && matchesSexo;
-        })
-        .sort((a, b) => a.brinco.localeCompare(b.brinco));
-    }, [state.animals, debouncedSearch, selectedMedication, selectedReason, selectedStatus, selectedSexo]);
-
-    const handleClearFilters = () => {
-        setSearchTerm('');
-        setSelectedMedication('');
-        setSelectedReason('');
-        setSelectedStatus('');
-        setSelectedSexo(''); // NOVO: Limpa filtro de sexo
-    };
 
     const handleSelectAnimal = (animal: Animal) => {
         setSelectedAnimalId(animal.id);
@@ -188,48 +161,6 @@ const App = ({ user }: AppProps) => {
         }
     };
 
-    const handleExportCSV = () => {
-        if (filteredAnimals.length === 0) {
-            alert("Nenhum animal para exportar com os filtros atuais.");
-            return;
-        }
-        const dataToExport = filteredAnimals.map(animal => ({
-            brinco: animal.brinco,
-            nome: animal.nome || '',
-            raca: animal.raca,
-            sexo: animal.sexo,
-            dataNascimento: new Date(animal.dataNascimento).toLocaleDateString('pt-BR'),
-            pesoKg: animal.pesoKg,
-            status: animal.status,
-            paiNome: animal.paiNome || '',
-            maeNome: animal.maeNome || '',
-            numMedicacoes: animal.historicoSanitario.length,
-            numPesagens: animal.historicoPesagens.length,
-            numPrenhez: animal.historicoPrenhez?.length || 0,
-            numAbortos: animal.historicoAborto?.length || 0,
-            numProgenie: animal.historicoProgenie?.length || 0,
-        }));
-        const headers = {
-            brinco: 'Brinco',
-            nome: 'Nome',
-            raca: 'Raça',
-            sexo: 'Sexo',
-            dataNascimento: 'Data de Nascimento',
-            pesoKg: 'Peso Atual (kg)',
-            status: 'Status',
-            paiNome: 'Pai',
-            maeNome: 'Mãe',
-            numMedicacoes: 'Nº Medicações',
-            numPesagens: 'Nº Pesagens',
-            numPrenhez: 'Nº Prenhez',
-            numAbortos: 'Nº Abortos',
-            numProgenie: 'Nº Crias'
-        };
-        const timestamp = new Date().toISOString().slice(0, 10);
-        exportToCSV(dataToExport, headers, `relatorio_rebanho_${timestamp}.csv`);
-    };
-
-    // Handler para abrir modal de adicionar animal
     const handleOpenAddAnimalModal = () => {
         setIsAddAnimalModalOpen(true);
     };
@@ -262,56 +193,76 @@ const App = ({ user }: AppProps) => {
             <main className="p-4 md:p-8 max-w-7xl mx-auto">
                 {currentView === 'dashboard' && (
                     <>
-                        {/* Header do painel - mais limpo no mobile */}
                         <div className="flex flex-col sm:flex-row justify-between sm:items-center mb-4 md:mb-6 gap-3">
                             <h1 className="text-2xl md:text-3xl font-bold text-white">Painel do Rebanho</h1>
-                            <button
-                                onClick={handleExportCSV}
-                                className="hidden sm:inline-flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-green-700 hover:bg-green-800 transition-colors"
-                            >
-                                <ArrowDownTrayIcon className="w-5 h-5 mr-2" />
-                                Exportar CSV
-                            </button>
+                            <div className="hidden sm:flex">
+                                <ExportButtons
+                                    animals={filteredAnimals}
+                                    stats={stats}
+                                    areas={state.managementAreas}
+                                />
+                            </div>
                         </div>
                         
-                        {/* Stats resumidos */}
-                        <StatsDashboard animals={filteredAnimals} />
+                        <div className="flex justify-between items-center mb-4">
+                            <h2 className="text-lg font-semibold text-white">Estatísticas</h2>
+                            <button
+                                onClick={() => setShowDashboardSettings(true)}
+                                className="text-sm text-brand-primary-light hover:text-brand-primary"
+                            >
+                                ⚙️ Configurar
+                            </button>
+                        </div>
+                        <StatsDashboard
+                            stats={stats}
+                            enabledWidgets={enabledWidgets}
+                            areas={state.managementAreas}
+                            compactMode={config.compactMode}
+                        />
                         
-                        {/* Previews de agenda e tarefas - escondidos no mobile para layout mais limpo */}
                         <div className="hidden md:block">
                             <AgendaPreview events={state.calendarEvents} />
                             <TasksPreview tasks={state.tasks} />
                         </div>
                         
-                        {/* Filtros colapsáveis - ATUALIZADO com filtro de Sexo */}
                         <FilterBar
-                            searchTerm={searchTerm}
+                            searchTerm={filters.searchTerm}
                             setSearchTerm={setSearchTerm}
-                            selectedMedication={selectedMedication}
+                            searchFields={filters.searchFields}
+                            setSearchFields={setSearchFields}
+                            selectedMedication={filters.selectedMedication}
                             setSelectedMedication={setSelectedMedication}
-                            selectedReason={selectedReason}
+                            selectedReason={filters.selectedReason}
                             setSelectedReason={setSelectedReason}
                             allMedications={allMedications}
                             allReasons={allReasons}
-                            selectedStatus={selectedStatus}
+                            selectedStatus={filters.selectedStatus}
                             setSelectedStatus={setSelectedStatus}
-                            selectedSexo={selectedSexo}
+                            selectedSexo={filters.selectedSexo}
                             setSelectedSexo={setSelectedSexo}
-                            onClear={handleClearFilters}
+                            selectedRaca={filters.selectedRaca}
+                            setSelectedRaca={setSelectedRaca}
+                            selectedAreaId={filters.selectedAreaId}
+                            setSelectedAreaId={setSelectedAreaId}
+                            areas={state.managementAreas}
+                            weightRange={filters.weightRange}
+                            setWeightRange={setWeightRange}
+                            ageRange={filters.ageRange}
+                            setAgeRange={setAgeRange}
+                            sortConfig={filters.sortConfig}
+                            setSortConfig={setSortConfig}
+                            onClear={clearAllFilters}
+                            activeFiltersCount={activeFiltersCount}
                         />
                         
-                        {/* Dashboard de animais */}
                         <Dashboard animals={filteredAnimals} onSelectAnimal={handleSelectAnimal} />
                         
-                        {/* Botão de exportar CSV - mobile (fixo no fim) */}
                         <div className="sm:hidden mt-6">
-                            <button
-                                onClick={handleExportCSV}
-                                className="w-full flex items-center justify-center px-4 py-3 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-green-700 hover:bg-green-800 transition-colors"
-                            >
-                                <ArrowDownTrayIcon className="w-5 h-5 mr-2" />
-                                Exportar CSV
-                            </button>
+                            <ExportButtons
+                                animals={filteredAnimals}
+                                stats={stats}
+                                areas={state.managementAreas}
+                            />
                         </div>
                     </>
                 )}
@@ -371,15 +322,23 @@ const App = ({ user }: AppProps) => {
                 animals={state.animals}
             />
 
-            {/* Chatbot - com posição ajustada para mobile */}
             <Chatbot animals={state.animals} />
             
-            {/* Navbar mobile com botão de adicionar integrado */}
             <MobileNavBar 
                 currentView={currentView} 
                 setCurrentView={setCurrentView}
                 onAddAnimalClick={handleOpenAddAnimalModal}
             />
+
+            {showDashboardSettings && (
+                <DashboardSettings
+                    widgets={config.widgets}
+                    toggleWidget={toggleWidget}
+                    setWidgetSize={setWidgetSize}
+                    resetToDefault={resetToDefault}
+                    onClose={() => setShowDashboardSettings(false)}
+                />
+            )}
         </div>
     );
 };
