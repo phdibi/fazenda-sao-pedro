@@ -469,8 +469,13 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
                 historicoProgenie: [],
             };
 
-            const dataWithTimestamp = convertDatesToTimestamps(fullAnimalData);
-            batch.set(newAnimalRef, { ...dataWithTimestamp, userId });
+                // remove qualquer campo undefined, incluindo dataNascimento se vier vazio
+                const sanitizedAnimalData = removeUndefined(fullAnimalData);
+
+                // só depois converte datas em Timestamps
+                const dataWithTimestamp = convertDatesToTimestamps(sanitizedAnimalData);
+
+                batch.set(newAnimalRef, { ...dataWithTimestamp, userId });
 
             if (animalData.maeNome) {
                 const motherBrinco = animalData.maeNome.toLowerCase().trim();
