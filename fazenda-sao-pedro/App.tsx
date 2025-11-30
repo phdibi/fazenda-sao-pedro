@@ -10,9 +10,6 @@ import FilterBar from './components/FilterBar';
 import Chatbot from './components/Chatbot';
 import StatsDashboard from './components/StatsDashboard';
 import TasksView from './components/TasksView';
-import AgendaPreview from './components/AgendaPreview';
-import TasksPreview from './components/TasksPreview';
-import { ArrowDownTrayIcon } from './components/common/Icons';
 import Spinner from './components/common/Spinner';
 import MobileNavBar from './components/MobileNavBar';
 import { useAdvancedFilters } from './hooks/useAdvancedFilters';
@@ -53,7 +50,6 @@ const App = ({ user }: AppProps) => {
 
     const selectedAnimal = useMemo(() => state.animals.find(a => a.id === selectedAnimalId) || null, [state.animals, selectedAnimalId]);
 
-    // Hook de filtros avançados
     const {
         filters,
         filteredAnimals,
@@ -78,7 +74,6 @@ const App = ({ user }: AppProps) => {
         areas: state.managementAreas 
     });
 
-    // Hook de configuração do dashboard
     const { 
         config, 
         enabledWidgets, 
@@ -87,7 +82,6 @@ const App = ({ user }: AppProps) => {
         resetToDefault 
     } = useDashboardConfig();
 
-    // Sincronização quando volta online
     useEffect(() => {
         const handleSync = async () => {
             if (db) {
@@ -218,12 +212,9 @@ const App = ({ user }: AppProps) => {
                             enabledWidgets={enabledWidgets}
                             areas={state.managementAreas}
                             compactMode={config.compactMode}
+                            calendarEvents={state.calendarEvents}
+                            tasks={state.tasks}
                         />
-                        
-                        <div className="hidden md:block">
-                            <AgendaPreview events={state.calendarEvents} />
-                            <TasksPreview tasks={state.tasks} />
-                        </div>
                         
                         <FilterBar
                             searchTerm={filters.searchTerm}

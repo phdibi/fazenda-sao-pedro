@@ -1,11 +1,13 @@
 import React from 'react';
-import { FilteredStats, DashboardWidget, ManagementArea } from '../types';
+import { FilteredStats, DashboardWidget, ManagementArea, CalendarEvent, Task } from '../types';
 
 interface StatsDashboardProps {
   stats: FilteredStats;
   enabledWidgets: DashboardWidget[];
   areas: ManagementArea[];
   compactMode?: boolean;
+  calendarEvents?: CalendarEvent[];
+  tasks?: Task[];
 }
 
 const StatsDashboard: React.FC<StatsDashboardProps> = ({
@@ -13,6 +15,8 @@ const StatsDashboard: React.FC<StatsDashboardProps> = ({
   enabledWidgets,
   areas,
   compactMode = false,
+  calendarEvents = [],
+  tasks = [],
 }) => {
   const getWidgetSize = (size: 'small' | 'medium' | 'large') => {
     if (compactMode) return 'col-span-1';
@@ -21,6 +25,35 @@ const StatsDashboard: React.FC<StatsDashboardProps> = ({
       case 'medium': return 'col-span-1 md:col-span-2';
       case 'large': return 'col-span-1 md:col-span-2 lg:col-span-3';
     }
+  };
+
+  // Próximos eventos (7 dias)
+  const upcomingEvents = React.useMemo(() => {
+    const now = new Date();
+    const nextWeek = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+    return calendarEvents
+      .filter(e => {
+        const eventDate = new Date(e.date);
+        return eventDate >= now && eventDate <= nextWeek;
+      })
+      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+      .slice(0, 5);
+  }, [calendarEvents]);
+
+  // Tarefas pendentes
+  const pendingTasks = React.useMemo(() => {
+    return tasks
+      .filter(t => !t.isCompleted)
+      .sort((a, b) => {
+        if (!a.dueDate) return 1;
+        if (!b.dueDate) return -1;
+        return new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime();
+      })
+      .slice(0, 5);
+  }, [tasks]);
+
+  const formatDate = (date: Date) => {
+    return new Date(date).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' });
   };
 
   const renderWidget = (widget: DashboardWidget) => {
@@ -164,6 +197,46 @@ const StatsDashboard: React.FC<StatsDashboardProps> = ({
           </div>
         );
 
+      case 'calendar-preview':
+        return (
+          <div className="space-y-2">
+            {upcomingEvents.length === 0 ? (
+              <p className="text-sm text-gray-500 text-center py-2">Nenhum evento nos próximos 7 dias</p>
+            ) : (
+              upcomingEvents.map(event => (
+                <div key={event.id} className="flex items-center gap-3 p-2 bg-base-700/50 rounded">
+                  <div className="text-xs text-brand-primary-light font-medium min-w-[50px]">
+                    {formatDate(event.date)}
+                  </div>
+                  <div className="flex-1 truncate">
+                    <span className="text-sm text-white">{event.title}</span>
+                    <span className="text-xs text-gray-500 ml-2">({event.type})</span>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        );
+
+      case 'tasks-preview':
+        return (
+          <div className="space-y-2">
+            {pendingTasks.length === 0 ? (
+              <p className="text-sm text-gray-500 text-center py-2">Nenhuma tarefa pendente</p>
+            ) : (
+              pendingTasks.map(task => (
+                <div key={task.id} className="flex items-center gap-3 p-2 bg-base-700/50 rounded">
+                  <div className="w-2 h-2 rounded-full bg-yellow-500"></div>
+                  <div className="flex-1 truncate text-sm text-white">{task.description}</div>
+                  {task.dueDate && (
+                    <div className="text-xs text-gray-400">{formatDate(task.dueDate)}</div>
+                  )}
+                </div>
+              ))
+            )}
+          </div>
+        );
+
       default:
         return <p className="text-gray-500 text-sm">Widget não implementado</p>;
     }
@@ -171,7 +244,6 @@ const StatsDashboard: React.FC<StatsDashboardProps> = ({
 
   return (
     <div className={`grid gap-4 mb-6 ${compactMode ? 'grid-cols-2 md:grid-cols-4' : 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3'}`}>
-      {/* Cards de resumo fixos */}
       <div className="bg-base-800 rounded-lg p-4 border-l-4 border-brand-primary">
         <div className="text-2xl font-bold">{stats.totalAnimals}</div>
         <div className="text-xs text-gray-400">Total Filtrado</div>
@@ -185,7 +257,6 @@ const StatsDashboard: React.FC<StatsDashboardProps> = ({
         <div className="text-xs text-gray-400">Peso Médio</div>
       </div>
 
-      {/* Widgets dinâmicos */}
       {enabledWidgets.map(widget => (
         <div
           key={widget.id}

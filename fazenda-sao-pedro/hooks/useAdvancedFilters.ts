@@ -20,16 +20,9 @@ interface UseAdvancedFiltersProps {
 }
 
 interface UseAdvancedFiltersReturn {
-  // Estado dos filtros
   filters: AdvancedFilters;
-  
-  // Animais filtrados
   filteredAnimals: Animal[];
-  
-  // Estatísticas baseadas nos filtros
   stats: FilteredStats;
-  
-  // Setters individuais
   setSearchTerm: (term: string) => void;
   setSelectedMedication: (med: string) => void;
   setSelectedReason: (reason: string) => void;
@@ -41,17 +34,12 @@ interface UseAdvancedFiltersReturn {
   setAgeRange: (range: AgeRange) => void;
   setSearchFields: (fields: SearchField[]) => void;
   setSortConfig: (config: SortConfig) => void;
-  
-  // Utilitários
   clearAllFilters: () => void;
   activeFiltersCount: number;
-  
-  // Dados auxiliares para selects
   allMedications: string[];
   allReasons: string[];
 }
 
-// Calcula idade em meses
 const getAgeInMonths = (birthDate: Date): number => {
   const now = new Date();
   const birth = new Date(birthDate);
@@ -66,13 +54,11 @@ export const useAdvancedFilters = ({
   const [filters, setFilters] = useState<AdvancedFilters>(DEFAULT_ADVANCED_FILTERS);
   const [debouncedSearch, setDebouncedSearch] = useState('');
 
-  // Debounce para busca
   const debouncedSetSearch = useMemo(
     () => debounce((value: string) => setDebouncedSearch(value), 300),
     []
   );
 
-  // Extrair medicamentos únicos
   const allMedications = useMemo(() => {
     const meds = new Set<string>();
     animals.forEach(animal => {
@@ -81,7 +67,6 @@ export const useAdvancedFilters = ({
     return Array.from(meds).sort();
   }, [animals]);
 
-  // Extrair motivos únicos
   const allReasons = useMemo(() => {
     const reasons = new Set<string>();
     animals.forEach(animal => {
@@ -90,38 +75,66 @@ export const useAdvancedFilters = ({
     return Array.from(reasons).sort();
   }, [animals]);
 
-  // Aplicar filtros e ordenação
   const filteredAnimals = useMemo(() => {
     let result = animals.filter(animal => {
-      // Busca avançada em múltiplos campos
+      // Busca avançada com operadores booleanos
       if (debouncedSearch) {
-        const searchLower = debouncedSearch.toLowerCase();
-        const matchesSearch = filters.searchFields.some(field => {
-          switch (field) {
-            case 'brinco':
-              return animal.brinco.toLowerCase().includes(searchLower);
-            case 'nome':
-              return animal.nome?.toLowerCase().includes(searchLower);
-            case 'paiNome':
-              return animal.paiNome?.toLowerCase().includes(searchLower);
-            case 'maeNome':
-              return animal.maeNome?.toLowerCase().includes(searchLower);
-            case 'medicamento':
-              return animal.historicoSanitario.some(m => 
-                m.medicamento.toLowerCase().includes(searchLower)
-              );
-            case 'motivo':
-              return animal.historicoSanitario.some(m => 
-                m.motivo.toLowerCase().includes(searchLower)
-              );
-            default:
-              return false;
-          }
-        });
+        const searchLower = debouncedSearch.toLowerCase().trim();
+        
+        const hasOr = searchLower.includes(' ou ');
+        const hasAnd = searchLower.includes(' e ');
+        
+        let searchTerms: string[];
+        let matchMode: 'or' | 'and' | 'single';
+        
+        if (hasOr) {
+          searchTerms = searchLower.split(' ou ').map(t => t.trim()).filter(Boolean);
+          matchMode = 'or';
+        } else if (hasAnd) {
+          searchTerms = searchLower.split(' e ').map(t => t.trim()).filter(Boolean);
+          matchMode = 'and';
+        } else {
+          searchTerms = [searchLower];
+          matchMode = 'single';
+        }
+
+        const checkMatch = (term: string): boolean => {
+          return filters.searchFields.some(field => {
+            switch (field) {
+              case 'brinco':
+                return animal.brinco.toLowerCase().includes(term);
+              case 'nome':
+                return animal.nome?.toLowerCase().includes(term);
+              case 'paiNome':
+                return animal.paiNome?.toLowerCase().includes(term);
+              case 'maeNome':
+                return animal.maeNome?.toLowerCase().includes(term);
+              case 'medicamento':
+                return animal.historicoSanitario.some(m => 
+                  m.medicamento.toLowerCase().includes(term)
+                );
+              case 'motivo':
+                return animal.historicoSanitario.some(m => 
+                  m.motivo.toLowerCase().includes(term)
+                );
+              default:
+                return false;
+            }
+          });
+        };
+
+        let matchesSearch: boolean;
+        if (matchMode === 'or') {
+          matchesSearch = searchTerms.some(term => checkMatch(term));
+        } else if (matchMode === 'and') {
+          matchesSearch = searchTerms.every(term => checkMatch(term));
+        } else {
+          matchesSearch = checkMatch(searchTerms[0]);
+        }
+
         if (!matchesSearch) return false;
       }
 
-      // Filtro por medicamento
       if (filters.selectedMedication) {
         const hasMed = animal.historicoSanitario.some(
           med => med.medicamento === filters.selectedMedication
@@ -129,7 +142,6 @@ export const useAdvancedFilters = ({
         if (!hasMed) return false;
       }
 
-      // Filtro por motivo
       if (filters.selectedReason) {
         const hasReason = animal.historicoSanitario.some(
           med => med.motivo === filters.selectedReason
@@ -137,22 +149,18 @@ export const useAdvancedFilters = ({
         if (!hasReason) return false;
       }
 
-      // Filtro por status
       if (filters.selectedStatus && animal.status !== filters.selectedStatus) {
         return false;
       }
 
-      // Filtro por sexo
       if (filters.selectedSexo && animal.sexo !== filters.selectedSexo) {
         return false;
       }
 
-      // Filtro por raça
       if (filters.selectedRaca && animal.raca !== filters.selectedRaca) {
         return false;
       }
 
-      // Filtro por área de manejo
       if (filters.selectedAreaId) {
         if (filters.selectedAreaId === 'sem-area') {
           if (animal.managementAreaId) return false;
@@ -161,7 +169,6 @@ export const useAdvancedFilters = ({
         }
       }
 
-      // Filtro por faixa de peso
       if (filters.weightRange.min !== null && animal.pesoKg < filters.weightRange.min) {
         return false;
       }
@@ -169,7 +176,6 @@ export const useAdvancedFilters = ({
         return false;
       }
 
-      // Filtro por idade
       const ageInMonths = getAgeInMonths(animal.dataNascimento);
       if (filters.ageRange.minMonths !== null && ageInMonths < filters.ageRange.minMonths) {
         return false;
@@ -181,7 +187,6 @@ export const useAdvancedFilters = ({
       return true;
     });
 
-    // Ordenação
     result.sort((a, b) => {
       const { field, direction } = filters.sortConfig;
       let comparison = 0;
@@ -213,7 +218,6 @@ export const useAdvancedFilters = ({
     return result;
   }, [animals, debouncedSearch, filters]);
 
-  // Calcular estatísticas baseadas nos animais filtrados
   const stats = useMemo((): FilteredStats => {
     const activeAnimals = filteredAnimals.filter(a => a.status === AnimalStatus.Ativo);
     
@@ -221,13 +225,11 @@ export const useAdvancedFilters = ({
     const maleCount = activeAnimals.filter(a => a.sexo === Sexo.Macho).length;
     const femaleCount = activeAnimals.filter(a => a.sexo === Sexo.Femea).length;
 
-    // Distribuição por raça
     const breedDistribution: Record<string, number> = {};
     activeAnimals.forEach(a => {
       breedDistribution[a.raca] = (breedDistribution[a.raca] || 0) + 1;
     });
 
-    // Distribuição por idade
     const ageDistribution = { bezerros: 0, jovens: 0, novilhos: 0, adultos: 0 };
     activeAnimals.forEach(a => {
       const ageMonths = getAgeInMonths(a.dataNascimento);
@@ -237,7 +239,6 @@ export const useAdvancedFilters = ({
       else ageDistribution.adultos++;
     });
 
-    // Distribuição por faixa de peso
     const weightRangeDistribution = { leve: 0, medio: 0, pesado: 0 };
     activeAnimals.forEach(a => {
       if (a.pesoKg < 200) weightRangeDistribution.leve++;
@@ -245,7 +246,6 @@ export const useAdvancedFilters = ({
       else weightRangeDistribution.pesado++;
     });
 
-    // Distribuição por área
     const areaDistribution: Record<string, number> = {};
     activeAnimals.forEach(a => {
       const areaName = a.managementAreaId 
@@ -254,7 +254,6 @@ export const useAdvancedFilters = ({
       areaDistribution[areaName] = (areaDistribution[areaName] || 0) + 1;
     });
 
-    // Estatísticas de saúde
     let totalTreatments = 0;
     let animalsWithTreatments = 0;
     const medicationCounts: Record<string, number> = {};
@@ -291,7 +290,6 @@ export const useAdvancedFilters = ({
     };
   }, [filteredAnimals, areas]);
 
-  // Contar filtros ativos
   const activeFiltersCount = useMemo(() => {
     let count = 0;
     if (filters.searchTerm) count++;
@@ -306,7 +304,6 @@ export const useAdvancedFilters = ({
     return count;
   }, [filters]);
 
-  // Setters
   const setSearchTerm = useCallback((term: string) => {
     setFilters(prev => ({ ...prev, searchTerm: term }));
     debouncedSetSearch(term);
