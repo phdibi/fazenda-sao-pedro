@@ -81,7 +81,7 @@ export interface Animal {
   raca: Raca;
   sexo: Sexo;
   pesoKg: number;
-  dataNascimento: Date;
+  dataNascimento?: Date;
   status: AnimalStatus;
   fotos: string[];
   historicoSanitario: MedicationAdministration[];

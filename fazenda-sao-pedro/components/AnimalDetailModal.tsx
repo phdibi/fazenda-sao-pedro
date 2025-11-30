@@ -168,9 +168,13 @@ const AnimalDetailModal = ({
 
   const handleAnimalFormChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
       const { name, value } = e.target;
-      if (name === 'dataNascimento') {
-          setEditableAnimal(prev => prev ? { ...prev, [name]: new Date(value + 'T00:00:00') } : null);
-      } else {
+if (name === 'dataNascimento') {
+    if (value) {
+        setEditableAnimal(prev => prev ? { ...prev, [name]: new Date(value + 'T00:00:00') } : null);
+    } else {
+        setEditableAnimal(prev => prev ? { ...prev, dataNascimento: undefined } : null);
+    }
+} else {
           setEditableAnimal(prev => prev ? { ...prev, [name]: value } : null);
       }
   };
@@ -426,8 +430,29 @@ const AnimalDetailModal = ({
                 </div>
                 
                 <div>
-                  <label className="block text-sm font-medium text-gray-400">Nascimento</label>
-                  <input type="date" name="dataNascimento" value={dateToInputValue(editableAnimal.dataNascimento)} onChange={handleAnimalFormChange} className="bg-base-700 w-full p-1 rounded border border-base-600" disabled={!isEditing}/>
+                <label className="block text-sm font-medium text-gray-400">
+                    Nascimento <span className="text-gray-500 text-xs">(opcional)</span>
+                </label>
+                <div className="flex gap-2">
+                    <input 
+                    type="date" 
+                    name="dataNascimento" 
+                    value={editableAnimal.dataNascimento ? dateToInputValue(editableAnimal.dataNascimento) : ''} 
+                    onChange={handleAnimalFormChange} 
+                    className="bg-base-700 flex-1 p-1 rounded border border-base-600" 
+                    disabled={!isEditing}
+                    />
+                    {isEditing && editableAnimal.dataNascimento && (
+                    <button
+                        type="button"
+                        onClick={() => setEditableAnimal(prev => prev ? { ...prev, dataNascimento: undefined } : null)}
+                        className="px-2 text-gray-400 hover:text-red-400"
+                        title="Limpar data"
+                    >
+                        ✕
+                    </button>
+                    )}
+                </div>
                 </div>
 
                 <div>

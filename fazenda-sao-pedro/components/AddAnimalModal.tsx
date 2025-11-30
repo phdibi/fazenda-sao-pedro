@@ -2,7 +2,6 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Animal, Raca, Sexo, AnimalStatus } from '../types';
 import Modal from './common/Modal';
 import { PlusIcon, MicrophoneIcon, StopIcon } from './common/Icons';
-// FIX: Removed unused import for getAnimalRegistrationTranscriptionFromAudio as it doesn't exist.
 import { structureAnimalDataFromText } from '../services/geminiServiceOptimized';
 import Spinner from './common/Spinner';
 import useSpeechRecognition from '../hooks/useSpeechRecognition';
@@ -19,7 +18,6 @@ const AudioForAnimalAdd = ({ onDataExtracted }: AudioForAnimalAddProps) => {
   const processedTranscriptRef = useRef('');
 
   useEffect(() => {
-    // Process the transcript only when listening has stopped and there's a new transcript
     if (!isListening && transcript && transcript !== processedTranscriptRef.current) {
         processedTranscriptRef.current = transcript;
         processTranscription(transcript);
@@ -44,7 +42,7 @@ const AudioForAnimalAdd = ({ onDataExtracted }: AudioForAnimalAddProps) => {
     if (isListening) {
       stopListening();
     } else {
-      processedTranscriptRef.current = ''; // Reset for a new recording
+      processedTranscriptRef.current = '';
       startListening();
     }
   };
@@ -92,9 +90,9 @@ interface AddAnimalModalProps {
   animals: Animal[];
 }
 
-// Form state type uses string for number inputs to prevent type errors
-type AnimalFormData = Omit<Animal, 'id' | 'fotos' | 'historicoSanitario' | 'historicoPesagens' | 'pesoKg'> & {
+type AnimalFormData = Omit<Animal, 'id' | 'fotos' | 'historicoSanitario' | 'historicoPesagens' | 'pesoKg' | 'dataNascimento'> & {
   pesoKg: string;
+  dataNascimento: string; // String vazia ou data no formato YYYY-MM-DD
 };
 
 const initialFormData: AnimalFormData = {
@@ -103,7 +101,7 @@ const initialFormData: AnimalFormData = {
     raca: Raca.Braford,
     sexo: Sexo.Femea,
     pesoKg: '',
-    dataNascimento: new Date(),
+    dataNascimento: '',
     status: AnimalStatus.Ativo,
     paiNome: '',
     maeNome: '',
@@ -112,7 +110,7 @@ const initialFormData: AnimalFormData = {
 
 const AddAnimalModal = ({ isOpen, onClose, onAddAnimal, animals }: AddAnimalModalProps) => {
     const [formData, setFormData] = useState<AnimalFormData>(initialFormData);
-    const [errors, setErrors] = useState<{ brinco?: string; pesoKg?: string; dataNascimento?: string }>({});
+    const [errors, setErrors] = useState<{ brinco?: string; pesoKg?: string }>({});
     
     useEffect(() => {
         if (!isOpen) {
@@ -120,14 +118,6 @@ const AddAnimalModal = ({ isOpen, onClose, onAddAnimal, animals }: AddAnimalModa
             setErrors({});
         }
     }, [isOpen]);
-    
-    const dateToInputValue = (date: Date) => {
-        const d = new Date(date);
-        if (isNaN(d.getTime())) {
-            return '';
-        }
-        return d.toISOString().split('T')[0];
-    };
 
     const validateBrinco = (brincoValue: string) => {
         const trimmedBrinco = brincoValue.trim();
@@ -156,7 +146,6 @@ const AddAnimalModal = ({ isOpen, onClose, onAddAnimal, animals }: AddAnimalModa
                 [name]: value,
             };
 
-            // AUTOMÁTICO: Puxar raça da mãe quando brinco é preenchido
             if (name === 'maeNome') {
                 const mother = animals.find(a => a.brinco.toLowerCase() === value.trim().toLowerCase());
                 if (mother) {
@@ -167,25 +156,15 @@ const AddAnimalModal = ({ isOpen, onClose, onAddAnimal, animals }: AddAnimalModa
             return updatedData;
         });
     };
-
-    const handleDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const dateValue = e.target.value;
-        const date = new Date(dateValue + 'T00:00:00');
-        if (dateValue && !isNaN(date.getTime())) {
-             setErrors(prev => ({ ...prev, dataNascimento: undefined }));
-        }
-        setFormData(prev => ({
-            ...prev,
-            dataNascimento: date
-        }));
-    };
     
     const handleDataExtracted = (data: Partial<Omit<Animal, 'id' | 'fotos' | 'historicoSanitario' | 'historicoPesagens'>>) => {
         setFormData(prev => ({
             ...prev,
             ...data,
-            // Ensure pesoKg from Gemini is also converted to string for the form
             pesoKg: data.pesoKg ? String(data.pesoKg) : '',
+            dataNascimento: data.dataNascimento 
+                ? new Date(data.dataNascimento).toISOString().split('T')[0] 
+                : prev.dataNascimento,
         }));
         if (data.brinco) {
             validateBrinco(data.brinco);
@@ -195,25 +174,38 @@ const AddAnimalModal = ({ isOpen, onClose, onAddAnimal, animals }: AddAnimalModa
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         const isBrincoValid = validateBrinco(formData.brinco);
-        const isDateValid = !isNaN(formData.dataNascimento.getTime());
 
-        if (!isBrincoValid || !isDateValid) {
-            if (!isDateValid) {
-                setErrors(prev => ({ ...prev, dataNascimento: 'A data de nascimento é obrigatória.' }));
-            }
+        if (!isBrincoValid) {
             return;
         }
         
-        // Peso is optional. Default to 0 if empty or invalid.
         const pesoKgValue = parseFloat(formData.pesoKg);
         const finalPeso = !isNaN(pesoKgValue) && pesoKgValue > 0 ? pesoKgValue : 0;
+        
+        // Data de nascimento: undefined se vazio, Date se preenchido
+        let finalDataNascimento: Date | undefined = undefined;
+        if (formData.dataNascimento) {
+            const parsedDate = new Date(formData.dataNascimento + 'T00:00:00');
+            if (!isNaN(parsedDate.getTime())) {
+                finalDataNascimento = parsedDate;
+            }
+        }
         
         setErrors({});
         
         const finalData = {
-            ...formData,
+            brinco: formData.brinco,
+            nome: formData.nome,
+            raca: formData.raca,
+            sexo: formData.sexo,
+            status: formData.status,
+            paiNome: formData.paiNome,
+            maeNome: formData.maeNome,
+            maeRaca: formData.maeRaca,
             pesoKg: finalPeso,
+            dataNascimento: finalDataNascimento,
         };
+        
         onAddAnimal(finalData);
     };
 
@@ -223,7 +215,6 @@ const AddAnimalModal = ({ isOpen, onClose, onAddAnimal, animals }: AddAnimalModa
         <Modal isOpen={isOpen} onClose={onClose} title="Cadastrar Novo Animal">
             <AudioForAnimalAdd onDataExtracted={handleDataExtracted} />
             
-            {/* ADICIONEI pb-48 md:pb-4 aqui ↓ */}
             <form onSubmit={handleSubmit} className="space-y-6 pb-48 md:pb-4">
                  <div className="relative border border-base-700 p-4 rounded-lg">
                     <h3 className="absolute -top-3 left-4 bg-base-800 px-2 text-md font-semibold text-brand-primary-light">Identificação do Animal</h3>
@@ -256,12 +247,22 @@ const AddAnimalModal = ({ isOpen, onClose, onAddAnimal, animals }: AddAnimalModa
                     <h3 className="absolute -top-3 left-4 bg-base-800 px-2 text-md font-semibold text-brand-primary-light">Dados de Nascimento</h3>
                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
                          <div>
-                            <label htmlFor="dataNascimento" className="block text-sm font-medium text-gray-300">Data de Nascimento</label>
-                            <input type="date" name="dataNascimento" id="dataNascimento" value={dateToInputValue(formData.dataNascimento)} onChange={handleDateChange} className={`mt-1 block w-full bg-base-700 border rounded-md shadow-sm focus:ring-brand-primary focus:border-brand-primary sm:text-sm p-2 ${errors.dataNascimento ? 'border-red-500' : 'border-base-600'}`} />
-                            {errors.dataNascimento && <p className="text-red-400 text-xs mt-1">{errors.dataNascimento}</p>}
+                            <label htmlFor="dataNascimento" className="block text-sm font-medium text-gray-300">
+                                Data de Nascimento <span className="text-gray-500 text-xs">(opcional)</span>
+                            </label>
+                            <input 
+                                type="date" 
+                                name="dataNascimento" 
+                                id="dataNascimento" 
+                                value={formData.dataNascimento} 
+                                onChange={handleChange} 
+                                className="mt-1 block w-full bg-base-700 border border-base-600 rounded-md shadow-sm focus:ring-brand-primary focus:border-brand-primary sm:text-sm p-2" 
+                            />
                         </div>
                         <div>
-                            <label htmlFor="pesoKg" className="block text-sm font-medium text-gray-300">Peso ao Nascer (kg)</label>
+                            <label htmlFor="pesoKg" className="block text-sm font-medium text-gray-300">
+                                Peso ao Nascer (kg) <span className="text-gray-500 text-xs">(opcional)</span>
+                            </label>
                             <input type="number" step="0.1" name="pesoKg" id="pesoKg" value={formData.pesoKg} onChange={handleChange} className={`mt-1 block w-full bg-base-700 border rounded-md shadow-sm focus:ring-brand-primary focus:border-brand-primary sm:text-sm p-2 ${errors.pesoKg ? 'border-red-500' : 'border-base-600'}`} />
                             {errors.pesoKg && <p className="text-red-400 text-xs mt-1">{errors.pesoKg}</p>}
                         </div>
@@ -284,7 +285,6 @@ const AddAnimalModal = ({ isOpen, onClose, onAddAnimal, animals }: AddAnimalModa
                             />
                             <p className="text-xs text-gray-500 mt-1">A raça será puxada automaticamente</p>
                         </div>
-                        {/* CAMPO RAÇA DA MÃE REMOVIDO - Agora é automático! */}
                         <div className="md:col-span-2">
                             <label htmlFor="paiNome" className="block text-sm font-medium text-gray-300">Pai (Brinco ou Nome)</label>
                             <input 
@@ -310,7 +310,6 @@ const AddAnimalModal = ({ isOpen, onClose, onAddAnimal, animals }: AddAnimalModa
                     </div>
                 </div>
                 
-                {/* ADICIONEI mb-24 aqui ↓ */}
                 <div className="pt-4 flex justify-end mb-24">
                     <button type="button" onClick={onClose} className="bg-base-700 text-gray-300 hover:bg-base-600 font-bold py-2 px-4 rounded transition-colors mr-2">
                         Cancelar
