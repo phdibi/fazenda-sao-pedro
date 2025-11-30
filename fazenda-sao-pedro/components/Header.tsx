@@ -93,7 +93,7 @@ const Header = ({
                     <div className="flex items-center">
                         <img 
                             src="/logo.png" 
-                            alt="São Pedro IA" 
+                            alt="Fazenda+" 
                             className="h-12 w-auto cow-logo"
                         />
                     </div>
