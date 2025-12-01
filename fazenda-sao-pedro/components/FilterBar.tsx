@@ -207,7 +207,7 @@ const FilterBar = ({
           </div>
 
           {/* Ordenação + botão Filtros */}
-          <div className="flex flex-row gap-2 sm:flex-col sm:w-auto">
+          <div className="flex flex-row gap-2 sm:w-auto">
             {/* Ordenação rápida */}
             <div className="flex items-center bg-base-700 rounded-md overflow-hidden flex-1 sm:flex-none">
               <select
