@@ -206,13 +206,14 @@ const FilterBar = ({
             )}
           </div>
 
-          {/* Ordenação rápida */}
-          <div className="flex items-center gap-2">
-            <div className="flex items-center bg-base-700 rounded-md overflow-hidden">
+          {/* Ordenação + botão Filtros */}
+          <div className="flex flex-row gap-2 sm:flex-col sm:w-auto">
+            {/* Ordenação rápida */}
+            <div className="flex items-center bg-base-700 rounded-md overflow-hidden flex-1 sm:flex-none">
               <select
                 value={sortConfig.field}
                 onChange={(e) => handleSortFieldChange(e.target.value as SortField)}
-                className="bg-transparent border-none text-sm text-gray-300 py-2 pl-3 pr-1 focus:ring-0"
+                className="bg-transparent border-none text-sm text-gray-300 py-2 pl-3 pr-1 focus:ring-0 w-full"
               >
                 {SORT_FIELDS.map(f => (
                   <option key={f.value} value={f.value}>{f.label}</option>
@@ -233,26 +234,26 @@ const FilterBar = ({
                 )}
               </button>
             </div>
-          </div>
           
-          {/* Botão de expandir filtros */}
-          <button
-            onClick={() => setIsExpanded(!isExpanded)}
-            className="flex items-center justify-center gap-2 px-4 py-2.5 bg-base-700 hover:bg-base-600 rounded-md text-gray-300 transition-colors"
-          >
-            <FunnelIcon className="w-5 h-5" />
-            <span className="text-sm font-medium">Filtros</span>
-            {activeFiltersCount > 0 && (
-              <span className="bg-brand-primary text-white text-xs font-bold px-1.5 py-0.5 rounded-full min-w-[20px] text-center">
-                {activeFiltersCount}
-              </span>
-            )}
-            {isExpanded ? (
-              <ChevronUpIcon className="w-4 h-4" />
-            ) : (
-              <ChevronDownIcon className="w-4 h-4" />
-            )}
-          </button>
+            {/* Botão de expandir filtros */}
+            <button
+              onClick={() => setIsExpanded(!isExpanded)}
+              className="flex items-center justify-center gap-2 px-4 py-2.5 bg-base-700 hover:bg-base-600 rounded-md text-gray-300 transition-colors flex-1 sm:flex-none"
+            >
+              <FunnelIcon className="w-5 h-5" />
+              <span className="text-sm font-medium">Filtros</span>
+              {activeFiltersCount > 0 && (
+                <span className="bg-brand-primary text-white text-xs font-bold px-1.5 py-0.5 rounded-full min-w-[20px] text-center">
+                  {activeFiltersCount}
+                </span>
+              )}
+              {isExpanded ? (
+                <ChevronUpIcon className="w-4 h-4" />
+              ) : (
+                <ChevronDownIcon className="w-4 h-4" />
+              )}
+            </button>
+          </div>
         </div>
       </div>
 
