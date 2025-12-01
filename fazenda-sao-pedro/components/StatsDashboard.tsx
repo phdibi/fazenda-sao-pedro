@@ -244,14 +244,13 @@ const StatsDashboard: React.FC<StatsDashboardProps> = ({
 
   return (
     <div className={`grid gap-4 mb-6 ${compactMode ? 'grid-cols-2 md:grid-cols-4' : 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3'}`}>
+      {/* Card: total filtrado */}
       <div className="bg-base-800 rounded-lg p-4 border-l-4 border-brand-primary">
         <div className="text-2xl font-bold">{stats.totalAnimals}</div>
         <div className="text-xs text-gray-400">Total Filtrado</div>
       </div>
-      <div className="bg-base-800 rounded-lg p-4 border-l-4 border-green-500">
-        <div className="text-2xl font-bold">{stats.activeCount}</div>
-        <div className="text-xs text-gray-400">Ativos</div>
-      </div>
+
+      {/* Card: peso médio (mantido) */}
       <div className="bg-base-800 rounded-lg p-4 border-l-4 border-blue-500">
         <div className="text-2xl font-bold">{stats.averageWeight.toFixed(1)} kg</div>
         <div className="text-xs text-gray-400">Peso Médio</div>
