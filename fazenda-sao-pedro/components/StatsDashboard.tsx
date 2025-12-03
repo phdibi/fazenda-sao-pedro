@@ -261,11 +261,11 @@ const StatsDashboard: React.FC<StatsDashboardProps> = ({
       case 'weight-evolution':
         // Mostra resumo de evolução de peso e GMD do rebanho
         const totalWeight = stats.totalWeight || 0;
-        const avgWeight = stats.averageWeight || 0;
         const heavyCount = stats.weightRangeDistribution?.pesado || 0;
         const mediumCount = stats.weightRangeDistribution?.medio || 0;
         const lightCount = stats.weightRangeDistribution?.leve || 0;
         const gmdData = stats.gmdStats;
+        const hasGMD = !!gmdData && gmdData.animalsWithGMD > 0;
         const predictionTarget = useMemo(() => {
           const base = new Date();
           base.setMonth(base.getMonth() + 3);
@@ -283,18 +283,22 @@ const StatsDashboard: React.FC<StatsDashboardProps> = ({
         return (
           <div className="space-y-4">
             {/* GMD Médio - Destaque */}
-            {gmdData && gmdData.animalsWithGMD > 0 && (
-              <div className="text-center p-3 bg-gradient-to-r from-green-900/30 to-blue-900/30 rounded-lg border border-green-700/30">
-                <div className="text-3xl font-bold text-green-400">
-                  {gmdData.averageGMD.toFixed(3)} kg/dia
-                </div>
-                <div className="text-xs text-gray-400">GMD Médio ({gmdData.animalsWithGMD} animais)</div>
-                <div className="flex justify-center gap-4 mt-2">
-                  <span className="text-xs text-green-400">🚀 {gmdData.topPerformers} top</span>
-                  <span className="text-xs text-red-400">⚠️ {gmdData.underperformers} baixo</span>
-                </div>
-              </div>
-            )}
+            <div className="text-center p-3 bg-gradient-to-r from-green-900/30 to-blue-900/30 rounded-lg border border-green-700/30">
+              {hasGMD ? (
+                <>
+                  <div className="text-3xl font-bold text-green-400">
+                    {gmdData?.averageGMD.toFixed(3)} kg/dia
+                  </div>
+                  <div className="text-xs text-gray-400">GMD Médio ({gmdData?.animalsWithGMD} animais)</div>
+                  <div className="flex justify-center gap-4 mt-2">
+                    <span className="text-xs text-green-400">🚀 {gmdData?.topPerformers} top</span>
+                    <span className="text-xs text-red-400">⚠️ {gmdData?.underperformers} baixo</span>
+                  </div>
+                </>
+              ) : (
+                <div className="text-sm text-gray-300">Sem dados de GMD para os animais filtrados</div>
+              )}
+            </div>
             
             {/* Peso total do rebanho */}
             <div className="text-center p-3 bg-base-700/50 rounded-lg">
@@ -341,10 +345,12 @@ const StatsDashboard: React.FC<StatsDashboardProps> = ({
               </div>
             </div>
 
-            {/* Média */}
+            {/* GMD médio do grupo */}
             <div className="flex justify-between items-center pt-2 border-t border-base-700">
-              <span className="text-sm text-gray-400">Peso Médio</span>
-              <span className="text-lg font-bold text-white">{avgWeight.toFixed(1)} kg</span>
+              <span className="text-sm text-gray-400">GMD Médio (animais filtrados)</span>
+              <span className="text-lg font-bold text-white">
+                {hasGMD ? `${gmdData?.averageGMD.toFixed(3)} kg/dia` : '—'}
+              </span>
             </div>
 
             {/* Previsão de Peso alinhada aos filtros ativos */}
