@@ -1,5 +1,7 @@
-import React from 'react';
-import { FilteredStats, DashboardWidget, ManagementArea, CalendarEvent, Task } from '../types';
+import React, { useMemo } from 'react';
+import { Animal, FilteredStats, DashboardWidget, ManagementArea, CalendarEvent, Task } from '../types';
+import { batchPredictWeights } from '../services/weightPrediction';
+import WeatherWidget from './WeatherWidget';
 
 interface StatsDashboardProps {
   stats: FilteredStats;
@@ -8,6 +10,7 @@ interface StatsDashboardProps {
   compactMode?: boolean;
   calendarEvents?: CalendarEvent[];
   tasks?: Task[];
+  animals?: Animal[];
 }
 
 const StatsDashboard: React.FC<StatsDashboardProps> = ({
@@ -17,6 +20,7 @@ const StatsDashboard: React.FC<StatsDashboardProps> = ({
   compactMode = false,
   calendarEvents = [],
   tasks = [],
+  animals = [],
 }) => {
   const getWidgetSize = (size: 'small' | 'medium' | 'large') => {
     if (compactMode) return 'col-span-1';
@@ -51,6 +55,23 @@ const StatsDashboard: React.FC<StatsDashboardProps> = ({
       })
       .slice(0, 5);
   }, [tasks]);
+
+  const predictionTarget = useMemo(() => {
+    const base = new Date();
+    base.setMonth(base.getMonth() + 3);
+    return base;
+  }, []);
+
+  const weightPredictions = useMemo(
+    () => batchPredictWeights(animals, predictionTarget),
+    [animals, predictionTarget]
+  );
+
+  const predictionAverage = weightPredictions.length
+    ? weightPredictions.reduce((sum, item) => sum + item.predictedWeight, 0) / weightPredictions.length
+    : null;
+
+  const predictionTop = weightPredictions[0];
 
   const formatDate = (date: Date) => {
     return new Date(date).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' });
@@ -245,6 +266,19 @@ const StatsDashboard: React.FC<StatsDashboardProps> = ({
         const mediumCount = stats.weightRangeDistribution?.medio || 0;
         const lightCount = stats.weightRangeDistribution?.leve || 0;
         const gmdData = stats.gmdStats;
+        const predictionTarget = useMemo(() => {
+          const base = new Date();
+          base.setMonth(base.getMonth() + 3);
+          return base;
+        }, []);
+        const weightPredictions = useMemo(
+          () => batchPredictWeights(animals, predictionTarget),
+          [animals, predictionTarget]
+        );
+        const predictionAverage = weightPredictions.length
+          ? weightPredictions.reduce((sum, item) => sum + item.predictedWeight, 0) / weightPredictions.length
+          : null;
+        const predictionTop = weightPredictions[0];
         
         return (
           <div className="space-y-4">
@@ -312,8 +346,45 @@ const StatsDashboard: React.FC<StatsDashboardProps> = ({
               <span className="text-sm text-gray-400">Peso Médio</span>
               <span className="text-lg font-bold text-white">{avgWeight.toFixed(1)} kg</span>
             </div>
+
+            {/* Previsão de Peso alinhada aos filtros ativos */}
+            <div className="mt-3 p-3 rounded-lg border border-blue-800/50 bg-blue-900/10">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-gray-400">Previsão de Peso (próximos 3 meses)</p>
+                  <p className="text-xs text-gray-500">
+                    Baseado nos {animals.length} animais filtrados
+                  </p>
+                </div>
+                <span className="text-xs text-blue-300">
+                  {predictionTarget.toLocaleDateString('pt-BR')}
+                </span>
+              </div>
+
+              {predictionAverage ? (
+                <div className="mt-2 flex items-center justify-between">
+                  <div>
+                    <p className="text-2xl font-bold text-white">{predictionAverage.toFixed(1)} kg</p>
+                    {predictionTop && (
+                      <p className="text-xs text-gray-400 mt-1">
+                        Top projeção: <span className="text-blue-300">{predictionTop.predictedWeight} kg</span>
+                      </p>
+                    )}
+                  </div>
+                  <div className="text-right text-xs text-gray-400">
+                    <p>GMD projetado</p>
+                    <p className="text-white font-semibold">{predictionTop?.projectedGMD.toFixed(3) ?? '-'} kg/dia</p>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-sm text-gray-500 text-center mt-2">Sem dados suficientes para projetar</p>
+              )}
+            </div>
           </div>
         );
+
+      case 'weather':
+        return <WeatherWidget animals={animals} />;
 
       default:
         return <p className="text-gray-500 text-sm">Widget não implementado</p>;
