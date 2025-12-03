@@ -57,11 +57,11 @@ const ReportsView = ({ animals }: ReportsViewProps) => {
   };
   
   const TabButton = ({tabName, label, disabled}: TabButtonProps) => (
-      <button 
-        onClick={() => !disabled && setActiveTab(tabName)} 
+      <button
+        onClick={() => !disabled && setActiveTab(tabName)}
         disabled={disabled}
-        className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
-            activeTab === tabName 
+        className={`w-full sm:w-auto text-center px-4 py-2 text-sm font-medium rounded-md transition-colors ${
+            activeTab === tabName
             ? 'bg-brand-primary text-white' 
             : 'text-gray-300 hover:bg-base-700/50'
         } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}>
@@ -121,7 +121,7 @@ const ReportsView = ({ animals }: ReportsViewProps) => {
              )}
 
             <div className="print-area">
-                <div className="bg-base-800/50 p-3 rounded-lg flex gap-2 print-hide mb-6">
+                <div className="bg-base-800/50 p-3 rounded-lg flex flex-col sm:flex-row flex-wrap gap-2 print-hide mb-6">
                     <TabButton tabName="sanitary" label="Análise Sanitária" />
                     <TabButton tabName="reproductive" label="Reprodutivo" />
                     <TabButton tabName="comparatives" label="Comparativos" />
