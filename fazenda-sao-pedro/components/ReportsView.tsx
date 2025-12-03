@@ -6,6 +6,7 @@ import { PrinterIcon, SparklesIcon } from './common/Icons';
 import SanitaryReportDisplay from './SanitaryReportDisplay';
 import ReproductiveReportDisplay from './ReproductiveReportDisplay';
 import PerformanceComparisonView from './PerformanceComparisonView';
+import { WeatherCorrelationView } from './WeatherWidget';
 
 interface ReportsViewProps {
   animals: Animal[];
@@ -31,6 +32,7 @@ const ReportsView = ({ animals }: ReportsViewProps) => {
   const [endDate, setEndDate] = useState(today.toISOString().split('T')[0]);
 
   const [activeTab, setActiveTab] = useState<TabName>('sanitary');
+  const hasReport = Boolean(reportData);
 
   const handleGenerateReport = async () => {
     if (!startDate || !endDate) {
@@ -108,31 +110,41 @@ const ReportsView = ({ animals }: ReportsViewProps) => {
                 <p className="mt-2">Gemini está analisando os dados... Isso pode levar alguns segundos.</p>
               </div>
             )}
-            
+
             {error && <p className="text-red-400 text-center py-16">{error}</p>}
 
-            {!isLoading && !reportData && (
+            {!isLoading && !hasReport && (
                  <div className="text-center text-gray-500 bg-base-800 p-16 rounded-lg">
                     <p className="text-lg">Selecione um período e clique em "Gerar Relatório" para começar.</p>
                     <p className="mt-2">A IA do Gemini irá processar os dados e fornecer insights valiosos.</p>
                  </div>
              )}
 
-            {reportData && (
-                <div className="print-area">
-                    <div className="bg-base-800/50 p-3 rounded-lg flex gap-2 print-hide mb-6">
-                        <TabButton tabName="sanitary" label="Análise Sanitária" />
-                        <TabButton tabName="reproductive" label="Reprodutivo" />
-                        <TabButton tabName="comparatives" label="Comparativos" />
-                        <TabButton tabName="performance" label="Desempenho (Em breve)" disabled />
-                    </div>
-                    {activeTab === 'sanitary' && <SanitaryReportDisplay data={reportData.sanitary} />}
-                    {activeTab === 'reproductive' && <ReproductiveReportDisplay data={reportData.reproductive} />}
-                    {activeTab === 'comparatives' && (
-                        <PerformanceComparisonView animals={animals} onSelectAnimal={() => {}} />
-                    )}
+            <div className="print-area">
+                <div className="bg-base-800/50 p-3 rounded-lg flex gap-2 print-hide mb-6">
+                    <TabButton tabName="sanitary" label="Análise Sanitária" />
+                    <TabButton tabName="reproductive" label="Reprodutivo" />
+                    <TabButton tabName="comparatives" label="Comparativos" />
+                    <TabButton tabName="performance" label="Desempenho (Em breve)" disabled />
                 </div>
-            )}
+
+                {activeTab === 'comparatives' && (
+                    <div className="space-y-6">
+                        <PerformanceComparisonView animals={animals} onSelectAnimal={() => {}} />
+                        <WeatherCorrelationView animals={animals} />
+                    </div>
+                )}
+
+                {activeTab !== 'comparatives' && !hasReport && (
+                    <div className="text-center text-gray-500 bg-base-800 p-16 rounded-lg">
+                        <p className="text-lg">Gere um relatório para ver esta seção.</p>
+                        <p className="mt-2">Clique em "Gerar Relatório" para liberar a aba selecionada.</p>
+                    </div>
+                )}
+
+                {hasReport && activeTab === 'sanitary' && <SanitaryReportDisplay data={reportData!.sanitary} />}
+                {hasReport && activeTab === 'reproductive' && <ReproductiveReportDisplay data={reportData!.reproductive} />}
+            </div>
         </div>
       </div>
   );
