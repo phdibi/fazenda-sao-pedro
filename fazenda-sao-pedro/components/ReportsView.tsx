@@ -5,13 +5,16 @@ import { Animal, ComprehensiveReport } from '../types';
 import { PrinterIcon, SparklesIcon } from './common/Icons';
 import SanitaryReportDisplay from './SanitaryReportDisplay';
 import ReproductiveReportDisplay from './ReproductiveReportDisplay';
+import PerformanceComparisonView from './PerformanceComparisonView';
 
 interface ReportsViewProps {
   animals: Animal[];
 }
 
+type TabName = 'sanitary' | 'reproductive' | 'performance' | 'comparatives';
+
 interface TabButtonProps {
-    tabName: 'sanitary' | 'reproductive' | 'performance';
+    tabName: TabName;
     label: string;
     disabled?: boolean
 }
@@ -27,7 +30,7 @@ const ReportsView = ({ animals }: ReportsViewProps) => {
   const [startDate, setStartDate] = useState(ninetyDaysAgo.toISOString().split('T')[0]);
   const [endDate, setEndDate] = useState(today.toISOString().split('T')[0]);
 
-  const [activeTab, setActiveTab] = useState<'sanitary' | 'reproductive' | 'performance'>('sanitary');
+  const [activeTab, setActiveTab] = useState<TabName>('sanitary');
 
   const handleGenerateReport = async () => {
     if (!startDate || !endDate) {
@@ -120,10 +123,14 @@ const ReportsView = ({ animals }: ReportsViewProps) => {
                     <div className="bg-base-800/50 p-3 rounded-lg flex gap-2 print-hide mb-6">
                         <TabButton tabName="sanitary" label="Análise Sanitária" />
                         <TabButton tabName="reproductive" label="Reprodutivo" />
+                        <TabButton tabName="comparatives" label="Comparativos" />
                         <TabButton tabName="performance" label="Desempenho (Em breve)" disabled />
                     </div>
                     {activeTab === 'sanitary' && <SanitaryReportDisplay data={reportData.sanitary} />}
                     {activeTab === 'reproductive' && <ReproductiveReportDisplay data={reportData.reproductive} />}
+                    {activeTab === 'comparatives' && (
+                        <PerformanceComparisonView animals={animals} onSelectAnimal={() => {}} />
+                    )}
                 </div>
             )}
         </div>

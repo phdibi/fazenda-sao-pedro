@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
-import { DocumentChartBarIcon, SparklesIcon, PlusIcon, CalendarDaysIcon, ClipboardDocumentCheckIcon, MapPinIcon } from './common/Icons';
+import { DocumentChartBarIcon, SparklesIcon, PlusIcon, CalendarDaysIcon, ClipboardDocumentCheckIcon, MapPinIcon, ScaleIcon } from './common/Icons';
 import { AppUser, UserRole } from '../types';
 import { auth } from '../services/firebase';
 
-type ViewType = 'dashboard' | 'reports' | 'calendar' | 'tasks' | 'management';
+type ViewType = 'dashboard' | 'reports' | 'calendar' | 'tasks' | 'management' | 'batches';
 
 interface HeaderProps {
     currentView: ViewType;
@@ -121,6 +121,9 @@ const Header = ({
                             </NavButton>
                             <NavButton view="management" label="Manejo" currentView={currentView} setCurrentView={setCurrentView}>
                                 <MapPinIcon className="h-5 w-5" />
+                            </NavButton>
+                            <NavButton view="batches" label="Lotes" currentView={currentView} setCurrentView={setCurrentView}>
+                                <ScaleIcon className="h-5 w-5" />
                             </NavButton>
                             <NavButton view="calendar" label="Agenda" currentView={currentView} setCurrentView={setCurrentView}>
                                 <CalendarDaysIcon className="h-5 w-5" />

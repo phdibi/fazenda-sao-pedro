@@ -185,7 +185,7 @@ export const DEFAULT_ADVANCED_FILTERS: AdvancedFilters = {
 // 🆕 NOVOS TIPOS PARA DASHBOARD CUSTOMIZÁVEL
 // ============================================
 
-export type DashboardWidgetType = 
+export type DashboardWidgetType =
   | 'breed-distribution'
   | 'sex-distribution'
   | 'weight-chart'
@@ -194,7 +194,8 @@ export type DashboardWidgetType =
   | 'tasks-preview'
   | 'area-distribution'
   | 'health-summary'
-  | 'weight-evolution';
+  | 'weight-evolution'
+  | 'weather';
 
 export interface DashboardWidget {
   id: string;
@@ -221,6 +222,7 @@ export const DEFAULT_DASHBOARD_WIDGETS: DashboardWidget[] = [
   { id: 'w7', type: 'area-distribution', title: 'Animais por Área', enabled: false, order: 7, size: 'medium' },
   { id: 'w8', type: 'health-summary', title: 'Resumo Sanitário', enabled: false, order: 8, size: 'medium' },
   { id: 'w9', type: 'weight-evolution', title: 'Evolução de Peso', enabled: false, order: 9, size: 'large' },
+  { id: 'w10', type: 'weather', title: 'Clima e Precipitação', enabled: true, order: 10, size: 'medium' },
 ];
 
 export const DEFAULT_DASHBOARD_CONFIG: DashboardConfig = {

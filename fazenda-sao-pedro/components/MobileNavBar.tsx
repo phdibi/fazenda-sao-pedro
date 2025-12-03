@@ -1,7 +1,7 @@
 import React from 'react';
-import { DocumentChartBarIcon, CalendarDaysIcon, ClipboardDocumentCheckIcon, MapPinIcon, PlusIcon } from './common/Icons';
+import { DocumentChartBarIcon, CalendarDaysIcon, ClipboardDocumentCheckIcon, MapPinIcon, PlusIcon, ScaleIcon } from './common/Icons';
 
-type ViewType = 'dashboard' | 'reports' | 'calendar' | 'tasks' | 'management';
+type ViewType = 'dashboard' | 'reports' | 'calendar' | 'tasks' | 'management' | 'batches';
 
 interface MobileNavBarProps {
     currentView: ViewType;
@@ -50,6 +50,9 @@ const MobileNavBar = ({ currentView, setCurrentView, onAddAnimalClick }: MobileN
                     </NavButton>
                     <NavButton view="management" label="Manejo" isActive={currentView === 'management'} onClick={setCurrentView}>
                         <MapPinIcon className="w-5 h-5" />
+                    </NavButton>
+                    <NavButton view="batches" label="Lotes" isActive={currentView === 'batches'} onClick={setCurrentView}>
+                        <ScaleIcon className="w-5 h-5" />
                     </NavButton>
 
                     {/* Espaço central para o botão FAB */}

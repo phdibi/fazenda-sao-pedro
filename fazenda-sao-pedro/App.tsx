@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect, lazy, Suspense } from 'react';
 import Header from './components/Header';
 import { offlineQueue } from './utils/offlineSync';
 import { useFirestoreOptimized } from './hooks/useFirestoreOptimized';
-import { Animal, AppUser, UserRole } from './types';
+import { Animal, AppUser, UserRole, WeighingType, WeightEntry } from './types';
 import Spinner from './components/common/Spinner';
 import MobileNavBar from './components/MobileNavBar';
 import { useAdvancedFilters } from './hooks/useAdvancedFilters';
@@ -12,6 +12,7 @@ import { db, storage } from './services/firebase';
 import DashboardSettings from './components/DashboardSettings';
 import RoleSelector from './components/RoleSelector';
 import CapatazView from './components/CapatazView';
+import { useBatchManagement } from './hooks/useBatchManagement';
 
 // OTIMIZAÇÃO: Lazy load de componentes pesados
 const Dashboard = lazy(() => import('./components/Dashboard'));
@@ -25,6 +26,8 @@ const ExportButtons = lazy(() => import('./components/ExportButtons'));
 const CalendarView = lazy(() => import('./components/CalendarView'));
 const ReportsView = lazy(() => import('./components/ReportsView'));
 const ManagementView = lazy(() => import('./components/ManagementView'));
+const BatchManagement = lazy(() => import('./components/BatchManagement'));
+const ScaleImportModal = lazy(() => import('./components/ScaleImportModal'));
 
 interface AppProps {
     user: AppUser;
@@ -55,10 +58,19 @@ const App = ({ user, firebaseReady }: AppProps) => {
     const { role, changeRole, canAccess, isCapataz, getUserProfile } = useUserProfile(user);
     const [showRoleSelector, setShowRoleSelector] = useState(false);
 
-    const [currentView, setCurrentView] = useState<'dashboard' | 'reports' | 'calendar' | 'tasks' | 'management'>('dashboard');
+    const [currentView, setCurrentView] = useState<'dashboard' | 'reports' | 'calendar' | 'tasks' | 'management' | 'batches'>('dashboard');
     const [selectedAnimalId, setSelectedAnimalId] = useState<string | null>(null);
     const [isAddAnimalModalOpen, setIsAddAnimalModalOpen] = useState(false);
     const [showDashboardSettings, setShowDashboardSettings] = useState(false);
+    const [showScaleImportModal, setShowScaleImportModal] = useState(false);
+
+    const {
+        batches,
+        createBatch,
+        updateBatch,
+        deleteBatch,
+        completeBatch,
+    } = useBatchManagement(user?.uid);
 
     const selectedAnimal = useMemo(() => state.animals.find(a => a.id === selectedAnimalId) || null, [state.animals, selectedAnimalId]);
 
@@ -175,6 +187,40 @@ const App = ({ user, firebaseReady }: AppProps) => {
         setIsAddAnimalModalOpen(true);
     };
 
+    const handleScaleImportComplete = async (
+        weightsMap: Map<string, { weight: number; date: Date; type: WeighingType }>
+    ) => {
+        try {
+            const updates: Promise<void>[] = [];
+
+            weightsMap.forEach((data, animalId) => {
+                const animal = state.animals.find(a => a.id === animalId);
+                if (!animal) return;
+
+                const newEntry: WeightEntry = {
+                    id: `scale-${Date.now()}-${animalId}`,
+                    date: data.date,
+                    weightKg: data.weight,
+                    type: data.type === WeighingType.None ? undefined : data.type,
+                };
+
+                const historicoPesagens = [...(animal.historicoPesagens || []), newEntry]
+                    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+                updates.push(updateAnimal(animalId, {
+                    historicoPesagens,
+                    pesoKg: data.weight,
+                }));
+            });
+
+            await Promise.all(updates);
+            alert('Pesagens importadas da balança com sucesso!');
+        } catch (error) {
+            console.error('Erro ao importar pesagens:', error);
+            alert('Não foi possível concluir a importação da balança.');
+        }
+    };
+
     useEffect(() => {
         if (!db) return;
 
@@ -263,7 +309,14 @@ const App = ({ user, firebaseReady }: AppProps) => {
                     <Suspense fallback={<div className="flex justify-center p-8"><Spinner /></div>}>
                         <div className="flex flex-col sm:flex-row justify-between sm:items-center mb-4 md:mb-6 gap-3">
                             <h1 className="text-2xl md:text-3xl font-bold text-white">Painel do Rebanho</h1>
-                            <div className="hidden sm:flex">
+                            <div className="hidden sm:flex items-center gap-3">
+                                <button
+                                    onClick={() => setShowScaleImportModal(true)}
+                                    className="flex items-center gap-2 px-4 py-2 rounded-md bg-base-700 hover:bg-base-600 text-sm text-white border border-base-600"
+                                >
+                                    <span role="img" aria-label="balança">⚖️</span>
+                                    Importar Balança
+                                </button>
                                 {costlyActionsEnabled ? (
                                     <ExportButtons
                                         animals={filteredAnimals}
@@ -294,6 +347,7 @@ const App = ({ user, firebaseReady }: AppProps) => {
                             compactMode={config.compactMode}
                             calendarEvents={state.calendarEvents}
                             tasks={state.tasks}
+                            animals={filteredAnimals}
                         />
                         
                         <FilterBar
@@ -329,6 +383,13 @@ const App = ({ user, firebaseReady }: AppProps) => {
                         <Dashboard animals={filteredAnimals} onSelectAnimal={handleSelectAnimal} />
 
                         <div className="sm:hidden mt-6">
+                            <button
+                                onClick={() => setShowScaleImportModal(true)}
+                                className="w-full flex items-center justify-center gap-2 px-4 py-2 mb-3 rounded-md bg-base-700 hover:bg-base-600 text-sm text-white border border-base-600"
+                            >
+                                <span role="img" aria-label="balança">⚖️</span>
+                                Importar Balança
+                            </button>
                             {costlyActionsEnabled ? (
                                 <ExportButtons
                                     animals={filteredAnimals}
@@ -382,6 +443,19 @@ const App = ({ user, firebaseReady }: AppProps) => {
                         />
                     </Suspense>
                 )}
+
+                {currentView === 'batches' && (
+                    <Suspense fallback={<div className="flex justify-center p-8"><Spinner size="lg" /></div>}>
+                        <BatchManagement
+                            batches={batches}
+                            animals={state.animals}
+                            onCreateBatch={createBatch}
+                            onUpdateBatch={updateBatch}
+                            onDeleteBatch={deleteBatch}
+                            onCompleteBatch={completeBatch}
+                        />
+                    </Suspense>
+                )}
             </main>
 
             <Suspense fallback={null}>
@@ -401,6 +475,13 @@ const App = ({ user, firebaseReady }: AppProps) => {
                     onClose={() => setIsAddAnimalModalOpen(false)}
                     onAddAnimal={handleAddAnimal}
                     animals={state.animals}
+                />
+
+                <ScaleImportModal
+                    isOpen={showScaleImportModal}
+                    onClose={() => setShowScaleImportModal(false)}
+                    animals={state.animals}
+                    onImportComplete={handleScaleImportComplete}
                 />
 
                 <Chatbot animals={state.animals} />
