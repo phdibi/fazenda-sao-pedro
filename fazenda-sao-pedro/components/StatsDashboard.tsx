@@ -266,6 +266,7 @@ const StatsDashboard: React.FC<StatsDashboardProps> = ({
         const lightCount = stats.weightRangeDistribution?.leve || 0;
         const gmdData = stats.gmdStats;
         const hasGMD = !!gmdData && gmdData.animalsWithGMD > 0;
+
         const predictionTarget = useMemo(() => {
           const base = new Date();
           base.setMonth(base.getMonth() + 3);
