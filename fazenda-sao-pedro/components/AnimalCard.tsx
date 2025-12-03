@@ -244,12 +244,6 @@ const AnimalCard = ({
             {displayName}
           </h3>
 
-          {animal.nome && (
-            <p className="text-[11px] text-brand-primary-light">
-              Brinco: {animal.brinco}
-            </p>
-          )}
-
           <div className="mt-1 pt-1 border-t border-base-700/50 space-y-0.5 text-[10px]">
             <div className="flex justify-between gap-1">
               <span className="text-gray-400">Raça:</span>
@@ -258,15 +252,15 @@ const AnimalCard = ({
               </span>
             </div>
             <div className="flex justify-between gap-1">
-              <span className="text-gray-400">Peso:</span>
-              <span className="font-medium text-gray-200">
-                {animal.pesoKg} kg
-              </span>
-            </div>
-            <div className="flex justify-between gap-1">
               <span className="text-gray-400">Sexo:</span>
               <span className="font-medium text-gray-200 truncate">
                 {animal.sexo}
+              </span>
+            </div>
+            <div className="flex justify-between gap-1">
+              <span className="text-gray-400">Mãe:</span>
+              <span className="font-medium text-gray-200 truncate">
+                {animal.maeNome || 'Não informada'}
               </span>
             </div>
           </div>
