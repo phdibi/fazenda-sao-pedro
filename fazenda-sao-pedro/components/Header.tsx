@@ -102,24 +102,13 @@ const Header = ({
         <header className="bg-base-800 shadow-md">
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                 <div className="flex items-center justify-between h-16">
-                    {/* Logo - SEM TEXTO */}
-                    <div className="flex items-center gap-3">
+                    {/* Logo */}
+                    <div className="flex items-center">
                         <img 
                             src="/logo.png" 
                             alt="Fazenda+" 
                             className="h-12 w-auto cow-logo"
                         />
-                        {/* Badge de perfil */}
-                        {onRoleClick && (
-                            <button
-                                onClick={onRoleClick}
-                                className={`hidden sm:flex items-center gap-1 px-2 py-1 rounded-full text-xs text-white ${roleInfo.color} hover:opacity-80 transition-opacity`}
-                                title="Clique para trocar perfil"
-                            >
-                                <span>{roleInfo.icon}</span>
-                                <span>{roleInfo.label}</span>
-                            </button>
-                        )}
                     </div>
 
                     <div className="flex items-center gap-2">
@@ -193,7 +182,7 @@ const Header = ({
                             </div>
                         )}
                         
-                        {/* Avatar e Logout */}
+                        {/* Avatar, Perfil e Logout */}
                         <div className="flex items-center ml-2">
                             <div className="relative">
                                 <div className="flex items-center">
@@ -204,11 +193,24 @@ const Header = ({
                                     />
                                     <div className="ml-3 hidden sm:block">
                                         <div className="text-sm font-medium text-white">{user.displayName}</div>
-                                        {lastSync && (
-                                            <div className="text-xs text-gray-400">
-                                                Sync: {formatLastSync()}
-                                            </div>
-                                        )}
+                                        <div className="flex items-center gap-2">
+                                            {/* Badge de perfil discreto */}
+                                            {onRoleClick && (
+                                                <button
+                                                    onClick={onRoleClick}
+                                                    className="text-xs text-gray-400 hover:text-white flex items-center gap-1"
+                                                    title="Clique para trocar perfil"
+                                                >
+                                                    <span>{roleInfo.icon}</span>
+                                                    <span>{roleInfo.label}</span>
+                                                </button>
+                                            )}
+                                            {!onRoleClick && lastSync && (
+                                                <span className="text-xs text-gray-400">
+                                                    Sync: {formatLastSync()}
+                                                </span>
+                                            )}
+                                        </div>
                                     </div>
                                 </div>
                             </div>

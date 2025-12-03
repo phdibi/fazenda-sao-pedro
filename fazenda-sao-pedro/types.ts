@@ -258,6 +258,13 @@ export interface FilteredStats {
     animalsWithTreatments: number;
     mostUsedMedication: string;
   };
+  // GMD Stats (novo)
+  gmdStats?: {
+    averageGMD: number;
+    animalsWithGMD: number;
+    topPerformers: number;      // GMD > 1.0
+    underperformers: number;    // GMD < 0.5
+  };
 }
 
 // --- Report Types ---

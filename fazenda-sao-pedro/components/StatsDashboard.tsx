@@ -238,18 +238,33 @@ const StatsDashboard: React.FC<StatsDashboardProps> = ({
         );
 
       case 'weight-evolution':
-        // Mostra resumo de evolução de peso do rebanho
+        // Mostra resumo de evolução de peso e GMD do rebanho
         const totalWeight = stats.totalWeight || 0;
         const avgWeight = stats.averageWeight || 0;
         const heavyCount = stats.weightRangeDistribution?.pesado || 0;
         const mediumCount = stats.weightRangeDistribution?.medio || 0;
         const lightCount = stats.weightRangeDistribution?.leve || 0;
+        const gmdData = stats.gmdStats;
         
         return (
           <div className="space-y-4">
+            {/* GMD Médio - Destaque */}
+            {gmdData && gmdData.animalsWithGMD > 0 && (
+              <div className="text-center p-3 bg-gradient-to-r from-green-900/30 to-blue-900/30 rounded-lg border border-green-700/30">
+                <div className="text-3xl font-bold text-green-400">
+                  {gmdData.averageGMD.toFixed(3)} kg/dia
+                </div>
+                <div className="text-xs text-gray-400">GMD Médio ({gmdData.animalsWithGMD} animais)</div>
+                <div className="flex justify-center gap-4 mt-2">
+                  <span className="text-xs text-green-400">🚀 {gmdData.topPerformers} top</span>
+                  <span className="text-xs text-red-400">⚠️ {gmdData.underperformers} baixo</span>
+                </div>
+              </div>
+            )}
+            
             {/* Peso total do rebanho */}
             <div className="text-center p-3 bg-base-700/50 rounded-lg">
-              <div className="text-3xl font-bold text-brand-primary">
+              <div className="text-2xl font-bold text-brand-primary">
                 {(totalWeight / 1000).toFixed(1)} t
               </div>
               <div className="text-xs text-gray-400">Peso Total do Rebanho</div>
@@ -258,7 +273,7 @@ const StatsDashboard: React.FC<StatsDashboardProps> = ({
             {/* Gráfico de barras simplificado */}
             <div className="space-y-2">
               <div className="flex items-center gap-2">
-                <span className="text-xs text-gray-400 w-20">Pesados</span>
+                <span className="text-xs text-gray-400 w-16">Pesados</span>
                 <div className="flex-1 bg-base-700 rounded-full h-4 overflow-hidden">
                   <div 
                     className="bg-green-500 h-full rounded-full flex items-center justify-end pr-2"
@@ -269,7 +284,7 @@ const StatsDashboard: React.FC<StatsDashboardProps> = ({
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                <span className="text-xs text-gray-400 w-20">Médios</span>
+                <span className="text-xs text-gray-400 w-16">Médios</span>
                 <div className="flex-1 bg-base-700 rounded-full h-4 overflow-hidden">
                   <div 
                     className="bg-yellow-500 h-full rounded-full flex items-center justify-end pr-2"
@@ -280,7 +295,7 @@ const StatsDashboard: React.FC<StatsDashboardProps> = ({
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                <span className="text-xs text-gray-400 w-20">Leves</span>
+                <span className="text-xs text-gray-400 w-16">Leves</span>
                 <div className="flex-1 bg-base-700 rounded-full h-4 overflow-hidden">
                   <div 
                     className="bg-red-500 h-full rounded-full flex items-center justify-end pr-2"
