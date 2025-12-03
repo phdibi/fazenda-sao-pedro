@@ -383,24 +383,31 @@ const App = ({ user, firebaseReady }: AppProps) => {
                         <Dashboard animals={filteredAnimals} onSelectAnimal={handleSelectAnimal} />
 
                         <div className="sm:hidden mt-6">
-                            <button
-                                onClick={() => setShowScaleImportModal(true)}
-                                className="w-full flex items-center justify-center gap-2 px-4 py-2 mb-3 rounded-md bg-base-700 hover:bg-base-600 text-sm text-white border border-base-600"
-                            >
-                                <span role="img" aria-label="balança">⚖️</span>
-                                Importar Balança
-                            </button>
-                            {costlyActionsEnabled ? (
-                                <ExportButtons
-                                    animals={filteredAnimals}
-                                    stats={stats}
-                                    areas={state.managementAreas}
-                                />
-                            ) : (
-                                <div className="text-xs text-yellow-300 border border-yellow-700 rounded px-3 py-2 bg-yellow-900/20">
-                                    Configure o Firebase para habilitar exportação.
-                                </div>
-                            )}
+                            <div className="grid grid-cols-3 gap-2">
+                                <button
+                                    onClick={() => setShowScaleImportModal(true)}
+                                    className="flex items-center justify-center gap-2 px-3 py-3 rounded-lg bg-base-700 hover:bg-base-600 text-xs font-semibold text-white border border-base-600"
+                                >
+                                    <span role="img" aria-label="balança">⚖️</span>
+                                    <span className="leading-tight text-left">Importar
+                                        <br />Balança
+                                    </span>
+                                </button>
+                                {costlyActionsEnabled ? (
+                                    <div className="col-span-2">
+                                        <ExportButtons
+                                            animals={filteredAnimals}
+                                            stats={stats}
+                                            areas={state.managementAreas}
+                                            variant="compact"
+                                        />
+                                    </div>
+                                ) : (
+                                    <div className="col-span-2 text-xs text-yellow-300 border border-yellow-700 rounded px-3 py-2 bg-yellow-900/20 flex items-center justify-center text-center">
+                                        Configure o Firebase para habilitar exportação.
+                                    </div>
+                                )}
+                            </div>
                         </div>
                     </Suspense>
                 )}
