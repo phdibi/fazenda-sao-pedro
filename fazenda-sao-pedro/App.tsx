@@ -1,23 +1,24 @@
 import React, { useState, useMemo, useEffect, lazy, Suspense } from 'react';
 import Header from './components/Header';
 import { offlineQueue } from './utils/offlineSync';
-import Dashboard from './components/Dashboard';
-import AnimalDetailModal from './components/AnimalDetailModal';
-import AddAnimalModal from './components/AddAnimalModal';
 import { useFirestoreOptimized } from './hooks/useFirestoreOptimized';
 import { Animal, AppUser } from './types';
-import FilterBar from './components/FilterBar';
-import Chatbot from './components/Chatbot';
-import StatsDashboard from './components/StatsDashboard';
-import TasksView from './components/TasksView';
 import Spinner from './components/common/Spinner';
 import MobileNavBar from './components/MobileNavBar';
 import { useAdvancedFilters } from './hooks/useAdvancedFilters';
 import { useDashboardConfig } from './hooks/useDashboardConfig';
-import ExportButtons from './components/ExportButtons';
-import DashboardSettings from './components/DashboardSettings';
 import { db, storage } from './services/firebase';
 
+// OTIMIZAÇÃO: Lazy load de todos componentes pesados
+const Dashboard = lazy(() => import('./components/Dashboard'));
+const AnimalDetailModal = lazy(() => import('./components/AnimalDetailModal'));
+const AddAnimalModal = lazy(() => import('./components/AddAnimalModal'));
+const FilterBar = lazy(() => import('./components/FilterBar'));
+const Chatbot = lazy(() => import('./components/Chatbot'));
+const StatsDashboard = lazy(() => import('./components/StatsDashboard'));
+const TasksView = lazy(() => import('./components/TasksView'));
+const ExportButtons = lazy(() => import('./components/ExportButtons'));
+const DashboardSettings = lazy(() => import('./components/DashboardSettings'));
 const CalendarView = lazy(() => import('./components/CalendarView'));
 const ReportsView = lazy(() => import('./components/ReportsView'));
 const ManagementView = lazy(() => import('./components/ManagementView'));
@@ -96,14 +97,14 @@ const App = ({ user, firebaseReady }: AppProps) => {
         const handleSync = async () => {
             console.log('🔄 Internet voltou! Sincronizando dados offline...');
             await offlineQueue.processQueue(db);
-            localStorage.removeItem('animals');
-            await forceSync();
+            // OTIMIZAÇÃO: Não força sync completo - cache local já está atualizado
+            // As operações offline já foram aplicadas no estado local
             alert('✅ Dados sincronizados com sucesso!');
         };
 
         window.addEventListener('sync-offline-data', handleSync);
         return () => window.removeEventListener('sync-offline-data', handleSync);
-    }, [db, forceSync]);
+    }, [db]);
 
     const handleSelectAnimal = (animal: Animal) => {
         setSelectedAnimalId(animal.id);

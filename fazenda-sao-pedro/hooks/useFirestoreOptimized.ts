@@ -6,8 +6,8 @@ import { Animal, CalendarEvent, Task, ManagementArea, Sexo, WeighingType, AppUse
 // 🔧 CACHE LOCAL COM INDEXEDDB
 // ============================================
 
-const CACHE_VERSION = 'v1';
-const CACHE_EXPIRY_MS = 15 * 60 * 1000; // 15 minutos para reduzir hits ao Firestore
+const CACHE_VERSION = 'v2';
+const CACHE_EXPIRY_MS = 30 * 60 * 1000; // 30 minutos - economia de ~50% leituras Firestore
 
 interface CacheEntry<T> {
     data: T[];
@@ -309,35 +309,44 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
 
         const cacheKey = `${userId}_${collectionName}`;
         
-        // 1. Tenta carregar do cache primeiro
-        const cached = await localCache.get<T>(cacheKey);
-        if (cached && localCache.isFresh(cached.timestamp)) {
-            console.log(`📦 [CACHE HIT] ${collectionName}`);
-            dispatch({ type: 'SET_DATA', payload: { collection: collectionName as any, data: cached.data } });
-            dispatch({ type: 'SET_LOADING_STATUS', payload: { collection: loadingKey, status: false } });
-            return cached.data;
-        }
-
-        // 2. Cache expirado - busca do Firestore
-        console.log(`🔥 [FIRESTORE] Buscando ${collectionName}...`);
-        
-        try {
+        // Função para buscar do Firestore
+        const fetchFromFirestore = async (): Promise<T[]> => {
+            console.log(`🔥 [FIRESTORE] Buscando ${collectionName}...`);
             const snapshot = await db.collection(firestorePath)
                 .where("userId", "==", userId)
                 .get();
 
-            const data = snapshot.docs.map(doc => {
+            return snapshot.docs.map((doc: any) => {
                 const docData = convertTimestampsToDates(doc.data());
                 let entity = { id: doc.id, ...docData } as T;
-                
-                if (processEntity) {
-                    entity = processEntity(entity);
-                }
-                
+                if (processEntity) entity = processEntity(entity);
                 return entity;
             });
+        };
+        
+        // 1. Tenta carregar do cache primeiro
+        const cached = await localCache.get<T>(cacheKey);
+        
+        if (cached) {
+            // STALE-WHILE-REVALIDATE: Retorna cache imediatamente
+            console.log(`📦 [CACHE ${localCache.isFresh(cached.timestamp) ? 'HIT' : 'STALE'}] ${collectionName}`);
+            dispatch({ type: 'SET_DATA', payload: { collection: collectionName as any, data: cached.data } });
+            dispatch({ type: 'SET_LOADING_STATUS', payload: { collection: loadingKey, status: false } });
+            
+            // Se expirou, revalida em background (sem bloquear UI)
+            if (!localCache.isFresh(cached.timestamp)) {
+                fetchFromFirestore().then(async (data) => {
+                    await localCache.set(cacheKey, data);
+                    dispatch({ type: 'SET_DATA', payload: { collection: collectionName as any, data } });
+                    console.log(`🔄 [REVALIDATED] ${collectionName}`);
+                }).catch(err => console.error(`Erro ao revalidar ${collectionName}:`, err));
+            }
+            return cached.data;
+        }
 
-            // 3. Salva no cache
+        // 2. Sem cache - busca do Firestore
+        try {
+            const data = await fetchFromFirestore();
             await localCache.set(cacheKey, data);
             
             dispatch({ type: 'SET_DATA', payload: { collection: collectionName as any, data } });

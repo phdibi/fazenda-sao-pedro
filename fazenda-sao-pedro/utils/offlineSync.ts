@@ -9,9 +9,18 @@ interface QueuedOperation {
 class OfflineQueue {
   private storageKey = 'offline_operations_queue';
 
-  // Adiciona operação na fila
+  // Adiciona operação na fila (com deduplicação)
   add(operation: Omit<QueuedOperation, 'id' | 'timestamp'>) {
-    const queue = this.getQueue();
+    let queue = this.getQueue();
+    
+    // OTIMIZAÇÃO: Remove operações anteriores no mesmo documento
+    // Evita múltiplas writes desnecessárias no Firestore
+    if (operation.data?.id) {
+      queue = queue.filter(op => 
+        !(op.collection === operation.collection && op.data?.id === operation.data?.id)
+      );
+    }
+    
     const newOp: QueuedOperation = {
       ...operation,
       id: `${Date.now()}_${Math.random()}`,

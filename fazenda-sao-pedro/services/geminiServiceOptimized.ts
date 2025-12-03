@@ -80,6 +80,32 @@ class GeminiCache {
 const geminiCache = new GeminiCache();
 
 // ============================================
+// 🔧 OTIMIZAÇÃO: RATE LIMITING
+// ============================================
+// Evita estourar cotas do plano gratuito
+const RATE_LIMIT = { 
+    calls: 15, // máximo de chamadas
+    windowMs: 60 * 1000 // por minuto
+};
+
+let rateLimitState = {
+    callCount: 0,
+    windowStart: Date.now()
+};
+
+const checkRateLimit = (): void => {
+    const now = Date.now();
+    if (now - rateLimitState.windowStart > RATE_LIMIT.windowMs) {
+        rateLimitState = { callCount: 0, windowStart: now };
+    }
+    if (rateLimitState.callCount >= RATE_LIMIT.calls) {
+        throw new Error('⏳ Limite de IA atingido. Aguarde 1 minuto.');
+    }
+    rateLimitState.callCount++;
+    console.log(`🤖 [RATE] ${rateLimitState.callCount}/${RATE_LIMIT.calls} chamadas`);
+};
+
+// ============================================
 // 🔧 OTIMIZAÇÃO: LAZY INITIALIZATION
 // ============================================
 let ai: GoogleGenAI | null = null;
@@ -165,6 +191,7 @@ export const structureMedicalDataFromText = async (
     if (cached) return cached;
 
     return debouncedCall(`med:${text}`, async () => {
+        checkRateLimit(); // Rate limit antes da chamada
         try {
             const aiClient = getAiClient();
             console.log("🤖 [GEMINI] Processando dados médicos...");
@@ -195,6 +222,7 @@ export const structureAnimalDataFromText = async (
     if (cached) return cached;
 
     return debouncedCall(`animal:${text}`, async () => {
+        checkRateLimit(); // Rate limit antes da chamada
         try {
             const aiClient = getAiClient();
             console.log("🤖 [GEMINI] Processando registro de animal...");
