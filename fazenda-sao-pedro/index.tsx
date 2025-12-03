@@ -112,11 +112,32 @@ const isFirebaseAuthSupported = (): { supported: boolean; reason: string | null 
     return { supported: true, reason: null };
 };
 
+const validateFirebaseConfig = (): { valid: boolean; reason: string | null } => {
+    const config = (window as any).__FIREBASE_CONFIG__;
+
+    if (!config) {
+        return {
+            valid: false,
+            reason: 'A configuração do Firebase não foi carregada. Verifique a tag <script> em index.html.',
+        };
+    }
+
+    if (!config.apiKey || config.apiKey === 'YOUR_API_KEY' || !config.projectId) {
+        return {
+            valid: false,
+            reason: 'A configuração do Firebase está incompleta. Atualize window.__FIREBASE_CONFIG__ em index.html.',
+        };
+    }
+
+    return { valid: true, reason: null };
+};
+
 const RootComponent = () => {
   const [user, setUser] = useState<AppUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [environmentError, setEnvironmentError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [firebaseConfigValid, setFirebaseConfigValid] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
@@ -130,6 +151,14 @@ const RootComponent = () => {
     }
 
     // --- 2. Verificação de Configuração do Firebase ---
+    const firebaseConfigStatus = validateFirebaseConfig();
+    if (!firebaseConfigStatus.valid) {
+        setError(firebaseConfigStatus.reason);
+        setLoading(false);
+        return;
+    }
+    setFirebaseConfigValid(true);
+
     if (!auth) {
         setError(
             "A configuração do Firebase é inválida ou está ausente. " +
@@ -270,7 +299,7 @@ const RootComponent = () => {
       return <LoginScreen onLogin={handleGoogleLogin} initialError={null} />;
   }
 
-  return <App user={user} />;
+  return <App user={user} firebaseReady={firebaseConfigValid} />;
 };
 
 

@@ -15,6 +15,7 @@ interface AnimalDetailModalProps {
   onDeleteAnimal: (animalId: string) => Promise<void>;
   animals: Animal[];
   user: AppUser;
+  storageReady: boolean;
 }
 
 const formatDate = (date: Date) => {
@@ -61,12 +62,13 @@ const TabButton = ({ tabName, label, activeTab, onClick }: TabButtonProps) => (
 );
 
 
-const AnimalDetailModal = ({ 
-    animal, isOpen, onClose, 
-    onUpdateAnimal, 
+const AnimalDetailModal = ({
+    animal, isOpen, onClose,
+    onUpdateAnimal,
     onDeleteAnimal,
     animals,
-    user
+    user,
+    storageReady
 }: AnimalDetailModalProps) => {
   const [medicationForm, setMedicationForm] = useState<MedicationFormState>({
       medicamento: '',
@@ -396,15 +398,22 @@ if (name === 'dataNascimento') {
 
       {/* ADICIONEI pb-48 md:pb-4 aqui ↓ */}
       <div className="mt-4 min-h-[50vh] pb-48 md:pb-4">
-        {activeTab === 'general' && 
+        {activeTab === 'general' &&
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
-              <ImageAnalyzerOptimized 
-                  imageUrl={editableAnimal.fotos[0]} 
-                  onUploadComplete={handleUploadComplete}
-                  animalId={animal.id}
-                  userId={user.uid} 
-              />
+              {storageReady ? (
+                  <ImageAnalyzerOptimized
+                      imageUrl={editableAnimal.fotos[0]}
+                      onUploadComplete={handleUploadComplete}
+                      animalId={animal.id}
+                      userId={user.uid}
+                  />
+              ) : (
+                  <div className="rounded-lg border border-yellow-700 bg-yellow-900/30 p-4 text-sm text-yellow-200">
+                      <p className="font-semibold text-yellow-100">Upload temporariamente indisponível</p>
+                      <p>Ative o Firebase Storage e confirme a configuração em index.html para liberar uploads de fotos.</p>
+                  </div>
+              )}
             </div>
             <div className="space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">

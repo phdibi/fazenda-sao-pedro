@@ -16,6 +16,7 @@ import { useAdvancedFilters } from './hooks/useAdvancedFilters';
 import { useDashboardConfig } from './hooks/useDashboardConfig';
 import ExportButtons from './components/ExportButtons';
 import DashboardSettings from './components/DashboardSettings';
+import { db, storage } from './services/firebase';
 
 const CalendarView = lazy(() => import('./components/CalendarView'));
 const ReportsView = lazy(() => import('./components/ReportsView'));
@@ -23,11 +24,12 @@ const ManagementView = lazy(() => import('./components/ManagementView'));
 
 interface AppProps {
     user: AppUser;
+    firebaseReady: boolean;
 }
 
 const AUTO_SYNC_INTERVAL_MS = 5 * 60 * 1000;
 
-const App = ({ user }: AppProps) => {
+const App = ({ user, firebaseReady }: AppProps) => {
     const {
         state,
         db,
@@ -76,23 +78,27 @@ const App = ({ user }: AppProps) => {
         areas: state.managementAreas 
     });
 
-    const { 
-        config, 
-        enabledWidgets, 
-        toggleWidget, 
-        setWidgetSize, 
-        resetToDefault 
+    const {
+        config,
+        enabledWidgets,
+        toggleWidget,
+        setWidgetSize,
+        resetToDefault
     } = useDashboardConfig();
 
+    const hasDatabase = Boolean(db);
+    const hasStorage = Boolean(storage);
+    const costlyActionsEnabled = firebaseReady && hasDatabase && hasStorage;
+
     useEffect(() => {
+        if (!db) return;
+
         const handleSync = async () => {
-            if (db) {
-                console.log('🔄 Internet voltou! Sincronizando dados offline...');
-                await offlineQueue.processQueue(db);
-                localStorage.removeItem('animals');
-                await forceSync();
-                alert('✅ Dados sincronizados com sucesso!');
-            }
+            console.log('🔄 Internet voltou! Sincronizando dados offline...');
+            await offlineQueue.processQueue(db);
+            localStorage.removeItem('animals');
+            await forceSync();
+            alert('✅ Dados sincronizados com sucesso!');
         };
 
         window.addEventListener('sync-offline-data', handleSync);
@@ -162,6 +168,8 @@ const App = ({ user }: AppProps) => {
     };
 
     useEffect(() => {
+        if (!db) return;
+
         const intervalId = window.setInterval(() => {
             if (navigator.onLine) {
                 forceSync();
@@ -169,7 +177,7 @@ const App = ({ user }: AppProps) => {
         }, AUTO_SYNC_INTERVAL_MS);
 
         return () => window.clearInterval(intervalId);
-    }, [forceSync]);
+    }, [forceSync, db]);
 
     const isAppLoading = state.loading.animals || state.loading.calendar || state.loading.tasks || state.loading.areas;
     
@@ -192,21 +200,37 @@ const App = ({ user }: AppProps) => {
                 setCurrentView={setCurrentView}
                 onAddAnimalClick={handleOpenAddAnimalModal}
                 user={user}
-                onForceSync={forceSync}
+                onForceSync={hasDatabase ? forceSync : undefined}
                 lastSync={state.lastSync}
             />
 
             <main className="p-4 md:p-8 max-w-7xl mx-auto">
+                {!costlyActionsEnabled && (
+                    <div className="mb-4 rounded-lg border border-yellow-700 bg-yellow-900/30 p-3 text-yellow-200 text-sm">
+                        <p className="font-semibold text-yellow-100">Configuração necessária</p>
+                        <p>
+                            Para usar exportação e upload, confirme o <code className="bg-base-800 px-1 rounded">window.__FIREBASE_CONFIG__</code> no
+                            <code className="bg-base-800 px-1 rounded ml-1">index.html</code> e garanta que Firestore e Storage estejam ativos.
+                        </p>
+                    </div>
+                )}
+
                 {currentView === 'dashboard' && (
                     <>
                         <div className="flex flex-col sm:flex-row justify-between sm:items-center mb-4 md:mb-6 gap-3">
                             <h1 className="text-2xl md:text-3xl font-bold text-white">Painel do Rebanho</h1>
                             <div className="hidden sm:flex">
-                                <ExportButtons
-                                    animals={filteredAnimals}
-                                    stats={stats}
-                                    areas={state.managementAreas}
-                                />
+                                {costlyActionsEnabled ? (
+                                    <ExportButtons
+                                        animals={filteredAnimals}
+                                        stats={stats}
+                                        areas={state.managementAreas}
+                                    />
+                                ) : (
+                                    <div className="text-xs text-yellow-300 border border-yellow-700 rounded px-3 py-2 bg-yellow-900/20">
+                                        Configure o Firebase para habilitar exportação.
+                                    </div>
+                                )}
                             </div>
                         </div>
                         
@@ -259,13 +283,19 @@ const App = ({ user }: AppProps) => {
                         />
                         
                         <Dashboard animals={filteredAnimals} onSelectAnimal={handleSelectAnimal} />
-                        
+
                         <div className="sm:hidden mt-6">
-                            <ExportButtons
-                                animals={filteredAnimals}
-                                stats={stats}
-                                areas={state.managementAreas}
-                            />
+                            {costlyActionsEnabled ? (
+                                <ExportButtons
+                                    animals={filteredAnimals}
+                                    stats={stats}
+                                    areas={state.managementAreas}
+                                />
+                            ) : (
+                                <div className="text-xs text-yellow-300 border border-yellow-700 rounded px-3 py-2 bg-yellow-900/20">
+                                    Configure o Firebase para habilitar exportação.
+                                </div>
+                            )}
                         </div>
                     </>
                 )}
@@ -316,6 +346,7 @@ const App = ({ user }: AppProps) => {
                 onDeleteAnimal={handleDeleteAnimal}
                 animals={state.animals}
                 user={user}
+                storageReady={costlyActionsEnabled}
             />
 
             <AddAnimalModal
