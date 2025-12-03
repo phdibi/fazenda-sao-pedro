@@ -6,9 +6,10 @@ interface ExportButtonsProps {
   animals: Animal[];
   stats: FilteredStats;
   areas: ManagementArea[];
+  variant?: 'default' | 'compact';
 }
 
-const ExportButtons: React.FC<ExportButtonsProps> = ({ animals, stats, areas }) => {
+const ExportButtons: React.FC<ExportButtonsProps> = ({ animals, stats, areas, variant = 'default' }) => {
   const handleCSV = () => {
     const data = prepareAnimalDataForExport(animals);
     exportToCSV(data, CSV_HEADERS, `animais_${new Date().toISOString().slice(0, 10)}.csv`);
@@ -23,19 +24,27 @@ const ExportButtons: React.FC<ExportButtonsProps> = ({ animals, stats, areas }) 
     });
   };
 
+  const baseButtonClasses =
+    'px-3 py-2 rounded-lg text-sm font-medium flex items-center justify-center gap-2 transition-colors';
+
+  const containerClasses =
+    variant === 'compact' ? 'grid grid-cols-2 gap-2 w-full' : 'flex gap-2';
+
   return (
-    <div className="flex gap-2">
+    <div className={containerClasses}>
       <button
         onClick={handleCSV}
-        className="px-3 py-2 bg-green-600 hover:bg-green-700 rounded-lg text-sm flex items-center gap-2"
+        className={`${baseButtonClasses} bg-green-600 hover:bg-green-700 text-white`}
       >
-        <span>📊</span> CSV
+        <span>📊</span>
+        <span>CSV</span>
       </button>
       <button
         onClick={handlePDF}
-        className="px-3 py-2 bg-red-600 hover:bg-red-700 rounded-lg text-sm flex items-center gap-2"
+        className={`${baseButtonClasses} bg-red-600 hover:bg-red-700 text-white`}
       >
-        <span>📄</span> PDF
+        <span>📄</span>
+        <span>PDF</span>
       </button>
     </div>
   );

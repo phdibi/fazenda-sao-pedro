@@ -21,6 +21,7 @@ const AnimalCard = ({
 }: AnimalCardProps) => {
   const [swipeX, setSwipeX] = useState(0);
   const [isSwiping, setIsSwiping] = useState(false);
+  const [longPressTriggered, setLongPressTriggered] = useState(false);
   const touchStartX = useRef(0);
   const touchStartY = useRef(0);
   const longPressTimer = useRef<NodeJS.Timeout | null>(null);
@@ -47,6 +48,7 @@ const AnimalCard = ({
   const handleTouchStart = useCallback((e: React.TouchEvent) => {
     touchStartX.current = e.touches[0].clientX;
     touchStartY.current = e.touches[0].clientY;
+    setLongPressTriggered(false);
     setIsSwiping(true);
 
     // Inicia timer de long press
@@ -56,6 +58,7 @@ const AnimalCard = ({
         if (rect) {
           onLongPress(animal, { x: rect.left + rect.width / 2, y: rect.top });
         }
+        setLongPressTriggered(true);
         setIsSwiping(false);
         setSwipeX(0);
       }, LONG_PRESS_DURATION);
@@ -63,7 +66,7 @@ const AnimalCard = ({
   }, [animal, onLongPress]);
 
   const handleTouchMove = useCallback((e: React.TouchEvent) => {
-    if (!isSwiping) return;
+    if (!isSwiping || longPressTriggered) return;
 
     const deltaX = e.touches[0].clientX - touchStartX.current;
     const deltaY = Math.abs(e.touches[0].clientY - touchStartY.current);
@@ -78,13 +81,20 @@ const AnimalCard = ({
     if (deltaY < 30) {
       setSwipeX(Math.max(-100, Math.min(100, deltaX)));
     }
-  }, [isSwiping]);
+  }, [isSwiping, longPressTriggered]);
 
   const handleTouchEnd = useCallback(() => {
     // Cancela long press
     if (longPressTimer.current) {
       clearTimeout(longPressTimer.current);
       longPressTimer.current = null;
+    }
+
+    if (longPressTriggered) {
+      setLongPressTriggered(false);
+      setSwipeX(0);
+      setIsSwiping(false);
+      return;
     }
 
     if (swipeX > SWIPE_THRESHOLD && onQuickWeight) {
@@ -97,7 +107,17 @@ const AnimalCard = ({
 
     setSwipeX(0);
     setIsSwiping(false);
-  }, [swipeX, animal, onQuickWeight, onQuickMedication]);
+  }, [swipeX, animal, onQuickWeight, onQuickMedication, longPressTriggered]);
+
+  const handleTouchCancel = useCallback(() => {
+    if (longPressTimer.current) {
+      clearTimeout(longPressTimer.current);
+      longPressTimer.current = null;
+    }
+    setLongPressTriggered(false);
+    setSwipeX(0);
+    setIsSwiping(false);
+  }, []);
 
   // Mouse handlers para desktop (long press)
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
@@ -116,10 +136,10 @@ const AnimalCard = ({
   }, []);
 
   const handleClick = useCallback((e: React.MouseEvent) => {
-    if (Math.abs(swipeX) < 10) {
+    if (!longPressTriggered && Math.abs(swipeX) < 10) {
       onClick();
     }
-  }, [swipeX, onClick]);
+  }, [swipeX, longPressTriggered, onClick]);
 
   return (
     <div className="relative overflow-hidden rounded-lg">
@@ -154,6 +174,7 @@ const AnimalCard = ({
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
+        onTouchCancel={handleTouchCancel}
         onMouseDown={handleMouseDown}
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}

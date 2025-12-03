@@ -142,14 +142,26 @@ const Header = ({
                         <button
                             onClick={() => setCurrentView('reports')}
                             className={`md:hidden flex items-center justify-center p-2 rounded-md transition-colors ${
-                                currentView === 'reports' 
-                                    ? 'bg-brand-primary text-white' 
+                                currentView === 'reports'
+                                    ? 'bg-brand-primary text-white'
                                     : 'text-gray-300 hover:text-white hover:bg-base-700'
                             }`}
                             aria-label="Relatórios"
                         >
                             <DocumentChartBarIcon className="w-6 h-6" />
                         </button>
+
+                        {/* Troca de perfil - MOBILE */}
+                        {onRoleClick && (
+                            <button
+                                onClick={onRoleClick}
+                                className="md:hidden flex items-center gap-1 px-3 py-1.5 rounded-md bg-base-700 border border-base-600 text-xs text-gray-200 hover:text-white hover:bg-base-600"
+                                title="Trocar perfil"
+                            >
+                                <span>{roleInfo.icon}</span>
+                                <span className="font-semibold">{roleInfo.label}</span>
+                            </button>
+                        )}
 
                         {/* Botão de Sincronização */}
                         {onForceSync && (
