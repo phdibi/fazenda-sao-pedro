@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import Spinner from './common/Spinner';
 import { PhotoIcon, CheckIcon } from './common/Icons';
 import { storage } from '../services/firebase';
+import { compressImage, getOptimalFormat } from '../utils/imageOptimization';
 
 interface ImageAnalyzerProps {
   imageUrl: string;
@@ -17,6 +18,33 @@ type UploadError = {
 };
 
 type UploadStatus = 'idle' | 'uploading' | 'success' | 'error';
+
+const MAX_FILE_SIZE_BYTES = 2 * 1024 * 1024; // 2MB
+const MAX_IMAGE_DIMENSION = 3000; // px
+const QUEUE_MESSAGE =
+  '⏳ Já existe um upload em andamento. Aguarde a conclusão ou cancele antes de enviar outro arquivo.';
+
+const getImageDimensions = (file: File): Promise<{ width: number; height: number }> => {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const objectUrl = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(objectUrl);
+      resolve({ width: img.width, height: img.height });
+    };
+    img.onerror = (error) => {
+      URL.revokeObjectURL(objectUrl);
+      reject(error);
+    };
+    img.src = objectUrl;
+  });
+};
+
+const buildFileFromBlob = (blob: Blob, originalFile: File): File => {
+  const extension = blob.type === 'image/webp' ? 'webp' : originalFile.name.split('.').pop() || 'jpg';
+  const safeName = originalFile.name.replace(/\.[^.]+$/, '');
+  return new File([blob], `${safeName}.${extension}`, { type: blob.type, lastModified: Date.now() });
+};
 
 const ImageAnalyzer = ({ imageUrl, onUploadComplete, animalId, userId }: ImageAnalyzerProps) => {
   const [previewUrl, setPreviewUrl] = useState<string>(imageUrl);
@@ -56,6 +84,11 @@ const ImageAnalyzer = ({ imageUrl, onUploadComplete, animalId, userId }: ImageAn
     const file = event.target.files?.[0];
     if (!file) return;
 
+    if (uploadTaskRef.current && uploadStatus === 'uploading') {
+      setError({ message: QUEUE_MESSAGE });
+      return;
+    }
+
     if (!storage) {
       setError({
         message: "O serviço de armazenamento (Firebase Storage) não está disponível. Verifique a configuração do Firebase em index.html.",
@@ -70,20 +103,49 @@ const ImageAnalyzer = ({ imageUrl, onUploadComplete, animalId, userId }: ImageAn
     setUploadStatus('uploading');
     timeoutTriggeredRef.current = false;
 
-    if (uploadTaskRef.current) {
-      uploadTaskRef.current.cancel();
+    let fileToUpload: File = file;
+
+    try {
+      const { width, height } = await getImageDimensions(file);
+      const isOversized =
+        file.size > MAX_FILE_SIZE_BYTES || width > MAX_IMAGE_DIMENSION || height > MAX_IMAGE_DIMENSION;
+
+      if (isOversized) {
+        const compressedBlob = await compressImage(file, {
+          maxWidth: MAX_IMAGE_DIMENSION,
+          maxHeight: MAX_IMAGE_DIMENSION,
+          quality: 0.72,
+          format: getOptimalFormat()
+        });
+
+        if (compressedBlob.size > MAX_FILE_SIZE_BYTES) {
+          setError({
+            message: `A imagem está muito grande mesmo após compressão (${(compressedBlob.size / (1024 * 1024)).toFixed(2)}MB). Use uma imagem menor ou reduza a resolução.`,
+            isConfigError: false
+          });
+          setUploadStatus('error');
+          return;
+        }
+
+        fileToUpload = buildFileFromBlob(compressedBlob, file);
+      }
+    } catch (compressionError: any) {
+      console.error('Falha ao validar/comprimir imagem:', compressionError);
+      setError({ message: 'Não foi possível preparar a imagem para upload. Tente novamente com outro arquivo.', isConfigError: false });
+      setUploadStatus('error');
+      return;
     }
 
-    const localPreviewUrl = URL.createObjectURL(file);
+    const localPreviewUrl = URL.createObjectURL(fileToUpload);
     setPreviewUrl(localPreviewUrl);
 
     try {
       const timestamp = new Date().getTime();
-      const fileExtension = file.name.split('.').pop() || 'jpg';
+      const fileExtension = fileToUpload.name.split('.').pop() || 'jpg';
       const storagePath = `animal_photos/${userId}/${animalId}/${timestamp}.${fileExtension}`;
       const storageRef = storage.ref(storagePath);
 
-      const uploadTask = storageRef.put(file);
+      const uploadTask = storageRef.put(fileToUpload);
       uploadTaskRef.current = uploadTask;
 
       // Timeout mechanism
