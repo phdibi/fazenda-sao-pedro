@@ -332,7 +332,8 @@ export interface GainMetrics {
 // ============================================
 
 export interface ManagementBatch {
-  id: string visita: string;
+  id: string 
+  visita: string;
   name: string;
   description?: string;
   animalIds: string[];
