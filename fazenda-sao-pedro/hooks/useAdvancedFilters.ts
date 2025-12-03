@@ -1,8 +1,8 @@
 import { useState, useMemo, useCallback } from 'react';
-import { 
-  Animal, 
+import {
+  Animal,
   ManagementArea,
-  AdvancedFilters, 
+  AdvancedFilters,
   DEFAULT_ADVANCED_FILTERS,
   SortConfig,
   WeightRange,
@@ -13,6 +13,7 @@ import {
   Sexo
 } from '../types';
 import { debounce } from '../utils/helpers';
+import { calcularGMDAnimal } from '../utils/gmdCalculations';
 
 interface UseAdvancedFiltersProps {
   animals: Animal[];
@@ -278,26 +279,15 @@ export const useAdvancedFilters = ({
     let underperformers = 0;
 
     activeAnimals.forEach(a => {
-      if (a.historicoPesos && a.historicoPesos.length >= 2) {
-        const sortedWeights = [...a.historicoPesos].sort(
-          (w1, w2) => new Date(w1.date).getTime() - new Date(w2.date).getTime()
-        );
-        const firstWeight = sortedWeights[0];
-        const lastWeight = sortedWeights[sortedWeights.length - 1];
-        
-        const days = Math.ceil(
-          (new Date(lastWeight.date).getTime() - new Date(firstWeight.date).getTime()) / (1000 * 60 * 60 * 24)
-        );
-        
-        if (days >= 30) {
-          const gmd = (lastWeight.weightKg - firstWeight.weightKg) / days;
-          if (gmd > 0) {
-            totalGMD += gmd;
-            animalsWithGMD++;
-            if (gmd >= 1.0) topPerformers++;
-            if (gmd < 0.5) underperformers++;
-          }
-        }
+      const gmdMetrics = calcularGMDAnimal(a);
+      const gmd = gmdMetrics.gmdTotal;
+
+      if (gmd && gmd > 0) {
+        totalGMD += gmd;
+        animalsWithGMD++;
+
+        if (gmd >= 1.0) topPerformers++;
+        if (gmd < 0.5) underperformers++;
       }
     });
 
