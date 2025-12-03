@@ -312,3 +312,249 @@ export interface ComprehensiveReport {
   sanitary: SanitaryReportData;
   reproductive: ReproductiveReportData;
 }
+
+// ============================================
+// 🆕 GMD - GANHO MÉDIO DIÁRIO
+// ============================================
+
+export interface GainMetrics {
+  gmdNascimentoDesmame?: number;  // kg/dia
+  gmdDesmameSobreano?: number;    // kg/dia
+  gmdTotal?: number;              // kg/dia geral
+  gmdUltimos30Dias?: number;      // kg/dia recente
+  diasAcompanhamento?: number;
+  pesoInicial?: number;
+  pesoFinal?: number;
+}
+
+// ============================================
+// 🆕 LOTES DE MANEJO
+// ============================================
+
+export interface ManagementBatch {
+  id: string visita: string;
+  name: string;
+  description?: string;
+  animalIds: string[];
+  createdAt: Date;
+  completedAt?: Date;
+  purpose: BatchPurpose;
+  status: 'active' | 'completed' | 'archived';
+  notes?: string;
+}
+
+export enum BatchPurpose {
+  Vacinacao = 'Vacinação',
+  Vermifugacao = 'Vermifugação',
+  Pesagem = 'Pesagem',
+  Venda = 'Venda',
+  Desmame = 'Desmame',
+  Confinamento = 'Confinamento',
+  Exposicao = 'Exposição',
+  Apartacao = 'Apartação',
+  Outros = 'Outros',
+}
+
+// ============================================
+// 🆕 INTEGRAÇÃO BALANÇA DIGITAL
+// ============================================
+
+export interface ScaleReading {
+  id: string;
+  timestamp: Date;
+  weight: number;
+  unit: 'kg' | 'arroba';
+  animalBrinco?: string;
+  matched: boolean;
+  animalId?: string;
+}
+
+export interface ScaleImportResult {
+  total: number;
+  matched: number;
+  unmatched: number;
+  readings: ScaleReading[];
+}
+
+// ============================================
+// 🆕 PREVISÃO DE PESO COM IA
+// ============================================
+
+export interface WeightPrediction {
+  animalId: string;
+  currentWeight: number;
+  predictedWeight: number;
+  targetDate: Date;
+  confidence: number; // 0-100%
+  basedOnDays: number;
+  projectedGMD: number;
+}
+
+// ============================================
+// 🆕 HISTÓRICO DE CLIMA
+// ============================================
+
+export interface WeatherData {
+  id: string;
+  date: Date;
+  location: string;
+  temperature: {
+    min: number;
+    max: number;
+    avg: number;
+  };
+  humidity: number;
+  precipitation: number; // mm
+  condition: WeatherCondition;
+}
+
+export enum WeatherCondition {
+  Ensolarado = 'Ensolarado',
+  Nublado = 'Nublado',
+  Chuvoso = 'Chuvoso',
+  Tempestade = 'Tempestade',
+  Geada = 'Geada',
+  Seco = 'Seco',
+}
+
+export interface WeatherAlert {
+  id: string;
+  type: 'geada' | 'seca' | 'chuva_intensa' | 'calor_extremo';
+  severity: 'low' | 'medium' | 'high';
+  message: string;
+  date: Date;
+  isRead: boolean;
+}
+
+export interface WeatherCorrelation {
+  period: string;
+  avgTemperature: number;
+  avgPrecipitation: number;
+  avgGMD: number;
+  animalCount: number;
+}
+
+// ============================================
+// 🆕 PERFIS DE USUÁRIO
+// ============================================
+
+export enum UserRole {
+  Proprietario = 'proprietario',
+  Capataz = 'capataz',
+  Veterinario = 'veterinario',
+  Funcionario = 'funcionario',
+}
+
+export interface UserProfile extends AppUser {
+  role: UserRole;
+  permissions: UserPermissions;
+}
+
+export interface UserPermissions {
+  canViewAnimals: boolean;
+  canEditAnimals: boolean;
+  canDeleteAnimals: boolean;
+  canViewFinancial: boolean;
+  canEditFinancial: boolean;
+  canViewReports: boolean;
+  canManageUsers: boolean;
+  canViewCalendar: boolean;
+  canEditCalendar: boolean;
+  canViewTasks: boolean;
+  canEditTasks: boolean;
+}
+
+export const DEFAULT_PERMISSIONS: Record<UserRole, UserPermissions> = {
+  [UserRole.Proprietario]: {
+    canViewAnimals: true,
+    canEditAnimals: true,
+    canDeleteAnimals: true,
+    canViewFinancial: true,
+    canEditFinancial: true,
+    canViewReports: true,
+    canManageUsers: true,
+    canViewCalendar: true,
+    canEditCalendar: true,
+    canViewTasks: true,
+    canEditTasks: true,
+  },
+  [UserRole.Capataz]: {
+    canViewAnimals: false,
+    canEditAnimals: false,
+    canDeleteAnimals: false,
+    canViewFinancial: false,
+    canEditFinancial: false,
+    canViewReports: false,
+    canManageUsers: false,
+    canViewCalendar: true,
+    canEditCalendar: true,
+    canViewTasks: true,
+    canEditTasks: true,
+  },
+  [UserRole.Veterinario]: {
+    canViewAnimals: true,
+    canEditAnimals: true,
+    canDeleteAnimals: false,
+    canViewFinancial: false,
+    canEditFinancial: false,
+    canViewReports: true,
+    canManageUsers: false,
+    canViewCalendar: true,
+    canEditCalendar: true,
+    canViewTasks: true,
+    canEditTasks: true,
+  },
+  [UserRole.Funcionario]: {
+    canViewAnimals: true,
+    canEditAnimals: false,
+    canDeleteAnimals: false,
+    canViewFinancial: false,
+    canEditFinancial: false,
+    canViewReports: false,
+    canManageUsers: false,
+    canViewCalendar: true,
+    canEditCalendar: false,
+    canViewTasks: true,
+    canEditTasks: false,
+  },
+};
+
+// ============================================
+// 🆕 COMPARATIVO DE PERFORMANCE
+// ============================================
+
+export interface PerformanceComparison {
+  animalId: string;
+  brinco: string;
+  nome?: string;
+  raca: Raca;
+  sexo: Sexo;
+  idade: number; // em meses
+  pesoAtual: number;
+  gmd: number;
+  rankingGeral: number;
+  rankingRaca: number;
+  paiNome?: string;
+  maeNome?: string;
+}
+
+export interface BullProgenyComparison {
+  bullName: string;
+  offspringCount: number;
+  avgGMD: number;
+  avgWeaningWeight: number;
+  avgYearlingWeight: number;
+  bestOffspring: {
+    brinco: string;
+    gmd: number;
+  };
+}
+
+export interface RaceBenchmark {
+  raca: Raca;
+  count: number;
+  avgWeight: number;
+  avgGMD: number;
+  avgAge: number;
+  topPerformers: PerformanceComparison[];
+}
