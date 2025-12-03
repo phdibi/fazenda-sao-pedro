@@ -7,7 +7,7 @@ import { Animal, CalendarEvent, Task, ManagementArea, Sexo, WeighingType, AppUse
 // ============================================
 
 const CACHE_VERSION = 'v1';
-const CACHE_EXPIRY_MS = 5 * 60 * 1000; // 5 minutos
+const CACHE_EXPIRY_MS = 15 * 60 * 1000; // 15 minutos para reduzir hits ao Firestore
 
 interface CacheEntry<T> {
     data: T[];

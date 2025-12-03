@@ -25,6 +25,8 @@ interface AppProps {
     user: AppUser;
 }
 
+const AUTO_SYNC_INTERVAL_MS = 5 * 60 * 1000;
+
 const App = ({ user }: AppProps) => {
     const {
         state,
@@ -158,6 +160,16 @@ const App = ({ user }: AppProps) => {
     const handleOpenAddAnimalModal = () => {
         setIsAddAnimalModalOpen(true);
     };
+
+    useEffect(() => {
+        const intervalId = window.setInterval(() => {
+            if (navigator.onLine) {
+                forceSync();
+            }
+        }, AUTO_SYNC_INTERVAL_MS);
+
+        return () => window.clearInterval(intervalId);
+    }, [forceSync]);
 
     const isAppLoading = state.loading.animals || state.loading.calendar || state.loading.tasks || state.loading.areas;
     
