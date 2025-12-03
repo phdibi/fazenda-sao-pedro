@@ -74,9 +74,9 @@ const App = ({ user, firebaseReady }: AppProps) => {
         activeFiltersCount,
         allMedications,
         allReasons,
-    } = useAdvancedFilters({
-        animals: state.animals,
-        areas: state.managementAreas
+    } = useAdvancedFilters({ 
+        animals: state.animals, 
+        areas: state.managementAreas 
     });
 
     const {
@@ -90,18 +90,6 @@ const App = ({ user, firebaseReady }: AppProps) => {
     const hasDatabase = Boolean(db);
     const hasStorage = Boolean(storage);
     const costlyActionsEnabled = firebaseReady && hasDatabase && hasStorage;
-
-    const listFallback = (
-        <div className="flex justify-center p-8">
-            <Spinner size="lg" />
-        </div>
-    );
-
-    const modalFallback = (
-        <div className="fixed inset-0 flex items-center justify-center bg-black/50">
-            <Spinner size="lg" />
-        </div>
-    );
 
     useEffect(() => {
         if (!db) return;
@@ -146,7 +134,7 @@ const App = ({ user, firebaseReady }: AppProps) => {
                     collection: 'animals',
                     data: {
                         ...animalData,
-                        userId: user.uid
+                        userId: user.uid  
                     }
                 });
                 setIsAddAnimalModalOpen(false);
@@ -193,7 +181,7 @@ const App = ({ user, firebaseReady }: AppProps) => {
     }, [forceSync, db]);
 
     const isAppLoading = state.loading.animals || state.loading.calendar || state.loading.tasks || state.loading.areas;
-
+    
     if (isAppLoading) {
         return (
             <div className="min-h-screen bg-base-900 flex flex-col justify-center items-center text-white">
@@ -229,7 +217,7 @@ const App = ({ user, firebaseReady }: AppProps) => {
                 )}
 
                 {currentView === 'dashboard' && (
-                    <Suspense fallback={listFallback}>
+                    <>
                         <div className="flex flex-col sm:flex-row justify-between sm:items-center mb-4 md:mb-6 gap-3">
                             <h1 className="text-2xl md:text-3xl font-bold text-white">Painel do Rebanho</h1>
                             <div className="hidden sm:flex">
@@ -246,7 +234,7 @@ const App = ({ user, firebaseReady }: AppProps) => {
                                 )}
                             </div>
                         </div>
-
+                        
                         <div className="flex justify-between items-center mb-4">
                             <h2 className="text-lg font-semibold text-white">Estatísticas</h2>
                             <button
@@ -264,7 +252,7 @@ const App = ({ user, firebaseReady }: AppProps) => {
                             calendarEvents={state.calendarEvents}
                             tasks={state.tasks}
                         />
-
+                        
                         <FilterBar
                             searchTerm={filters.searchTerm}
                             setSearchTerm={setSearchTerm}
@@ -294,7 +282,7 @@ const App = ({ user, firebaseReady }: AppProps) => {
                             onClear={clearAllFilters}
                             activeFiltersCount={activeFiltersCount}
                         />
-
+                        
                         <Dashboard animals={filteredAnimals} onSelectAnimal={handleSelectAnimal} />
 
                         <div className="sm:hidden mt-6">
@@ -310,91 +298,81 @@ const App = ({ user, firebaseReady }: AppProps) => {
                                 </div>
                             )}
                         </div>
-                    </Suspense>
+                    </>
                 )}
 
                 {currentView === 'reports' && (
-                    <Suspense fallback={listFallback}>
+                    <Suspense fallback={<div className="flex justify-center p-8"><Spinner size="lg" /></div>}>
                         <ReportsView animals={state.animals} />
                     </Suspense>
                 )}
 
                 {currentView === 'calendar' && (
-                    <Suspense fallback={listFallback}>
-                        <CalendarView
-                            events={state.calendarEvents}
-                            onSave={addOrUpdateCalendarEvent}
-                            onDelete={deleteCalendarEvent}
+                    <Suspense fallback={<div className="flex justify-center p-8"><Spinner size="lg" /></div>}>
+                        <CalendarView 
+                            events={state.calendarEvents} 
+                            onSave={addOrUpdateCalendarEvent} 
+                            onDelete={deleteCalendarEvent} 
                         />
                     </Suspense>
                 )}
 
                 {currentView === 'tasks' && (
-                    <Suspense fallback={listFallback}>
-                        <TasksView
-                            tasks={state.tasks}
-                            onAddTask={addTask}
-                            onToggleTaskCompletion={toggleTaskCompletion}
-                            onDeleteTask={deleteTask}
-                        />
-                    </Suspense>
+                    <TasksView 
+                        tasks={state.tasks} 
+                        onAddTask={addTask} 
+                        onToggleTask={toggleTaskCompletion}
+                        onDeleteTask={deleteTask} 
+                    />
                 )}
 
                 {currentView === 'management' && (
-                    <Suspense fallback={listFallback}>
+                    <Suspense fallback={<div className="flex justify-center p-8"><Spinner size="lg" /></div>}>
                         <ManagementView
                             animals={state.animals}
                             areas={state.managementAreas}
                             onSaveArea={addOrUpdateManagementArea}
                             onDeleteArea={deleteManagementArea}
-                            onAssignAnimalsToArea={assignAnimalsToArea}
+                            onAssignAnimals={assignAnimalsToArea}
                         />
                     </Suspense>
                 )}
             </main>
 
-            <Suspense fallback={modalFallback}>
-                <AnimalDetailModal
-                    animal={selectedAnimal}
-                    isOpen={!!selectedAnimal}
-                    onClose={handleCloseModal}
-                    onUpdateAnimal={handleUpdateAnimal}
-                    onDeleteAnimal={handleDeleteAnimal}
-                    animals={state.animals}
-                    user={user}
-                    storageReady={costlyActionsEnabled}
-                />
-            </Suspense>
+            <AnimalDetailModal
+                animal={selectedAnimal}
+                isOpen={!!selectedAnimal}
+                onClose={handleCloseModal}
+                onUpdateAnimal={handleUpdateAnimal}
+                onDeleteAnimal={handleDeleteAnimal}
+                animals={state.animals}
+                user={user}
+                storageReady={costlyActionsEnabled}
+            />
 
-            <Suspense fallback={modalFallback}>
-                <AddAnimalModal
-                    isOpen={isAddAnimalModalOpen}
-                    onClose={() => setIsAddAnimalModalOpen(false)}
-                    onAddAnimal={handleAddAnimal}
-                    animals={state.animals}
-                />
-            </Suspense>
+            <AddAnimalModal
+                isOpen={isAddAnimalModalOpen}
+                onClose={() => setIsAddAnimalModalOpen(false)}
+                onAddAnimal={handleAddAnimal}
+                animals={state.animals}
+            />
 
-            <Suspense fallback={null}>
-                <Chatbot animals={state.animals} />
-            </Suspense>
-
-            <MobileNavBar
-                currentView={currentView}
+            <Chatbot animals={state.animals} />
+            
+            <MobileNavBar 
+                currentView={currentView} 
                 setCurrentView={setCurrentView}
                 onAddAnimalClick={handleOpenAddAnimalModal}
             />
 
             {showDashboardSettings && (
-                <Suspense fallback={modalFallback}>
-                    <DashboardSettings
-                        widgets={config.widgets}
-                        toggleWidget={toggleWidget}
-                        setWidgetSize={setWidgetSize}
-                        resetToDefault={resetToDefault}
-                        onClose={() => setShowDashboardSettings(false)}
-                    />
-                </Suspense>
+                <DashboardSettings
+                    widgets={config.widgets}
+                    toggleWidget={toggleWidget}
+                    setWidgetSize={setWidgetSize}
+                    resetToDefault={resetToDefault}
+                    onClose={() => setShowDashboardSettings(false)}
+                />
             )}
         </div>
     );

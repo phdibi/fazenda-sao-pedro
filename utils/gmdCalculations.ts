@@ -1,4 +1,4 @@
-import { Animal, GainMetrics, WeightEntry, WeighingType } from './types';
+import { Animal, GainMetrics, WeightEntry, WeighingType } from '../types';
 
 // ============================================
 // 🧮 CÁLCULOS DE GMD (GANHO MÉDIO DIÁRIO)

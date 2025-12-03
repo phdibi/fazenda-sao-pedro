@@ -237,66 +237,6 @@ const StatsDashboard: React.FC<StatsDashboardProps> = ({
           </div>
         );
 
-      case 'weight-evolution': {
-        const { weightEvolution } = stats;
-        const maxValue = weightEvolution.monthlyAverage.reduce((max, point) => Math.max(max, point.value), 0) || 1;
-        const trendPositive = weightEvolution.recentChange >= 0;
-
-        return (
-          <div className="space-y-4">
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-              <div className="bg-base-700/50 p-3 rounded border border-base-700">
-                <div className="text-xs text-gray-400">Peso médio atual</div>
-                <div className="text-xl font-bold text-white">{stats.averageWeight.toFixed(1)} kg</div>
-              </div>
-              <div className="bg-base-700/50 p-3 rounded border border-base-700">
-                <div className="text-xs text-gray-400">GMD médio</div>
-                <div className="text-xl font-bold text-white">{weightEvolution.avgGMD.toFixed(3)} kg/dia</div>
-              </div>
-              <div className="bg-base-700/50 p-3 rounded border border-base-700">
-                <div className="text-xs text-gray-400">Pesagens registradas</div>
-                <div className="text-xl font-bold text-white">{weightEvolution.totalWeighings}</div>
-                <div className="text-[11px] text-gray-500">Integração balança digital</div>
-              </div>
-              <div className="bg-base-700/50 p-3 rounded border border-base-700">
-                <div className="text-xs text-gray-400">Previsão (30 dias)</div>
-                <div className="text-xl font-bold text-white">{weightEvolution.predictedNextMonth} kg</div>
-                <div className="text-[11px] text-brand-primary-light">IA ativa</div>
-              </div>
-            </div>
-
-            <div className="flex items-center justify-between text-xs text-gray-400 px-1">
-              <span>Média mensal de peso</span>
-              <span className={trendPositive ? 'text-green-400' : 'text-red-400'}>
-                {trendPositive ? '▲' : '▼'} {weightEvolution.recentChange} kg
-              </span>
-            </div>
-
-            {weightEvolution.monthlyAverage.length === 0 ? (
-              <p className="text-sm text-gray-500 text-center py-2">Sem histórico de pesagens para traçar a evolução</p>
-            ) : (
-              <div className="space-y-3">
-                {weightEvolution.monthlyAverage.map(point => (
-                  <div key={point.label} className="space-y-1">
-                    <div className="flex justify-between text-xs text-gray-400">
-                      <span>{point.label}</span>
-                      <span className="text-white font-medium">{point.value} kg</span>
-                    </div>
-                    <div className="w-full bg-base-700 h-2 rounded-full overflow-hidden">
-                      <div
-                        className="h-2 rounded-full bg-gradient-to-r from-brand-primary to-blue-500"
-                        style={{ width: `${(point.value / maxValue) * 100}%` }}
-                      />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-
-          </div>
-        );
-      }
-
       default:
         return <p className="text-gray-500 text-sm">Widget não implementado</p>;
     }

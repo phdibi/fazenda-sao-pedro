@@ -258,13 +258,6 @@ export interface FilteredStats {
     animalsWithTreatments: number;
     mostUsedMedication: string;
   };
-  weightEvolution: {
-    monthlyAverage: ChartDataPoint[];
-    avgGMD: number;
-    totalWeighings: number;
-    recentChange: number;
-    predictedNextMonth: number;
-  };
 }
 
 // --- Report Types ---
@@ -339,8 +332,7 @@ export interface GainMetrics {
 // ============================================
 
 export interface ManagementBatch {
-  id: string 
-  visita: string;
+  id: string;
   name: string;
   description?: string;
   animalIds: string[];
