@@ -1,8 +1,8 @@
 import { useState, useMemo, useCallback } from 'react';
-import { 
-  Animal, 
+import {
+  Animal,
   ManagementArea,
-  AdvancedFilters, 
+  AdvancedFilters,
   DEFAULT_ADVANCED_FILTERS,
   SortConfig,
   WeightRange,
@@ -13,6 +13,7 @@ import {
   Sexo
 } from '../types';
 import { debounce } from '../utils/helpers';
+import { calcularGMDMedio } from '../gmdCalculations';
 
 interface UseAdvancedFiltersProps {
   animals: Animal[];
@@ -271,6 +272,41 @@ export const useAdvancedFilters = ({
     const mostUsedMedication = Object.entries(medicationCounts)
       .sort(([,a], [,b]) => b - a)[0]?.[0] || 'Nenhum';
 
+    // Evolução de peso (média mensal e tendência)
+    const allWeighings = activeAnimals.flatMap(a => a.historicoPesagens || []);
+    const monthlyMap = new Map<string, { total: number; count: number; label: string; sortDate: Date }>();
+
+    allWeighings.forEach(weighing => {
+      const date = new Date(weighing.date);
+      const key = `${date.getFullYear()}-${date.getMonth()}`;
+
+      if (!monthlyMap.has(key)) {
+        monthlyMap.set(key, {
+          total: 0,
+          count: 0,
+          label: date.toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' }),
+          sortDate: new Date(date.getFullYear(), date.getMonth(), 1),
+        });
+      }
+
+      const monthData = monthlyMap.get(key)!;
+      monthData.total += weighing.weightKg;
+      monthData.count += 1;
+    });
+
+    const monthlyAverage = Array.from(monthlyMap.values())
+      .sort((a, b) => a.sortDate.getTime() - b.sortDate.getTime())
+      .map(({ total, count, label }) => ({
+        label,
+        value: Number((total / count).toFixed(1)),
+      }));
+
+    const avgGMD = calcularGMDMedio(activeAnimals);
+    const latestAvg = monthlyAverage[monthlyAverage.length - 1]?.value || (activeAnimals.length > 0 ? Number((totalWeight / activeAnimals.length).toFixed(1)) : 0);
+    const previousAvg = monthlyAverage[monthlyAverage.length - 2]?.value || latestAvg;
+    const recentChange = Number((latestAvg - previousAvg).toFixed(1));
+    const predictedNextMonth = Number((latestAvg + avgGMD * 30).toFixed(1));
+
     return {
       totalAnimals: filteredAnimals.length,
       totalWeight,
@@ -286,6 +322,13 @@ export const useAdvancedFilters = ({
         totalTreatments,
         animalsWithTreatments,
         mostUsedMedication,
+      },
+      weightEvolution: {
+        monthlyAverage,
+        avgGMD,
+        totalWeighings: allWeighings.length,
+        recentChange,
+        predictedNextMonth,
       },
     };
   }, [filteredAnimals, areas]);
