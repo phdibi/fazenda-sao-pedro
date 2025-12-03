@@ -267,6 +267,20 @@ const StatsDashboard: React.FC<StatsDashboardProps> = ({
         const gmdData = stats.gmdStats;
         const hasGMD = !!gmdData && gmdData.animalsWithGMD > 0;
 
+        const predictionTarget = useMemo(() => {
+          const base = new Date();
+          base.setMonth(base.getMonth() + 3);
+          return base;
+        }, []);
+        const weightPredictions = useMemo(
+          () => batchPredictWeights(animals, predictionTarget),
+          [animals, predictionTarget]
+        );
+        const predictionAverage = weightPredictions.length
+          ? weightPredictions.reduce((sum, item) => sum + item.predictedWeight, 0) / weightPredictions.length
+          : null;
+        const predictionTop = weightPredictions[0];
+        
         return (
           <div className="space-y-4">
             {/* GMD Médio - Destaque */}
