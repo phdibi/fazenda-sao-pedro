@@ -8,8 +8,9 @@ import MobileNavBar from './components/MobileNavBar';
 import { useAdvancedFilters } from './hooks/useAdvancedFilters';
 import { useDashboardConfig } from './hooks/useDashboardConfig';
 import { db, storage } from './services/firebase';
+import DashboardSettings from './components/DashboardSettings';
 
-// OTIMIZAÇÃO: Lazy load de todos componentes pesados
+// OTIMIZAÇÃO: Lazy load de componentes pesados
 const Dashboard = lazy(() => import('./components/Dashboard'));
 const AnimalDetailModal = lazy(() => import('./components/AnimalDetailModal'));
 const AddAnimalModal = lazy(() => import('./components/AddAnimalModal'));
@@ -18,7 +19,6 @@ const Chatbot = lazy(() => import('./components/Chatbot'));
 const StatsDashboard = lazy(() => import('./components/StatsDashboard'));
 const TasksView = lazy(() => import('./components/TasksView'));
 const ExportButtons = lazy(() => import('./components/ExportButtons'));
-const DashboardSettings = lazy(() => import('./components/DashboardSettings'));
 const CalendarView = lazy(() => import('./components/CalendarView'));
 const ReportsView = lazy(() => import('./components/ReportsView'));
 const ManagementView = lazy(() => import('./components/ManagementView'));
@@ -217,7 +217,7 @@ const App = ({ user, firebaseReady }: AppProps) => {
                 )}
 
                 {currentView === 'dashboard' && (
-                    <>
+                    <Suspense fallback={<div className="flex justify-center p-8"><Spinner /></div>}>
                         <div className="flex flex-col sm:flex-row justify-between sm:items-center mb-4 md:mb-6 gap-3">
                             <h1 className="text-2xl md:text-3xl font-bold text-white">Painel do Rebanho</h1>
                             <div className="hidden sm:flex">
@@ -298,7 +298,7 @@ const App = ({ user, firebaseReady }: AppProps) => {
                                 </div>
                             )}
                         </div>
-                    </>
+                    </Suspense>
                 )}
 
                 {currentView === 'reports' && (
@@ -318,12 +318,14 @@ const App = ({ user, firebaseReady }: AppProps) => {
                 )}
 
                 {currentView === 'tasks' && (
-                    <TasksView 
-                        tasks={state.tasks} 
-                        onAddTask={addTask} 
-                        onToggleTask={toggleTaskCompletion}
-                        onDeleteTask={deleteTask} 
-                    />
+                    <Suspense fallback={<div className="flex justify-center p-8"><Spinner /></div>}>
+                        <TasksView 
+                            tasks={state.tasks} 
+                            onAddTask={addTask} 
+                            onToggleTask={toggleTaskCompletion}
+                            onDeleteTask={deleteTask} 
+                        />
+                    </Suspense>
                 )}
 
                 {currentView === 'management' && (
@@ -339,25 +341,27 @@ const App = ({ user, firebaseReady }: AppProps) => {
                 )}
             </main>
 
-            <AnimalDetailModal
-                animal={selectedAnimal}
-                isOpen={!!selectedAnimal}
-                onClose={handleCloseModal}
-                onUpdateAnimal={handleUpdateAnimal}
-                onDeleteAnimal={handleDeleteAnimal}
-                animals={state.animals}
-                user={user}
-                storageReady={costlyActionsEnabled}
-            />
+            <Suspense fallback={null}>
+                <AnimalDetailModal
+                    animal={selectedAnimal}
+                    isOpen={!!selectedAnimal}
+                    onClose={handleCloseModal}
+                    onUpdateAnimal={handleUpdateAnimal}
+                    onDeleteAnimal={handleDeleteAnimal}
+                    animals={state.animals}
+                    user={user}
+                    storageReady={costlyActionsEnabled}
+                />
 
-            <AddAnimalModal
-                isOpen={isAddAnimalModalOpen}
-                onClose={() => setIsAddAnimalModalOpen(false)}
-                onAddAnimal={handleAddAnimal}
-                animals={state.animals}
-            />
+                <AddAnimalModal
+                    isOpen={isAddAnimalModalOpen}
+                    onClose={() => setIsAddAnimalModalOpen(false)}
+                    onAddAnimal={handleAddAnimal}
+                    animals={state.animals}
+                />
 
-            <Chatbot animals={state.animals} />
+                <Chatbot animals={state.animals} />
+            </Suspense>
             
             <MobileNavBar 
                 currentView={currentView} 
