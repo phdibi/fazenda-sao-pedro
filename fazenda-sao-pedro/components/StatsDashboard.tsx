@@ -293,12 +293,6 @@ const StatsDashboard: React.FC<StatsDashboardProps> = ({
               </div>
             )}
 
-            <div className="text-[11px] text-gray-500 flex flex-wrap gap-2">
-              <span className="bg-base-700/70 px-2 py-1 rounded">✅ GMD calculado</span>
-              <span className="bg-base-700/70 px-2 py-1 rounded">✅ Lotes/Manejo mapeados</span>
-              <span className="bg-base-700/70 px-2 py-1 rounded">✅ Integração balança digital</span>
-              <span className="bg-base-700/70 px-2 py-1 rounded">✅ Previsão de peso via IA</span>
-            </div>
           </div>
         );
       }
