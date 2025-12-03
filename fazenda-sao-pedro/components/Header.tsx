@@ -147,11 +147,11 @@ const Header = ({
                                 }`}
                                 title={`Última sync: ${formatLastSync()}`}
                             >
-                                <RefreshIcon 
-                                    className={`w-5 h-5 ${isSyncing ? 'animate-spin' : ''}`} 
+                                <RefreshIcon
+                                    className={`w-5 h-5 ${isSyncing ? 'animate-spin' : ''}`}
                                 />
                                 <span className="hidden lg:inline">
-                                    {isSyncing ? 'Sincronizando...' : 'Sync'}
+                                    {isSyncing ? 'Sincronizando...' : 'Atualizar'}
                                 </span>
                             </button>
                         )}
