@@ -2,13 +2,16 @@ import React, { useState, useMemo, useEffect, lazy, Suspense } from 'react';
 import Header from './components/Header';
 import { offlineQueue } from './utils/offlineSync';
 import { useFirestoreOptimized } from './hooks/useFirestoreOptimized';
-import { Animal, AppUser } from './types';
+import { Animal, AppUser, UserRole } from './types';
 import Spinner from './components/common/Spinner';
 import MobileNavBar from './components/MobileNavBar';
 import { useAdvancedFilters } from './hooks/useAdvancedFilters';
 import { useDashboardConfig } from './hooks/useDashboardConfig';
+import { useUserProfile } from './hooks/useUserProfile';
 import { db, storage } from './services/firebase';
 import DashboardSettings from './components/DashboardSettings';
+import RoleSelector from './components/RoleSelector';
+import CapatazView from './components/CapatazView';
 
 // OTIMIZAÇÃO: Lazy load de componentes pesados
 const Dashboard = lazy(() => import('./components/Dashboard'));
@@ -47,6 +50,10 @@ const App = ({ user, firebaseReady }: AppProps) => {
         deleteManagementArea,
         assignAnimalsToArea,
     } = useFirestoreOptimized(user);
+
+    // Hook de perfil de usuário
+    const { role, changeRole, canAccess, isCapataz, getUserProfile } = useUserProfile(user);
+    const [showRoleSelector, setShowRoleSelector] = useState(false);
 
     const [currentView, setCurrentView] = useState<'dashboard' | 'reports' | 'calendar' | 'tasks' | 'management'>('dashboard');
     const [selectedAnimalId, setSelectedAnimalId] = useState<string | null>(null);
@@ -194,15 +201,51 @@ const App = ({ user, firebaseReady }: AppProps) => {
         );
     }
 
+    // Se for Capataz, renderiza view restrita
+    if (isCapataz) {
+        const userProfile = getUserProfile();
+        if (userProfile) {
+            return (
+                <>
+                    <CapatazView
+                        user={userProfile}
+                        tasks={state.tasks}
+                        calendarEvents={state.calendarEvents}
+                        onAddTask={addTask}
+                        onToggleTask={toggleTaskCompletion}
+                        onDeleteTask={deleteTask}
+                        onAddCalendarEvent={addOrUpdateCalendarEvent}
+                        onDeleteCalendarEvent={deleteCalendarEvent}
+                    />
+                    {/* Botão para trocar perfil */}
+                    <button
+                        onClick={() => setShowRoleSelector(true)}
+                        className="fixed bottom-4 right-4 px-3 py-2 bg-base-700 text-gray-400 rounded-lg text-xs hover:bg-base-600 z-30"
+                    >
+                        👷 Trocar Perfil
+                    </button>
+                    <RoleSelector
+                        currentRole={role}
+                        onChangeRole={changeRole}
+                        isOpen={showRoleSelector}
+                        onClose={() => setShowRoleSelector(false)}
+                    />
+                </>
+            );
+        }
+    }
+
     return (
         <div className="min-h-screen bg-base-900 font-sans pb-24 md:pb-0">
             <Header
                 currentView={currentView}
                 setCurrentView={setCurrentView}
-                onAddAnimalClick={handleOpenAddAnimalModal}
+                onAddAnimalClick={canAccess('canEditAnimals') ? handleOpenAddAnimalModal : undefined}
                 user={user}
                 onForceSync={hasDatabase ? forceSync : undefined}
                 lastSync={state.lastSync}
+                userRole={role}
+                onRoleClick={() => setShowRoleSelector(true)}
             />
 
             <main className="p-4 md:p-8 max-w-7xl mx-auto">
@@ -366,7 +409,7 @@ const App = ({ user, firebaseReady }: AppProps) => {
             <MobileNavBar 
                 currentView={currentView} 
                 setCurrentView={setCurrentView}
-                onAddAnimalClick={handleOpenAddAnimalModal}
+                onAddAnimalClick={canAccess('canEditAnimals') ? handleOpenAddAnimalModal : undefined}
             />
 
             {showDashboardSettings && (
@@ -378,6 +421,13 @@ const App = ({ user, firebaseReady }: AppProps) => {
                     onClose={() => setShowDashboardSettings(false)}
                 />
             )}
+
+            <RoleSelector
+                currentRole={role}
+                onChangeRole={changeRole}
+                isOpen={showRoleSelector}
+                onClose={() => setShowRoleSelector(false)}
+            />
         </div>
     );
 };

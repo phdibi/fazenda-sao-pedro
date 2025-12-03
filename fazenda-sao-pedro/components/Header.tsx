@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { DocumentChartBarIcon, SparklesIcon, PlusIcon, CalendarDaysIcon, ClipboardDocumentCheckIcon, MapPinIcon } from './common/Icons';
-import { AppUser } from '../types';
+import { AppUser, UserRole } from '../types';
 import { auth } from '../services/firebase';
 
 type ViewType = 'dashboard' | 'reports' | 'calendar' | 'tasks' | 'management';
@@ -8,11 +8,20 @@ type ViewType = 'dashboard' | 'reports' | 'calendar' | 'tasks' | 'management';
 interface HeaderProps {
     currentView: ViewType;
     setCurrentView: (view: ViewType) => void;
-    onAddAnimalClick: () => void;
+    onAddAnimalClick?: () => void;
     user: AppUser;
     onForceSync?: () => Promise<void>;
     lastSync?: number | null;
+    userRole?: UserRole;
+    onRoleClick?: () => void;
 }
+
+const roleLabels: Record<UserRole, { icon: string; label: string; color: string }> = {
+    [UserRole.Proprietario]: { icon: '👑', label: 'Proprietário', color: 'bg-yellow-600' },
+    [UserRole.Capataz]: { icon: '👷', label: 'Capataz', color: 'bg-orange-600' },
+    [UserRole.Veterinario]: { icon: '🩺', label: 'Veterinário', color: 'bg-blue-600' },
+    [UserRole.Funcionario]: { icon: '🧑‍🌾', label: 'Funcionário', color: 'bg-gray-600' },
+};
 
 interface NavButtonProps {
     view: ViewType;
@@ -47,7 +56,9 @@ const Header = ({
     onAddAnimalClick, 
     user,
     onForceSync,
-    lastSync 
+    lastSync,
+    userRole = UserRole.Proprietario,
+    onRoleClick
 }: HeaderProps) => {
     const [isSyncing, setIsSyncing] = useState(false);
 
@@ -85,17 +96,30 @@ const Header = ({
         });
     };
 
+    const roleInfo = roleLabels[userRole];
+
     return (
         <header className="bg-base-800 shadow-md">
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                 <div className="flex items-center justify-between h-16">
                     {/* Logo - SEM TEXTO */}
-                    <div className="flex items-center">
+                    <div className="flex items-center gap-3">
                         <img 
                             src="/logo.png" 
                             alt="Fazenda+" 
                             className="h-12 w-auto cow-logo"
                         />
+                        {/* Badge de perfil */}
+                        {onRoleClick && (
+                            <button
+                                onClick={onRoleClick}
+                                className={`hidden sm:flex items-center gap-1 px-2 py-1 rounded-full text-xs text-white ${roleInfo.color} hover:opacity-80 transition-opacity`}
+                                title="Clique para trocar perfil"
+                            >
+                                <span>{roleInfo.icon}</span>
+                                <span>{roleInfo.label}</span>
+                            </button>
+                        )}
                     </div>
 
                     <div className="flex items-center gap-2">
@@ -157,15 +181,17 @@ const Header = ({
                         )}
 
                         {/* Botão Adicionar Animal - DESKTOP ONLY */}
-                        <div className="hidden md:block">
-                            <button 
-                                onClick={onAddAnimalClick} 
-                                className="flex items-center gap-2 bg-brand-primary hover:bg-brand-primary-light text-white font-bold py-2 px-4 rounded transition-colors"
-                            >
-                                <PlusIcon className="w-5 h-5" />
-                                Adicionar Animal
-                            </button>
-                        </div>
+                        {onAddAnimalClick && (
+                            <div className="hidden md:block">
+                                <button 
+                                    onClick={onAddAnimalClick} 
+                                    className="flex items-center gap-2 bg-brand-primary hover:bg-brand-primary-light text-white font-bold py-2 px-4 rounded transition-colors"
+                                >
+                                    <PlusIcon className="w-5 h-5" />
+                                    Adicionar Animal
+                                </button>
+                            </div>
+                        )}
                         
                         {/* Avatar e Logout */}
                         <div className="flex items-center ml-2">

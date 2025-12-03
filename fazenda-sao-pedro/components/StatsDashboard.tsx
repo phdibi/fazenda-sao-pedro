@@ -237,6 +237,69 @@ const StatsDashboard: React.FC<StatsDashboardProps> = ({
           </div>
         );
 
+      case 'weight-evolution':
+        // Mostra resumo de evolução de peso do rebanho
+        const totalWeight = stats.totalWeight || 0;
+        const avgWeight = stats.averageWeight || 0;
+        const heavyCount = stats.weightRangeDistribution?.pesado || 0;
+        const mediumCount = stats.weightRangeDistribution?.medio || 0;
+        const lightCount = stats.weightRangeDistribution?.leve || 0;
+        
+        return (
+          <div className="space-y-4">
+            {/* Peso total do rebanho */}
+            <div className="text-center p-3 bg-base-700/50 rounded-lg">
+              <div className="text-3xl font-bold text-brand-primary">
+                {(totalWeight / 1000).toFixed(1)} t
+              </div>
+              <div className="text-xs text-gray-400">Peso Total do Rebanho</div>
+            </div>
+            
+            {/* Gráfico de barras simplificado */}
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-gray-400 w-20">Pesados</span>
+                <div className="flex-1 bg-base-700 rounded-full h-4 overflow-hidden">
+                  <div 
+                    className="bg-green-500 h-full rounded-full flex items-center justify-end pr-2"
+                    style={{ width: `${stats.totalAnimals > 0 ? (heavyCount / stats.totalAnimals) * 100 : 0}%`, minWidth: heavyCount > 0 ? '30px' : '0' }}
+                  >
+                    <span className="text-[10px] text-white font-bold">{heavyCount}</span>
+                  </div>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-gray-400 w-20">Médios</span>
+                <div className="flex-1 bg-base-700 rounded-full h-4 overflow-hidden">
+                  <div 
+                    className="bg-yellow-500 h-full rounded-full flex items-center justify-end pr-2"
+                    style={{ width: `${stats.totalAnimals > 0 ? (mediumCount / stats.totalAnimals) * 100 : 0}%`, minWidth: mediumCount > 0 ? '30px' : '0' }}
+                  >
+                    <span className="text-[10px] text-white font-bold">{mediumCount}</span>
+                  </div>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-gray-400 w-20">Leves</span>
+                <div className="flex-1 bg-base-700 rounded-full h-4 overflow-hidden">
+                  <div 
+                    className="bg-red-500 h-full rounded-full flex items-center justify-end pr-2"
+                    style={{ width: `${stats.totalAnimals > 0 ? (lightCount / stats.totalAnimals) * 100 : 0}%`, minWidth: lightCount > 0 ? '30px' : '0' }}
+                  >
+                    <span className="text-[10px] text-white font-bold">{lightCount}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Média */}
+            <div className="flex justify-between items-center pt-2 border-t border-base-700">
+              <span className="text-sm text-gray-400">Peso Médio</span>
+              <span className="text-lg font-bold text-white">{avgWeight.toFixed(1)} kg</span>
+            </div>
+          </div>
+        );
+
       default:
         return <p className="text-gray-500 text-sm">Widget não implementado</p>;
     }
