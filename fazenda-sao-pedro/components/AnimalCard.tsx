@@ -227,14 +227,14 @@ const AnimalCard = ({
               loading="lazy"
             />
           ) : (
-            <div className="w-full h-full flex items-center justify-center bg-base-700 text-[11px] text-gray-300">
+            <div className="w-full h-full flex items-center justify-center bg-base-700 text-[10px] text-gray-300">
               Sem foto
             </div>
           )}
 
           {/* Badge de status */}
           <div
-            className={`absolute top-2 right-2 px-2 py-0.5 text-[10px] font-bold text-white rounded-full ${badgeColor}`}
+            className={`absolute top-1 right-1 px-1.5 py-0.5 text-[8px] font-bold text-white rounded-full ${badgeColor}`}
           >
             {animal.status}
           </div>
@@ -242,7 +242,7 @@ const AnimalCard = ({
           {/* Badge de GMD */}
           {gmd?.gmdTotal && gmd.gmdTotal > 0 && (
             <div 
-              className={`absolute bottom-2 left-2 px-1.5 py-0.5 bg-black/70 rounded text-[9px] ${gmdClass?.color}`}
+              className={`absolute bottom-1 left-1 px-1 py-0.5 bg-black/70 rounded text-[7px] ${gmdClass?.color}`}
               title={`GMD: ${formatarGMD(gmd.gmdTotal)}`}
             >
               GMD: {gmd.gmdTotal.toFixed(2)}
@@ -250,24 +250,24 @@ const AnimalCard = ({
           )}
         </div>
 
-        <div className="p-2">
-          <h3 className="font-bold text-[13px] text-white truncate" title={displayName}>
+        <div className="p-1.5">
+          <h3 className="font-bold text-[11px] text-white truncate leading-tight" title={displayName}>
             {displayName}
           </h3>
 
-          <div className="mt-1 pt-1 border-t border-base-700/50 space-y-0.5 text-[10px]">
-            <div className="flex justify-between gap-1">
+          <div className="mt-0.5 pt-0.5 border-t border-base-700/50 space-y-0 text-[8px] leading-tight">
+            <div className="flex justify-between gap-0.5">
               <span className="text-gray-400">Raça:</span>
-              <span className="font-medium text-gray-200 truncate">{animal.raca}</span>
+              <span className="font-medium text-gray-200">{animal.raca}</span>
             </div>
-            <div className="flex justify-between gap-1">
+            <div className="flex justify-between gap-0.5">
               <span className="text-gray-400">Sexo:</span>
-              <span className="font-medium text-gray-200 truncate">{animal.sexo}</span>
+              <span className="font-medium text-gray-200">{animal.sexo}</span>
             </div>
-            <div className="flex justify-between gap-1">
+            <div className="flex justify-between gap-0.5">
               <span className="text-gray-400">Mãe:</span>
-              <span className="font-medium text-gray-200 truncate">
-                {animal.maeNome || 'Não informada'}
+              <span className="font-medium text-gray-200 truncate max-w-[60%]">
+                {animal.maeNome || 'Não inf.'}
               </span>
             </div>
           </div>
