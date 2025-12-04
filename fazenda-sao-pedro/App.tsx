@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect, lazy, Suspense } from 'react';
 import Header from './components/Header';
 import { offlineQueue } from './utils/offlineSync';
 import { useFirestoreOptimized } from './hooks/useFirestoreOptimized';
-import { Animal, AppUser, UserRole, WeighingType, WeightEntry } from './types';
+import { Animal, AppUser, UserRole, WeighingType, WeightEntry, MedicationAdministration } from './types';
 import Spinner from './components/common/Spinner';
 import MobileNavBar from './components/MobileNavBar';
 import { useAdvancedFilters } from './hooks/useAdvancedFilters';
@@ -13,6 +13,8 @@ import DashboardSettings from './components/DashboardSettings';
 import RoleSelector from './components/RoleSelector';
 import CapatazView from './components/CapatazView';
 import { useBatchManagement } from './hooks/useBatchManagement';
+import QuickWeightModal from './components/QuickWeightModal';
+import QuickMedicationModal from './components/QuickMedicationModal';
 
 // OTIMIZAÇÃO: Lazy load de componentes pesados
 const Dashboard = lazy(() => import('./components/Dashboard'));
@@ -63,6 +65,10 @@ const App = ({ user, firebaseReady }: AppProps) => {
     const [isAddAnimalModalOpen, setIsAddAnimalModalOpen] = useState(false);
     const [showDashboardSettings, setShowDashboardSettings] = useState(false);
     const [showScaleImportModal, setShowScaleImportModal] = useState(false);
+    
+    // Estados para ações rápidas (swipe)
+    const [quickWeightAnimal, setQuickWeightAnimal] = useState<Animal | null>(null);
+    const [quickMedicationAnimal, setQuickMedicationAnimal] = useState<Animal | null>(null);
 
     const {
         batches,
@@ -185,6 +191,52 @@ const App = ({ user, firebaseReady }: AppProps) => {
 
     const handleOpenAddAnimalModal = () => {
         setIsAddAnimalModalOpen(true);
+    };
+
+    // Handler para salvar peso rápido (swipe direita)
+    const handleQuickWeightSave = async (animalId: string, weight: number, type: WeighingType) => {
+        try {
+            const animal = state.animals.find(a => a.id === animalId);
+            if (!animal) return;
+
+            const newEntry: WeightEntry = {
+                id: `quick-${Date.now()}`,
+                date: new Date(),
+                weightKg: weight,
+                type: type === WeighingType.None ? undefined : type,
+            };
+
+            const historicoPesagens = [...(animal.historicoPesagens || []), newEntry]
+                .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+            await updateAnimal(animalId, {
+                historicoPesagens,
+                pesoKg: weight,
+            });
+        } catch (error) {
+            console.error('Erro ao salvar peso:', error);
+            alert('❌ Erro ao salvar peso');
+        }
+    };
+
+    // Handler para salvar medicação rápida (swipe esquerda)
+    const handleQuickMedicationSave = async (animalId: string, medication: Omit<MedicationAdministration, 'id'>) => {
+        try {
+            const animal = state.animals.find(a => a.id === animalId);
+            if (!animal) return;
+
+            const newMedication: MedicationAdministration = {
+                id: `med-${Date.now()}`,
+                ...medication,
+            };
+
+            const historicoSanitario = [...(animal.historicoSanitario || []), newMedication];
+
+            await updateAnimal(animalId, { historicoSanitario });
+        } catch (error) {
+            console.error('Erro ao salvar medicação:', error);
+            alert('❌ Erro ao salvar medicação');
+        }
     };
 
     const handleScaleImportComplete = async (
@@ -384,12 +436,12 @@ const App = ({ user, firebaseReady }: AppProps) => {
                                             animals={filteredAnimals} 
                                             onSelectAnimal={handleSelectAnimal}
                                             onQuickWeight={(animal) => {
-                                                setSelectedAnimalId(animal.id);
+                                                setQuickWeightAnimal(animal);
                                             }}
                                             onQuickMedication={(animal) => {
-                                                setSelectedAnimalId(animal.id);
+                                                setQuickMedicationAnimal(animal);
                                             }}
-                                            onLongPress={(animal, position) => {
+                                            onLongPress={(animal) => {
                                                 setSelectedAnimalId(animal.id);
                                             }}
                                         />
@@ -505,6 +557,21 @@ const App = ({ user, firebaseReady }: AppProps) => {
 
                 <Chatbot animals={state.animals} />
             </Suspense>
+
+            {/* Modais de ação rápida (swipe) */}
+            <QuickWeightModal
+                isOpen={!!quickWeightAnimal}
+                onClose={() => setQuickWeightAnimal(null)}
+                animal={quickWeightAnimal}
+                onSave={handleQuickWeightSave}
+            />
+
+            <QuickMedicationModal
+                isOpen={!!quickMedicationAnimal}
+                onClose={() => setQuickMedicationAnimal(null)}
+                animal={quickMedicationAnimal}
+                onSave={handleQuickMedicationSave}
+            />
             
             <MobileNavBar 
                 currentView={currentView} 

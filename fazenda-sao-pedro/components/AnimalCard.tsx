@@ -22,13 +22,14 @@ const AnimalCard = ({
   const [swipeX, setSwipeX] = useState(0);
   const [isSwiping, setIsSwiping] = useState(false);
   const [longPressTriggered, setLongPressTriggered] = useState(false);
+  const [actionExecuted, setActionExecuted] = useState(false);
   const touchStartX = useRef(0);
   const touchStartY = useRef(0);
-  const longPressTimer = useRef<NodeJS.Timeout | null>(null);
+  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const cardRef = useRef<HTMLDivElement>(null);
 
-  const SWIPE_THRESHOLD = 60;
-  const LONG_PRESS_DURATION = 500;
+  const SWIPE_THRESHOLD = 80;
+  const LONG_PRESS_DURATION = 600;
 
   // Calcula GMD
   const gmd = showGMD ? calcularGMDAnimal(animal) : null;
@@ -44,18 +45,25 @@ const AnimalCard = ({
   const badgeColor = statusColor[animal.status] ?? 'bg-gray-500';
   const displayName = animal.nome || `Brinco ${animal.brinco}`;
 
+  const clearLongPressTimer = () => {
+    if (longPressTimer.current) {
+      clearTimeout(longPressTimer.current);
+      longPressTimer.current = null;
+    }
+  };
+
   // Touch handlers para swipe
   const handleTouchStart = useCallback((e: React.TouchEvent) => {
     const touch = e.touches[0];
     touchStartX.current = touch.clientX;
     touchStartY.current = touch.clientY;
     setLongPressTriggered(false);
-    setIsSwiping(true);
+    setActionExecuted(false);
+    setIsSwiping(false);
 
     // Inicia timer de long press
     if (onLongPress) {
       longPressTimer.current = setTimeout(() => {
-        // Vibração haptic feedback se disponível
         if ('vibrate' in navigator) {
           navigator.vibrate(50);
         }
@@ -64,6 +72,7 @@ const AnimalCard = ({
           onLongPress(animal, { x: rect.left + rect.width / 2, y: rect.top });
         }
         setLongPressTriggered(true);
+        setActionExecuted(true);
         setIsSwiping(false);
         setSwipeX(0);
       }, LONG_PRESS_DURATION);
@@ -71,34 +80,28 @@ const AnimalCard = ({
   }, [animal, onLongPress]);
 
   const handleTouchMove = useCallback((e: React.TouchEvent) => {
-    if (!isSwiping || longPressTriggered) return;
+    if (longPressTriggered || actionExecuted) return;
 
     const touch = e.touches[0];
     const deltaX = touch.clientX - touchStartX.current;
     const deltaY = Math.abs(touch.clientY - touchStartY.current);
 
-    // Cancela long press se mover mais de 10px
-    if (longPressTimer.current && (Math.abs(deltaX) > 10 || deltaY > 10)) {
-      clearTimeout(longPressTimer.current);
-      longPressTimer.current = null;
+    // Cancela long press se mover
+    if (Math.abs(deltaX) > 10 || deltaY > 10) {
+      clearLongPressTimer();
     }
 
     // Só permite swipe horizontal se movimento Y for pequeno
-    if (deltaY < 30 && Math.abs(deltaX) > 5) {
-      // Previne scroll quando estamos fazendo swipe horizontal
-      e.preventDefault();
-      setSwipeX(Math.max(-100, Math.min(100, deltaX)));
+    if (deltaY < 50 && Math.abs(deltaX) > 15) {
+      setIsSwiping(true);
+      setSwipeX(Math.max(-120, Math.min(120, deltaX)));
     }
-  }, [isSwiping, longPressTriggered]);
+  }, [longPressTriggered, actionExecuted]);
 
   const handleTouchEnd = useCallback(() => {
-    // Cancela long press
-    if (longPressTimer.current) {
-      clearTimeout(longPressTimer.current);
-      longPressTimer.current = null;
-    }
+    clearLongPressTimer();
 
-    if (longPressTriggered) {
+    if (longPressTriggered || actionExecuted) {
       setLongPressTriggered(false);
       setSwipeX(0);
       setIsSwiping(false);
@@ -107,29 +110,31 @@ const AnimalCard = ({
 
     // Executa ação de swipe
     if (swipeX > SWIPE_THRESHOLD && onQuickWeight) {
-      // Vibração de feedback
       if ('vibrate' in navigator) {
         navigator.vibrate(30);
       }
+      setActionExecuted(true);
       onQuickWeight(animal);
     } else if (swipeX < -SWIPE_THRESHOLD && onQuickMedication) {
-      // Vibração de feedback
       if ('vibrate' in navigator) {
         navigator.vibrate(30);
       }
+      setActionExecuted(true);
       onQuickMedication(animal);
     }
 
+    // Reset com animação
     setSwipeX(0);
-    setIsSwiping(false);
-  }, [swipeX, animal, onQuickWeight, onQuickMedication, longPressTriggered]);
+    setTimeout(() => {
+      setIsSwiping(false);
+      setActionExecuted(false);
+    }, 200);
+  }, [swipeX, animal, onQuickWeight, onQuickMedication, longPressTriggered, actionExecuted]);
 
   const handleTouchCancel = useCallback(() => {
-    if (longPressTimer.current) {
-      clearTimeout(longPressTimer.current);
-      longPressTimer.current = null;
-    }
+    clearLongPressTimer();
     setLongPressTriggered(false);
+    setActionExecuted(false);
     setSwipeX(0);
     setIsSwiping(false);
   }, []);
@@ -139,48 +144,60 @@ const AnimalCard = ({
     if (onLongPress) {
       longPressTimer.current = setTimeout(() => {
         onLongPress(animal, { x: e.clientX, y: e.clientY });
+        setLongPressTriggered(true);
+        setActionExecuted(true);
       }, LONG_PRESS_DURATION);
     }
   }, [animal, onLongPress]);
 
   const handleMouseUp = useCallback(() => {
-    if (longPressTimer.current) {
-      clearTimeout(longPressTimer.current);
-      longPressTimer.current = null;
-    }
+    clearLongPressTimer();
   }, []);
 
-  const handleClick = useCallback((e: React.MouseEvent) => {
-    if (!longPressTriggered && Math.abs(swipeX) < 10) {
+  const handleClick = useCallback(() => {
+    // Só abre modal normal se não houve swipe nem long press nem ação
+    if (!longPressTriggered && !actionExecuted && !isSwiping && Math.abs(swipeX) < 20) {
       onClick();
     }
-  }, [swipeX, longPressTriggered, onClick]);
+  }, [swipeX, longPressTriggered, actionExecuted, isSwiping, onClick]);
+
+  // Calcula se deve mostrar indicadores de ação
+  const showWeightIndicator = swipeX > 30;
+  const showMedicationIndicator = swipeX < -30;
 
   return (
-    <div className="animal-card relative overflow-hidden rounded-lg list-none">
-      {/* Ação de swipe esquerda (medicação) */}
-      <div 
-        className={`absolute inset-y-0 right-0 w-20 bg-red-600 flex items-center justify-center transition-opacity ${
-          swipeX < -20 ? 'opacity-100' : 'opacity-0'
-        }`}
-      >
-        <div className="text-white text-center">
-          <span className="text-lg">💊</span>
-          <p className="text-[9px]">Medicação</p>
+    <div className="animal-card relative overflow-hidden rounded-lg">
+      {/* Fundo de ação - Peso (swipe direita) */}
+      {onQuickWeight && (
+        <div 
+          className="absolute inset-0 bg-blue-600 flex items-center justify-start pl-3 rounded-lg"
+          style={{ 
+            opacity: showWeightIndicator ? Math.min(1, Math.abs(swipeX) / 100) : 0,
+            transition: isSwiping ? 'none' : 'opacity 0.2s'
+          }}
+        >
+          <div className="text-white text-center">
+            <span className="text-2xl">⚖️</span>
+            <p className="text-xs font-medium">Peso</p>
+          </div>
         </div>
-      </div>
+      )}
 
-      {/* Ação de swipe direita (peso) */}
-      <div 
-        className={`absolute inset-y-0 left-0 w-20 bg-blue-600 flex items-center justify-center transition-opacity ${
-          swipeX > 20 ? 'opacity-100' : 'opacity-0'
-        }`}
-      >
-        <div className="text-white text-center">
-          <span className="text-lg">⚖️</span>
-          <p className="text-[9px]">Peso</p>
+      {/* Fundo de ação - Medicação (swipe esquerda) */}
+      {onQuickMedication && (
+        <div 
+          className="absolute inset-0 bg-red-600 flex items-center justify-end pr-3 rounded-lg"
+          style={{ 
+            opacity: showMedicationIndicator ? Math.min(1, Math.abs(swipeX) / 100) : 0,
+            transition: isSwiping ? 'none' : 'opacity 0.2s'
+          }}
+        >
+          <div className="text-white text-center">
+            <span className="text-2xl">💊</span>
+            <p className="text-xs font-medium">Medicação</p>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Card principal */}
       <div
@@ -193,22 +210,11 @@ const AnimalCard = ({
         onMouseDown={handleMouseDown}
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
-        style={{ transform: `translateX(${swipeX}px)` }}
-        className={`
-          bg-base-800
-          rounded-lg
-          shadow-lg
-          overflow-hidden
-          cursor-pointer
-          transform
-          hover:-translate-y-1
-          transition-all
-          duration-300
-          group
-          relative
-          text-xs
-          ${isSwiping ? '' : 'transition-transform'}
-        `}
+        style={{ 
+          transform: `translateX(${swipeX}px)`,
+          transition: isSwiping ? 'none' : 'transform 0.2s ease-out'
+        }}
+        className="bg-base-800 rounded-lg shadow-lg overflow-hidden cursor-pointer relative"
         aria-label={displayName}
         role="button"
       >
@@ -226,16 +232,9 @@ const AnimalCard = ({
             </div>
           )}
 
+          {/* Badge de status */}
           <div
-            className={`
-              absolute top-2 right-2
-              px-2 py-0.5
-              text-[10px]
-              font-bold
-              text-white
-              rounded-full
-              ${badgeColor}
-            `}
+            className={`absolute top-2 right-2 px-2 py-0.5 text-[10px] font-bold text-white rounded-full ${badgeColor}`}
           >
             {animal.status}
           </div>
@@ -252,25 +251,18 @@ const AnimalCard = ({
         </div>
 
         <div className="p-2">
-          <h3
-            className="font-bold text-[13px] text-white truncate"
-            title={displayName}
-          >
+          <h3 className="font-bold text-[13px] text-white truncate" title={displayName}>
             {displayName}
           </h3>
 
           <div className="mt-1 pt-1 border-t border-base-700/50 space-y-0.5 text-[10px]">
             <div className="flex justify-between gap-1">
               <span className="text-gray-400">Raça:</span>
-              <span className="font-medium text-gray-200 truncate">
-                {animal.raca}
-              </span>
+              <span className="font-medium text-gray-200 truncate">{animal.raca}</span>
             </div>
             <div className="flex justify-between gap-1">
               <span className="text-gray-400">Sexo:</span>
-              <span className="font-medium text-gray-200 truncate">
-                {animal.sexo}
-              </span>
+              <span className="font-medium text-gray-200 truncate">{animal.sexo}</span>
             </div>
             <div className="flex justify-between gap-1">
               <span className="text-gray-400">Mãe:</span>
@@ -281,9 +273,9 @@ const AnimalCard = ({
           </div>
         </div>
 
-        {/* Indicador de swipe */}
+        {/* Indicador visual de swipe disponível */}
         {(onQuickWeight || onQuickMedication) && (
-          <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r from-blue-500 via-transparent to-red-500 opacity-30" />
+          <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r from-blue-500 via-transparent to-red-500 opacity-20" />
         )}
       </div>
     </div>
