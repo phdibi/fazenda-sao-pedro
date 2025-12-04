@@ -20,6 +20,12 @@ const WeatherWidget: React.FC<WeatherWidgetProps> = ({ animals = [], expanded = 
   const [showAll, setShowAll] = useState(expanded);
 
   useEffect(() => {
+    // OTIMIZAÇÃO: Evita refetch se já tem dados em memória
+    if (forecast.length > 0) {
+      setIsLoading(false);
+      return;
+    }
+
     const loadWeather = async () => {
       setIsLoading(true);
       try {
@@ -38,7 +44,7 @@ const WeatherWidget: React.FC<WeatherWidgetProps> = ({ animals = [], expanded = 
     };
 
     loadWeather();
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const today = forecast[0];
   const nextDays = forecast.slice(1, showAll ? 7 : 4);

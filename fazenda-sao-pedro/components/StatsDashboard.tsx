@@ -62,9 +62,18 @@ const StatsDashboard: React.FC<StatsDashboardProps> = ({
     return base;
   }, []);
 
+  // OTIMIZAÇÃO: Gera hash dos dados para evitar recálculo quando animais não mudam de fato
+  const animalsHash = useMemo(() => {
+    if (!animals || animals.length === 0) return '';
+    return animals
+      .map(a => `${a.id}:${a.pesoKg}:${a.historicoPesagens?.length || 0}`)
+      .sort()
+      .join('|');
+  }, [animals]);
+
   const weightPredictions = useMemo(
     () => batchPredictWeights(animals, predictionTarget),
-    [animals, predictionTarget]
+    [animalsHash, predictionTarget] // eslint-disable-line react-hooks/exhaustive-deps
   );
 
   const predictionAverage = weightPredictions.length

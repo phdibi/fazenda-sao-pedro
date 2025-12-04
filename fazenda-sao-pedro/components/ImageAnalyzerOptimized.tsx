@@ -2,11 +2,11 @@ import React, { useState, useEffect, useRef } from 'react';
 import Spinner from './common/Spinner';
 import { PhotoIcon, CheckIcon } from './common/Icons';
 import { storage } from '../services/firebase';
-import { compressImage, getOptimalFormat } from '../utils/imageOptimization';
+import { prepareImageForUpload, getOptimalFormat } from '../utils/imageOptimization';
 
 interface ImageAnalyzerProps {
     imageUrl: string;
-    onUploadComplete: (newPhotoUrl: string) => void;
+    onUploadComplete: (newPhotoUrl: string, thumbnailUrl?: string) => void;
     animalId: string;
     userId: string;
 }
@@ -75,49 +75,50 @@ const ImageAnalyzerOptimized = ({ imageUrl, onUploadComplete, animalId, userId }
         setPreviewUrl(localPreviewUrl);
 
         // ============================================
-        // 🔧 OTIMIZAÇÃO: COMPRESSÃO ANTES DO UPLOAD
+        // 🔧 OTIMIZAÇÃO: COMPRESSÃO + THUMBNAIL
         // ============================================
         setUploadStatus('compressing');
 
         let fileToUpload: Blob;
+        let thumbnailToUpload: Blob;
         let fileName: string;
+        let thumbnailFileName: string;
 
         try {
-            const originalSize = file.size;
-            
-            // Comprime a imagem
-            fileToUpload = await compressImage(file, {
-                maxWidth: 800,
-                maxHeight: 800,
-                quality: 0.7,
-                format: getOptimalFormat()
-            });
-
-            const compressedSize = fileToUpload.size;
-            const savings = Math.round((1 - compressedSize / originalSize) * 100);
-            setCompressionSavings(`${savings}% menor`);
+            // Prepara imagem comprimida + thumbnail
+            const prepared = await prepareImageForUpload(file);
+            fileToUpload = prepared.compressed;
+            thumbnailToUpload = prepared.thumbnail;
+            setCompressionSavings(prepared.savings);
 
             // Define extensão baseada no formato
             const extension = getOptimalFormat() === 'image/webp' ? 'webp' : 'jpg';
-            fileName = `${Date.now()}.${extension}`;
-
-            console.log(`📷 Compressão: ${(originalSize / 1024).toFixed(0)}KB → ${(compressedSize / 1024).toFixed(0)}KB`);
+            const timestamp = Date.now();
+            fileName = `${timestamp}.${extension}`;
+            thumbnailFileName = `${timestamp}_thumb.${extension}`;
 
         } catch (compressError) {
             console.warn('Falha na compressão, usando original:', compressError);
             fileToUpload = file;
-            fileName = `${Date.now()}.${file.name.split('.').pop() || 'jpg'}`;
+            thumbnailToUpload = file; // Fallback: usa original como thumb também
+            const ext = file.name.split('.').pop() || 'jpg';
+            const timestamp = Date.now();
+            fileName = `${timestamp}.${ext}`;
+            thumbnailFileName = `${timestamp}_thumb.${ext}`;
         }
 
         // ============================================
-        // UPLOAD
+        // UPLOAD (imagem principal + thumbnail)
         // ============================================
         setUploadStatus('uploading');
 
         try {
             const storagePath = `animal_photos/${userId}/${animalId}/${fileName}`;
+            const thumbnailPath = `animal_photos/${userId}/${animalId}/${thumbnailFileName}`;
             const storageRef = storage.ref(storagePath);
+            const thumbnailRef = storage.ref(thumbnailPath);
 
+            // Upload da imagem principal
             const uploadTask = storageRef.put(fileToUpload);
             uploadTaskRef.current = uploadTask;
 
@@ -171,8 +172,21 @@ const ImageAnalyzerOptimized = ({ imageUrl, onUploadComplete, animalId, userId }
                         clearTimeout(uploadTimeoutRef.current);
                     }
                     
+                    // Obtém URL da imagem principal
                     const downloadURL = await uploadTask.snapshot.ref.getDownloadURL();
-                    onUploadComplete(downloadURL);
+                    
+                    // Upload do thumbnail em background (não bloqueia)
+                    let thumbnailURL: string | undefined;
+                    try {
+                        await thumbnailRef.put(thumbnailToUpload);
+                        thumbnailURL = await thumbnailRef.getDownloadURL();
+                        console.log('📷 Thumbnail enviado com sucesso');
+                    } catch (thumbError) {
+                        console.warn('Falha no upload do thumbnail:', thumbError);
+                        // Continua sem thumbnail - não é crítico
+                    }
+                    
+                    onUploadComplete(downloadURL, thumbnailURL);
                     setUploadStatus('success');
                     uploadTaskRef.current = null;
                     URL.revokeObjectURL(localPreviewUrl);

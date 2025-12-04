@@ -11,6 +11,44 @@ interface AnimalCardProps {
   showGMD?: boolean;
 }
 
+// 🔧 OTIMIZAÇÃO: Componente de imagem com lazy loading e fallback
+const LazyImage: React.FC<{ 
+  src: string; 
+  thumbnailSrc?: string;
+  alt: string;
+}> = ({ src, thumbnailSrc, alt }) => {
+  const [isLoaded, setIsLoaded] = useState(false);
+  const [hasError, setHasError] = useState(false);
+  
+  // Usa thumbnail se disponível, senão usa imagem principal
+  const displaySrc = thumbnailSrc || src;
+  
+  if (hasError) {
+    return (
+      <div className="w-full h-full flex items-center justify-center bg-base-700 text-[10px] text-gray-300">
+        Sem foto
+      </div>
+    );
+  }
+  
+  return (
+    <>
+      {!isLoaded && (
+        <div className="absolute inset-0 bg-base-700 animate-pulse" />
+      )}
+      <img
+        className={`w-full h-full object-cover transition-opacity duration-300 ${isLoaded ? 'opacity-100' : 'opacity-0'}`}
+        src={displaySrc}
+        alt={alt}
+        loading="lazy"
+        decoding="async"
+        onLoad={() => setIsLoaded(true)}
+        onError={() => setHasError(true)}
+      />
+    </>
+  );
+};
+
 const AnimalCard: React.FC<AnimalCardProps> = ({ 
   animal, 
   onClick, 
@@ -203,11 +241,10 @@ const AnimalCard: React.FC<AnimalCardProps> = ({
         {/* Foto */}
         <div className="relative aspect-square w-full">
           {mainPhoto ? (
-            <img
-              className="w-full h-full object-cover"
+            <LazyImage
               src={mainPhoto}
+              thumbnailSrc={animal.thumbnailUrl}
               alt={displayName}
-              loading="lazy"
             />
           ) : (
             <div className="w-full h-full flex items-center justify-center bg-base-700 text-[10px] text-gray-300">

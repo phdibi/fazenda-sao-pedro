@@ -118,6 +118,68 @@ export const createThumbnail = async (
 };
 
 /**
+ * Cria thumbnail a partir de Blob
+ */
+export const createThumbnailFromBlob = async (
+    blob: Blob
+): Promise<Blob> => {
+    // Converte Blob para File temporário
+    const file = new File([blob], 'temp.webp', { type: blob.type });
+    return compressImage(file, {
+        maxWidth: 200,
+        maxHeight: 200,
+        quality: 0.6,
+        format: 'image/webp'
+    });
+};
+
+/**
+ * Prepara imagem para upload: retorna versão normal e thumbnail
+ * @param file - Arquivo original
+ * @returns Objeto com imagem comprimida e thumbnail
+ * 
+ * Uso:
+ * const { compressed, thumbnail } = await prepareImageForUpload(file);
+ * // Upload compressed para visualização completa
+ * // Upload thumbnail para listagens (economia de ~85% bandwidth)
+ */
+export interface PreparedImage {
+    compressed: Blob;
+    thumbnail: Blob;
+    originalSize: number;
+    compressedSize: number;
+    thumbnailSize: number;
+    savings: string;
+}
+
+export const prepareImageForUpload = async (
+    file: File
+): Promise<PreparedImage> => {
+    const compressed = await compressImage(file);
+    const thumbnail = await createThumbnailFromBlob(compressed);
+    
+    const originalSize = file.size;
+    const compressedSize = compressed.size;
+    const thumbnailSize = thumbnail.size;
+    const totalSavings = ((originalSize - compressedSize - thumbnailSize) / originalSize * 100).toFixed(1);
+    
+    console.log(`📷 Imagem preparada:
+    • Original: ${formatBytes(originalSize)}
+    • Comprimida: ${formatBytes(compressedSize)}
+    • Thumbnail: ${formatBytes(thumbnailSize)}
+    • Economia total: ${totalSavings}%`);
+    
+    return {
+        compressed,
+        thumbnail,
+        originalSize,
+        compressedSize,
+        thumbnailSize,
+        savings: `${totalSavings}%`
+    };
+};
+
+/**
  * Formata bytes para string legível
  */
 const formatBytes = (bytes: number): string => {

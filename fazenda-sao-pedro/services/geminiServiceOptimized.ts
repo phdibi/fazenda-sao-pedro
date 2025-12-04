@@ -465,39 +465,166 @@ export const startChat = async (animals: Animal[]) => {
         pesoMedio: animals.length > 0 
             ? animals.reduce((sum, a) => sum + a.pesoKg, 0) / animals.length 
             : 0,
+        pesoTotal: animals.reduce((sum, a) => sum + a.pesoKg, 0),
         maisPesado: animals.reduce((max, a) => a.pesoKg > max.pesoKg ? a : max, animals[0]),
+        maisLeve: animals.reduce((min, a) => a.pesoKg < min.pesoKg ? a : min, animals[0]),
+        // Estatísticas sanitárias
+        comVacinacao: animals.filter(a => 
+            a.historicoSanitario?.some(h => 
+                h.motivo?.toLowerCase().includes('vacin') || 
+                h.medicamento?.toLowerCase().includes('vacin')
+            )
+        ).length,
+        comTratamento: animals.filter(a => a.historicoSanitario && a.historicoSanitario.length > 0).length,
+        // Estatísticas reprodutivas
+        prenhas: animals.filter(a => 
+            a.sexo === Sexo.Femea && a.historicoPrenhez && a.historicoPrenhez.length > 0
+        ).length,
+        comProgenie: animals.filter(a => 
+            a.historicoProgenie && a.historicoProgenie.length > 0
+        ).length,
+        // Por raça
+        racas: animals.reduce((acc, a) => {
+            acc[a.raca] = (acc[a.raca] || 0) + 1;
+            return acc;
+        }, {} as Record<string, number>),
+        // Por status
+        ativos: animals.filter(a => a.status === 'Ativo').length,
+        vendidos: animals.filter(a => a.status === 'Vendido').length,
+    };
+
+    // Calcula idade média
+    const calcularIdadeMedia = (): number => {
+        const hoje = new Date();
+        const idades = animals
+            .filter(a => a.dataNascimento)
+            .map(a => {
+                const nasc = new Date(a.dataNascimento);
+                return (hoje.getTime() - nasc.getTime()) / (1000 * 60 * 60 * 24 * 30); // meses
+            });
+        return idades.length > 0 ? idades.reduce((a, b) => a + b, 0) / idades.length : 0;
     };
 
     const sendMessage = async (message: string): Promise<string> => {
         const lower = message.toLowerCase();
         
-        // Respostas rápidas locais (sem usar Gemini)
-        if (lower.includes("olá") || lower.includes("oi")) {
-            return "Olá! Sou o Titi. Como posso ajudar com o manejo?";
+        // ============================================
+        // RESPOSTAS LOCAIS EXPANDIDAS (sem usar Gemini)
+        // ============================================
+        
+        // Saudações
+        if (lower.includes("olá") || lower.includes("oi") || lower.includes("hey") || lower.includes("bom dia") || lower.includes("boa tarde") || lower.includes("boa noite")) {
+            return "Olá! Sou o Titi, seu assistente de manejo. 🐄 Posso ajudar com informações sobre seu rebanho, pesagens, vacinas, reprodução e muito mais!";
         }
         
-        if (lower.includes("quantos")) {
-            if (lower.includes("macho")) return `Você tem ${stats.machos} machos.`;
-            if (lower.includes("fêmea") || lower.includes("femea")) return `Você tem ${stats.femeas} fêmeas.`;
-            return `Total de ${stats.total} animais cadastrados.`;
-        }
-        
-        if (lower.includes("peso médio") || lower.includes("peso medio")) {
-            return `O peso médio é ${stats.pesoMedio.toFixed(2)} kg.`;
-        }
-        
-        if (lower.includes("mais pesado")) {
-            const h = stats.maisPesado;
-            return h ? `O mais pesado é ${h.nome || `brinco ${h.brinco}`} com ${h.pesoKg} kg.` : "Sem dados.";
+        // Ajuda
+        if (lower.includes("ajuda") || lower.includes("help") || lower.includes("o que você pode")) {
+            return `Posso responder sobre:\n• Quantidade de animais (machos, fêmeas, total)\n• Peso médio, mais pesado, mais leve\n• Vacinação e tratamentos\n• Prenhez e reprodução\n• Raças do rebanho\n• Idade média\n• Status (ativos, vendidos)\n\nExemplos: "quantos machos?", "peso médio?", "animais vacinados?"`;
         }
 
-        // Verifica cache para perguntas complexas
+        // Quantidade de animais
+        if (lower.includes("quantos") || lower.includes("quantidade") || lower.includes("total")) {
+            if (lower.includes("macho")) return `🐂 Você tem **${stats.machos}** machos no rebanho.`;
+            if (lower.includes("fêmea") || lower.includes("femea") || lower.includes("vaca")) return `🐄 Você tem **${stats.femeas}** fêmeas no rebanho.`;
+            if (lower.includes("ativo")) return `✅ Você tem **${stats.ativos}** animais ativos.`;
+            if (lower.includes("vendido")) return `💰 Você tem **${stats.vendidos}** animais marcados como vendidos.`;
+            if (lower.includes("prenha") || lower.includes("gestante")) return `🤰 Você tem **${stats.prenhas}** matrizes com histórico de prenhez.`;
+            return `📊 Total de **${stats.total}** animais cadastrados (${stats.machos} machos, ${stats.femeas} fêmeas).`;
+        }
+        
+        // Peso
+        if (lower.includes("peso")) {
+            if (lower.includes("médio") || lower.includes("medio")) {
+                return `⚖️ O peso médio do rebanho é **${stats.pesoMedio.toFixed(2)} kg**.`;
+            }
+            if (lower.includes("total")) {
+                return `⚖️ O peso total do rebanho é **${stats.pesoTotal.toFixed(2)} kg** (${(stats.pesoTotal / 1000).toFixed(2)} toneladas).`;
+            }
+            if (lower.includes("mais pesado") || lower.includes("maior")) {
+                const h = stats.maisPesado;
+                return h ? `🏆 O mais pesado é **${h.nome || `brinco ${h.brinco}`}** com **${h.pesoKg} kg**.` : "Sem dados de peso.";
+            }
+            if (lower.includes("mais leve") || lower.includes("menor")) {
+                const l = stats.maisLeve;
+                return l ? `🪶 O mais leve é **${l.nome || `brinco ${l.brinco}`}** com **${l.pesoKg} kg**.` : "Sem dados de peso.";
+            }
+            return `⚖️ Peso médio: **${stats.pesoMedio.toFixed(2)} kg** | Total: **${(stats.pesoTotal / 1000).toFixed(2)} ton**`;
+        }
+
+        // Mais pesado (sem mencionar "peso")
+        if (lower.includes("mais pesado") || lower.includes("maior animal")) {
+            const h = stats.maisPesado;
+            return h ? `🏆 O mais pesado é **${h.nome || `brinco ${h.brinco}`}** com **${h.pesoKg} kg**.` : "Sem dados.";
+        }
+
+        // Mais leve (sem mencionar "peso")
+        if (lower.includes("mais leve") || lower.includes("menor animal")) {
+            const l = stats.maisLeve;
+            return l ? `🪶 O mais leve é **${l.nome || `brinco ${l.brinco}`}** com **${l.pesoKg} kg**.` : "Sem dados.";
+        }
+
+        // Vacinação
+        if (lower.includes("vacin") || lower.includes("imuniz")) {
+            return `💉 **${stats.comVacinacao}** de ${stats.total} animais têm registro de vacinação (${((stats.comVacinacao / stats.total) * 100).toFixed(1)}%).`;
+        }
+
+        // Tratamentos sanitários
+        if (lower.includes("tratamento") || lower.includes("medicamento") || lower.includes("remédio") || lower.includes("medicado")) {
+            return `💊 **${stats.comTratamento}** animais têm histórico de tratamentos sanitários.`;
+        }
+
+        // Prenhez / Reprodução
+        if (lower.includes("prenha") || lower.includes("prenhez") || lower.includes("gestante") || lower.includes("gestação")) {
+            return `🤰 **${stats.prenhas}** matrizes têm histórico de prenhez registrado.`;
+        }
+
+        if (lower.includes("cria") || lower.includes("progênie") || lower.includes("progenie") || lower.includes("filhote") || lower.includes("bezerro")) {
+            return `👶 **${stats.comProgenie}** animais têm registro de progênie (crias).`;
+        }
+
+        if (lower.includes("reprodução") || lower.includes("reproducao") || lower.includes("reprodutivo")) {
+            return `🐄 Dados reprodutivos:\n• Fêmeas: ${stats.femeas}\n• Com prenhez registrada: ${stats.prenhas}\n• Com progênie: ${stats.comProgenie}`;
+        }
+
+        // Raças
+        if (lower.includes("raça") || lower.includes("raca") || lower.includes("raças")) {
+            const racasStr = Object.entries(stats.racas)
+                .sort((a, b) => b[1] - a[1])
+                .map(([raca, count]) => `• ${raca}: ${count}`)
+                .join('\n');
+            return `🏷️ Distribuição por raça:\n${racasStr || 'Nenhuma raça cadastrada.'}`;
+        }
+
+        // Idade
+        if (lower.includes("idade")) {
+            const idadeMedia = calcularIdadeMedia();
+            if (lower.includes("média") || lower.includes("media")) {
+                return `📅 A idade média do rebanho é **${idadeMedia.toFixed(1)} meses** (${(idadeMedia / 12).toFixed(1)} anos).`;
+            }
+            return `📅 Idade média: **${idadeMedia.toFixed(1)} meses**.`;
+        }
+
+        // Status
+        if (lower.includes("status") || lower.includes("situação")) {
+            return `📋 Status do rebanho:\n• Ativos: ${stats.ativos}\n• Vendidos: ${stats.vendidos}\n• Total: ${stats.total}`;
+        }
+
+        // Resumo geral
+        if (lower.includes("resumo") || lower.includes("relatório") || lower.includes("visão geral") || lower.includes("overview")) {
+            return `📊 **Resumo do Rebanho:**\n• Total: ${stats.total} animais\n• Machos: ${stats.machos} | Fêmeas: ${stats.femeas}\n• Peso médio: ${stats.pesoMedio.toFixed(2)} kg\n• Com vacinação: ${stats.comVacinacao}\n• Com tratamentos: ${stats.comTratamento}\n• Matrizes com prenhez: ${stats.prenhas}`;
+        }
+
+        // Obrigado / Agradecimento
+        if (lower.includes("obrigado") || lower.includes("valeu") || lower.includes("thanks")) {
+            return "De nada! 🐄 Estou aqui para ajudar com o manejo do seu rebanho.";
+        }
+
+        // Verifica cache para perguntas não reconhecidas
         const cached = geminiCache.get(`chat:${lower}`);
         if (cached) return cached;
 
-        // Para perguntas complexas, poderia usar Gemini
-        // Por agora, retorna resposta padrão
-        return "Não entendi. Tente perguntar sobre quantidade de animais, peso médio, etc.";
+        // Resposta padrão melhorada
+        return `🤔 Não entendi sua pergunta. Tente perguntar sobre:\n• Quantidade de animais\n• Peso (médio, total, mais pesado)\n• Vacinação e tratamentos\n• Prenhez e reprodução\n• Raças\n• Idade média\n\nOu digite "ajuda" para ver todas as opções.`;
     };
 
     return { sendMessage };

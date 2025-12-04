@@ -84,6 +84,7 @@ export interface Animal {
   dataNascimento?: Date;
   status: AnimalStatus;
   fotos: string[];
+  thumbnailUrl?: string; // 🔧 OTIMIZAÇÃO: URL do thumbnail para listagens
   historicoSanitario: MedicationAdministration[];
   historicoPesagens: WeightEntry[];
   historicoPrenhez?: PregnancyRecord[];

@@ -131,7 +131,7 @@ const AnimalDetailModal = ({
   // updates the local form state and forces the modal into "edit mode".
   // This ensures the photo change is part of the main form save, providing
   // a clear user action to confirm the change.
-  const handleUploadComplete = (newUrl: string) => {
+  const handleUploadComplete = (newUrl: string, thumbnailUrl?: string) => {
     if (!editableAnimal) return;
 
     const currentPhotos = editableAnimal.fotos || [];
@@ -142,8 +142,13 @@ const AnimalDetailModal = ({
     );
     const newPhotos = [newUrl, ...otherPhotos];
     
-    // Update the local state with the new photo array.
-    setEditableAnimal(prev => prev ? { ...prev, fotos: newPhotos } : null);
+    // Update the local state with the new photo array and thumbnail
+    setEditableAnimal(prev => prev ? { 
+      ...prev, 
+      fotos: newPhotos,
+      // 🔧 OTIMIZAÇÃO: Salva thumbnail para uso em listagens
+      ...(thumbnailUrl && { thumbnailUrl })
+    } : null);
     
     // Force the modal into edit mode so the "Salvar" button appears.
     setIsEditing(true);
