@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Animal, MedicationAdministration } from '../types';
 import { XMarkIcon } from './common/Icons';
 
@@ -35,6 +35,27 @@ const QuickMedicationModal: React.FC<QuickMedicationModalProps> = ({
   const [motivo, setMotivo] = useState('');
   const [responsavel, setResponsavel] = useState('Equipe Campo');
 
+  // Bloqueia scroll do body quando modal está aberto
+  useEffect(() => {
+    if (isOpen) {
+      const scrollY = window.scrollY;
+      document.body.style.position = 'fixed';
+      document.body.style.top = `-${scrollY}px`;
+      document.body.style.left = '0';
+      document.body.style.right = '0';
+      document.body.style.overflow = 'hidden';
+      
+      return () => {
+        document.body.style.position = '';
+        document.body.style.top = '';
+        document.body.style.left = '';
+        document.body.style.right = '';
+        document.body.style.overflow = '';
+        window.scrollTo(0, scrollY);
+      };
+    }
+  }, [isOpen]);
+
   const handleSave = () => {
     if (!animal || !medicamento || !motivo) return;
 
@@ -62,27 +83,50 @@ const QuickMedicationModal: React.FC<QuickMedicationModalProps> = ({
     onClose();
   };
 
+  // Previne propagação de touch para o fundo
+  const handleTouchMove = (e: React.TouchEvent) => {
+    e.stopPropagation();
+  };
+
   if (!isOpen || !animal) return null;
 
   return (
     <div 
-      className="fixed inset-0 bg-black/80 flex justify-center items-end sm:items-center z-50"
-      onClick={handleClose}
+      className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center"
+      style={{ touchAction: 'none' }}
     >
+      {/* Backdrop */}
       <div 
-        className="bg-base-800 rounded-t-2xl sm:rounded-lg shadow-xl w-full sm:max-w-md max-h-[85vh] flex flex-col"
+        className="absolute inset-0 bg-black/80"
+        onClick={handleClose}
+      />
+      
+      {/* Modal */}
+      <div 
+        className="relative bg-base-800 rounded-t-2xl sm:rounded-lg shadow-xl w-full sm:max-w-md flex flex-col"
+        style={{ 
+          maxHeight: '80vh',
+          touchAction: 'pan-y'
+        }}
+        onTouchMove={handleTouchMove}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header fixo */}
         <div className="flex justify-between items-center p-4 border-b border-base-700 shrink-0">
           <h2 className="text-lg font-bold text-white">💊 Registrar Medicação</h2>
-          <button onClick={handleClose} className="text-gray-400 hover:text-white p-1">
+          <button 
+            onClick={handleClose} 
+            className="text-gray-400 hover:text-white p-2 -mr-2"
+          >
             <XMarkIcon className="w-6 h-6" />
           </button>
         </div>
 
         {/* Conteúdo com scroll */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-3">
+        <div 
+          className="flex-1 overflow-y-auto overscroll-contain p-4 space-y-3"
+          style={{ WebkitOverflowScrolling: 'touch' }}
+        >
           {/* Info do animal */}
           <div className="bg-base-700 rounded-lg p-3 flex justify-between items-center">
             <div>
@@ -187,15 +231,18 @@ const QuickMedicationModal: React.FC<QuickMedicationModalProps> = ({
               className="w-full px-3 py-2 bg-base-700 border border-base-600 rounded-lg text-white"
             />
           </div>
+          
+          {/* Espaço extra para garantir que tudo seja visível */}
+          <div className="h-4" />
         </div>
 
         {/* Botões fixos no rodapé */}
-        <div className="p-4 border-t border-base-700 shrink-0 bg-base-800">
-          <div className="flex gap-2">
+        <div className="p-4 border-t border-base-700 shrink-0 bg-base-800 safe-area-inset-bottom">
+          <div className="flex gap-3">
             <button
               type="button"
               onClick={handleClose}
-              className="flex-1 px-4 py-3 bg-base-700 text-white rounded-lg font-medium"
+              className="flex-1 px-4 py-3 bg-base-700 text-white rounded-lg font-medium active:bg-base-600"
             >
               Cancelar
             </button>
@@ -203,7 +250,7 @@ const QuickMedicationModal: React.FC<QuickMedicationModalProps> = ({
               type="button"
               onClick={handleSave}
               disabled={!medicamento || !motivo}
-              className="flex-1 px-4 py-3 bg-red-600 text-white rounded-lg font-medium disabled:opacity-50"
+              className="flex-1 px-4 py-3 bg-red-600 text-white rounded-lg font-medium disabled:opacity-50 active:bg-red-700"
             >
               Salvar
             </button>
