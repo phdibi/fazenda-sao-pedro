@@ -380,7 +380,19 @@ const App = ({ user, firebaseReady }: AppProps) => {
                             activeFiltersCount={activeFiltersCount}
                         />
                         
-                        <Dashboard animals={filteredAnimals} onSelectAnimal={handleSelectAnimal} />
+                        <Dashboard 
+                                            animals={filteredAnimals} 
+                                            onSelectAnimal={handleSelectAnimal}
+                                            onQuickWeight={(animal) => {
+                                                setSelectedAnimalId(animal.id);
+                                            }}
+                                            onQuickMedication={(animal) => {
+                                                setSelectedAnimalId(animal.id);
+                                            }}
+                                            onLongPress={(animal, position) => {
+                                                setSelectedAnimalId(animal.id);
+                                            }}
+                                        />
 
                         <div className="sm:hidden mt-6">
                             <div className="grid grid-cols-3 gap-2">

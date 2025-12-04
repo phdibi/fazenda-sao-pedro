@@ -60,12 +60,59 @@ header[class*="bg-"] {
 
 /* Remove qualquer marcador numérico/visual dos cards de animais */
 .animal-card {
-  list-style: none;
+  list-style: none !important;
+  list-style-type: none !important;
   padding-inline-start: 0;
   margin: 0;
+  counter-reset: none;
+  position: relative;
 }
 
-.animal-card::marker {
-  content: none;
-  display: none;
+.animal-card::marker,
+.animal-card::before {
+  content: none !important;
+  display: none !important;
+}
+
+/* Remove counter de qualquer grid pai */
+.animal-card-grid,
+[class*="grid"] {
+  list-style: none !important;
+  counter-reset: none !important;
+}
+
+/* Reset total para evitar marcadores */
+.animal-card * {
+  list-style: none;
+}
+
+/* Oculta badge de notificação numérico indesejado (círculo vermelho com "0") */
+.animal-card > .notification-badge,
+.animal-card > [class*="badge"]:not([class*="status"]),
+.animal-card > span:first-child:empty,
+.animal-card > span[class*="rounded-full"][class*="bg-red"],
+.animal-card > div > span[class*="rounded-full"][class*="bg-red"]:not([class*="status"]) {
+  display: none !important;
+}
+
+/* Oculta qualquer elemento circular vermelho/rosa com número no canto inferior esquerdo dos cards */
+.animal-card .offspring-count,
+.animal-card .crias-count,
+.animal-card [data-count],
+.animal-card [class*="count-badge"] {
+  display: none !important;
+}
+
+/* Específico para ocultar badge de filhotes/progênie */
+.animal-card .absolute.bottom-0.left-0,
+.animal-card .absolute.bottom-1.left-1,
+.animal-card .absolute.bottom-2.left-0 {
+  /* Preserva apenas o GMD badge que está em bottom-2 left-2 */
+}
+
+/* Touch action para melhor suporte a gestos */
+.animal-card {
+  touch-action: pan-y pinch-zoom;
+  -webkit-user-select: none;
+  user-select: none;
 }

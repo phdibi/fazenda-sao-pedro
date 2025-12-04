@@ -46,14 +46,19 @@ const AnimalCard = ({
 
   // Touch handlers para swipe
   const handleTouchStart = useCallback((e: React.TouchEvent) => {
-    touchStartX.current = e.touches[0].clientX;
-    touchStartY.current = e.touches[0].clientY;
+    const touch = e.touches[0];
+    touchStartX.current = touch.clientX;
+    touchStartY.current = touch.clientY;
     setLongPressTriggered(false);
     setIsSwiping(true);
 
     // Inicia timer de long press
     if (onLongPress) {
       longPressTimer.current = setTimeout(() => {
+        // Vibração haptic feedback se disponível
+        if ('vibrate' in navigator) {
+          navigator.vibrate(50);
+        }
         const rect = cardRef.current?.getBoundingClientRect();
         if (rect) {
           onLongPress(animal, { x: rect.left + rect.width / 2, y: rect.top });
@@ -68,17 +73,20 @@ const AnimalCard = ({
   const handleTouchMove = useCallback((e: React.TouchEvent) => {
     if (!isSwiping || longPressTriggered) return;
 
-    const deltaX = e.touches[0].clientX - touchStartX.current;
-    const deltaY = Math.abs(e.touches[0].clientY - touchStartY.current);
+    const touch = e.touches[0];
+    const deltaX = touch.clientX - touchStartX.current;
+    const deltaY = Math.abs(touch.clientY - touchStartY.current);
 
-    // Cancela long press se mover
+    // Cancela long press se mover mais de 10px
     if (longPressTimer.current && (Math.abs(deltaX) > 10 || deltaY > 10)) {
       clearTimeout(longPressTimer.current);
       longPressTimer.current = null;
     }
 
-    // Só permite swipe horizontal
-    if (deltaY < 30) {
+    // Só permite swipe horizontal se movimento Y for pequeno
+    if (deltaY < 30 && Math.abs(deltaX) > 5) {
+      // Previne scroll quando estamos fazendo swipe horizontal
+      e.preventDefault();
       setSwipeX(Math.max(-100, Math.min(100, deltaX)));
     }
   }, [isSwiping, longPressTriggered]);
@@ -97,11 +105,18 @@ const AnimalCard = ({
       return;
     }
 
+    // Executa ação de swipe
     if (swipeX > SWIPE_THRESHOLD && onQuickWeight) {
-      // Swipe direita -> Peso
+      // Vibração de feedback
+      if ('vibrate' in navigator) {
+        navigator.vibrate(30);
+      }
       onQuickWeight(animal);
     } else if (swipeX < -SWIPE_THRESHOLD && onQuickMedication) {
-      // Swipe esquerda -> Medicação
+      // Vibração de feedback
+      if ('vibrate' in navigator) {
+        navigator.vibrate(30);
+      }
       onQuickMedication(animal);
     }
 
