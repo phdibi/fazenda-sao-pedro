@@ -142,7 +142,7 @@ const AnimalCard = ({
   }, [swipeX, longPressTriggered, onClick]);
 
   return (
-    <div className="relative overflow-hidden rounded-lg list-none" style={{ listStyle: 'none' }}>
+    <div className="animal-card relative overflow-hidden rounded-lg list-none">
       {/* Ação de swipe esquerda (medicação) */}
       <div 
         className={`absolute inset-y-0 right-0 w-20 bg-red-600 flex items-center justify-center transition-opacity ${
