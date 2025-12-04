@@ -221,11 +221,7 @@ const AnimalCard: React.FC<AnimalCardProps> = ({
           </div>
 
           {/* GMD badge */}
-          {gmd?.gmdTotal && gmd.gmdTotal > 0 && (
-            <div className={`absolute bottom-1.5 left-1.5 px-1 py-0.5 bg-black/70 rounded text-[8px] ${gmdClass?.color}`}>
-              GMD: {gmd.gmdTotal.toFixed(2)}
-            </div>
-          )}
+
         </div>
 
         {/* Info */}
