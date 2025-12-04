@@ -64,14 +64,17 @@ header[class*="bg-"] {
   list-style-type: none !important;
   padding-inline-start: 0;
   margin: 0;
-  counter-reset: none;
+  counter-reset: none !important;
+  counter-increment: none !important;
   position: relative;
 }
 
 .animal-card::marker,
-.animal-card::before {
+.animal-card::before,
+.animal-card::after {
   content: none !important;
   display: none !important;
+  counter-increment: none !important;
 }
 
 /* Remove counter de qualquer grid pai */
@@ -82,32 +85,11 @@ header[class*="bg-"] {
 }
 
 /* Reset total para evitar marcadores */
-.animal-card * {
-  list-style: none;
-}
-
-/* Oculta badge de notificação numérico indesejado (círculo vermelho com "0") */
-.animal-card > .notification-badge,
-.animal-card > [class*="badge"]:not([class*="status"]),
-.animal-card > span:first-child:empty,
-.animal-card > span[class*="rounded-full"][class*="bg-red"],
-.animal-card > div > span[class*="rounded-full"][class*="bg-red"]:not([class*="status"]) {
-  display: none !important;
-}
-
-/* Oculta qualquer elemento circular vermelho/rosa com número no canto inferior esquerdo dos cards */
-.animal-card .offspring-count,
-.animal-card .crias-count,
-.animal-card [data-count],
-.animal-card [class*="count-badge"] {
-  display: none !important;
-}
-
-/* Específico para ocultar badge de filhotes/progênie */
-.animal-card .absolute.bottom-0.left-0,
-.animal-card .absolute.bottom-1.left-1,
-.animal-card .absolute.bottom-2.left-0 {
-  /* Preserva apenas o GMD badge que está em bottom-2 left-2 */
+.animal-card *,
+.animal-card *::before,
+.animal-card *::after {
+  list-style: none !important;
+  counter-increment: none !important;
 }
 
 /* Touch action para melhor suporte a gestos */
