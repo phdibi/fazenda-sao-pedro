@@ -57,3 +57,15 @@ header.bg-background,
 header[class*="bg-"] {
   background-color: #5b483f !important;
 }
+
+/* Remove qualquer marcador numérico/visual dos cards de animais */
+.animal-card {
+  list-style: none;
+  padding-inline-start: 0;
+  margin: 0;
+}
+
+.animal-card::marker {
+  content: none;
+  display: none;
+}
