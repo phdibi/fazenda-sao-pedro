@@ -92,6 +92,47 @@ header[class*="bg-"] {
   counter-increment: none !important;
 }
 
+/* FORÇA OCULTAR qualquer "0" que apareça entre a foto e o nome do animal */
+.animal-card > div > div:first-child + span,
+.animal-card > div > span:not([class]),
+.animal-card > div > div + div:empty,
+.animal-card > div > div.relative + span {
+  display: none !important;
+  visibility: hidden !important;
+  font-size: 0 !important;
+  height: 0 !important;
+  overflow: hidden !important;
+}
+
+/* Esconde qualquer texto solto que seja só "0" */
+.animal-card > div {
+  font-size: 0;
+}
+
+.animal-card > div > * {
+  font-size: 0.75rem; /* Restaura tamanho nos filhos */
+}
+
+.animal-card > div > div {
+  font-size: initial;
+}
+
+.animal-card > div > div.relative {
+  font-size: 0;
+}
+
+.animal-card > div > div.relative > * {
+  font-size: initial;
+}
+
+.animal-card > div > div.p-2 {
+  font-size: initial;
+}
+
+.animal-card > div > div.p-2 * {
+  font-size: inherit;
+}
+
 /* Touch action para melhor suporte a gestos */
 .animal-card {
   touch-action: pan-y pinch-zoom;
