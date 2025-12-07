@@ -284,11 +284,11 @@ const FilterBar = ({
       </div>
 
       {/* Chips de filtro rápido - Scroll horizontal no mobile */}
-      <div 
-        ref={scrollRef}
-        className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide -mx-4 px-4 md:mx-0 md:px-0 md:flex-wrap"
-        style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
-      >
+        <div
+          ref={scrollRef}
+          className="flex gap-2 overflow-x-auto overflow-y-visible pb-2 scrollbar-hide -mx-4 px-4 md:mx-0 md:px-0 md:flex-wrap"
+          style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+        >
         {/* Status */}
         <DropdownChip
           label="Status"
