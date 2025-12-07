@@ -103,7 +103,7 @@ const DropdownChip: React.FC<DropdownChipProps> = ({ label, value, options, onCh
     : label;
 
   return (
-    <div ref={ref} className="relative">
+    <div ref={ref} className="relative flex-shrink-0">
       <button
         onClick={() => setIsOpen(!isOpen)}
         className={`
@@ -121,31 +121,41 @@ const DropdownChip: React.FC<DropdownChipProps> = ({ label, value, options, onCh
         {isActive && (
           <span 
             onClick={(e) => { e.stopPropagation(); onChange(''); setIsOpen(false); }}
-            className="ml-1 hover:bg-white/20 rounded-full p-0.5"
+            className="ml-0.5 hover:bg-white/20 rounded-full p-0.5"
           >
             <XIcon className="w-3 h-3" />
           </span>
         )}
       </button>
 
+      {/* Dropdown menu - posicionamento fixo */}
       {isOpen && (
-        <div className="absolute top-full left-0 mt-1 bg-base-800 border border-base-600 rounded-lg shadow-xl z-50 min-w-[160px] py-1 max-h-60 overflow-y-auto">
-          <button
-            onClick={() => { onChange(''); setIsOpen(false); }}
-            className={`w-full text-left px-3 py-2 text-sm hover:bg-base-700 ${!value ? 'text-brand-primary-light' : 'text-gray-300'}`}
-          >
-            Todos
-          </button>
-          {options.map(opt => (
+        <>
+          {/* Overlay para fechar ao clicar fora */}
+          <div 
+            className="fixed inset-0 z-40" 
+            onClick={() => setIsOpen(false)}
+          />
+          {/* Menu dropdown */}
+          <div className="absolute top-full left-0 mt-2 bg-base-800 border border-base-600 rounded-xl shadow-2xl z-50 min-w-[180px] py-2 max-h-64 overflow-y-auto">
             <button
-              key={opt.value}
-              onClick={() => { onChange(opt.value); setIsOpen(false); }}
-              className={`w-full text-left px-3 py-2 text-sm hover:bg-base-700 ${value === opt.value ? 'text-brand-primary-light bg-base-700' : 'text-gray-300'}`}
+              onClick={() => { onChange(''); setIsOpen(false); }}
+              className={`w-full text-left px-4 py-2.5 text-sm hover:bg-base-700 transition-colors ${!value ? 'text-brand-primary-light font-medium' : 'text-gray-300'}`}
             >
-              {opt.label}
+              Todos
             </button>
-          ))}
-        </div>
+            <div className="h-px bg-base-700 my-1" />
+            {options.map(opt => (
+              <button
+                key={opt.value}
+                onClick={() => { onChange(opt.value); setIsOpen(false); }}
+                className={`w-full text-left px-4 py-2.5 text-sm hover:bg-base-700 transition-colors ${value === opt.value ? 'text-brand-primary-light font-medium bg-base-700/50' : 'text-gray-300'}`}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+        </>
       )}
     </div>
   );
