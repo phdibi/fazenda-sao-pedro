@@ -2,11 +2,11 @@ import React, { useState, useEffect, useRef } from 'react';
 import Spinner from './common/Spinner';
 import { PhotoIcon, CheckIcon } from './common/Icons';
 import { storage } from '../services/firebase';
-import { compressImage, getOptimalFormat } from '../utils/imageOptimization';
+import { prepareImageForUpload, getOptimalFormat } from '../utils/imageOptimization';
 
 interface ImageAnalyzerProps {
   imageUrl: string;
-  onUploadComplete: (newPhotoUrl: string) => void;
+  onUploadComplete: (newPhotoUrl: string, thumbnailUrl?: string) => void;
   animalId: string;
   userId: string;
 }
@@ -17,39 +17,17 @@ type UploadError = {
   isConfigError?: boolean;
 };
 
-type UploadStatus = 'idle' | 'uploading' | 'success' | 'error';
+type UploadStatus = 'idle' | 'compressing' | 'uploading' | 'success' | 'error';
 
 const MAX_FILE_SIZE_BYTES = 2 * 1024 * 1024; // 2MB
-const MAX_IMAGE_DIMENSION = 3000; // px
 const QUEUE_MESSAGE =
   '⏳ Já existe um upload em andamento. Aguarde a conclusão ou cancele antes de enviar outro arquivo.';
-
-const getImageDimensions = (file: File): Promise<{ width: number; height: number }> => {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    const objectUrl = URL.createObjectURL(file);
-    img.onload = () => {
-      URL.revokeObjectURL(objectUrl);
-      resolve({ width: img.width, height: img.height });
-    };
-    img.onerror = (error) => {
-      URL.revokeObjectURL(objectUrl);
-      reject(error);
-    };
-    img.src = objectUrl;
-  });
-};
-
-const buildFileFromBlob = (blob: Blob, originalFile: File): File => {
-  const extension = blob.type === 'image/webp' ? 'webp' : originalFile.name.split('.').pop() || 'jpg';
-  const safeName = originalFile.name.replace(/\.[^.]+$/, '');
-  return new File([blob], `${safeName}.${extension}`, { type: blob.type, lastModified: Date.now() });
-};
 
 const ImageAnalyzer = ({ imageUrl, onUploadComplete, animalId, userId }: ImageAnalyzerProps) => {
   const [previewUrl, setPreviewUrl] = useState<string>(imageUrl);
   const [uploadStatus, setUploadStatus] = useState<UploadStatus>('idle');
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [compressionSavings, setCompressionSavings] = useState<string>('');
   const [error, setError] = useState<UploadError | null>(null);
 
   const uploadTaskRef = useRef<any | null>(null);
@@ -62,6 +40,7 @@ const ImageAnalyzer = ({ imageUrl, onUploadComplete, animalId, userId }: ImageAn
       setUploadStatus('idle');
       setUploadProgress(0);
       setError(null);
+      setCompressionSavings('');
     }
     if (uploadTaskRef.current) {
       uploadTaskRef.current.cancel();
@@ -100,50 +79,67 @@ const ImageAnalyzer = ({ imageUrl, onUploadComplete, animalId, userId }: ImageAn
 
     setError(null);
     setUploadProgress(0);
-    setUploadStatus('uploading');
+    setCompressionSavings('');
     timeoutTriggeredRef.current = false;
 
-    let fileToUpload: File = file;
-
-    try {
-      const { width, height } = await getImageDimensions(file);
-      const isOversized =
-        file.size > MAX_FILE_SIZE_BYTES || width > MAX_IMAGE_DIMENSION || height > MAX_IMAGE_DIMENSION;
-
-      if (isOversized) {
-        const compressedBlob = await compressImage(file, {
-          maxWidth: MAX_IMAGE_DIMENSION,
-          maxHeight: MAX_IMAGE_DIMENSION,
-          quality: 0.72,
-          format: getOptimalFormat()
-        });
-
-        if (compressedBlob.size > MAX_FILE_SIZE_BYTES) {
-          setError({
-            message: `A imagem está muito grande mesmo após compressão (${(compressedBlob.size / (1024 * 1024)).toFixed(2)}MB). Use uma imagem menor ou reduza a resolução.`,
-            isConfigError: false
-          });
-          setUploadStatus('error');
-          return;
-        }
-
-        fileToUpload = buildFileFromBlob(compressedBlob, file);
-      }
-    } catch (compressionError: any) {
-      console.error('Falha ao validar/comprimir imagem:', compressionError);
-      setError({ message: 'Não foi possível preparar a imagem para upload. Tente novamente com outro arquivo.', isConfigError: false });
-      setUploadStatus('error');
-      return;
-    }
-
-    const localPreviewUrl = URL.createObjectURL(fileToUpload);
+    // Preview local imediato
+    const localPreviewUrl = URL.createObjectURL(file);
     setPreviewUrl(localPreviewUrl);
 
+    // ============================================
+    // 🔧 OTIMIZAÇÃO: SEMPRE COMPRIMIR + THUMBNAIL
+    // ============================================
+    setUploadStatus('compressing');
+
+    let fileToUpload: Blob;
+    let thumbnailToUpload: Blob;
+    let fileName: string;
+    let thumbnailFileName: string;
+
     try {
-      const timestamp = new Date().getTime();
-      const fileExtension = fileToUpload.name.split('.').pop() || 'jpg';
-      const storagePath = `animal_photos/${userId}/${animalId}/${timestamp}.${fileExtension}`;
+      // Prepara imagem comprimida + thumbnail
+      const prepared = await prepareImageForUpload(file);
+      fileToUpload = prepared.compressed;
+      thumbnailToUpload = prepared.thumbnail;
+      setCompressionSavings(prepared.savings);
+
+      // Define extensão baseada no formato
+      const extension = getOptimalFormat() === 'image/webp' ? 'webp' : 'jpg';
+      const timestamp = Date.now();
+      fileName = `${timestamp}.${extension}`;
+      thumbnailFileName = `${timestamp}_thumb.${extension}`;
+
+      // Verifica se ainda está muito grande após compressão
+      if (fileToUpload.size > MAX_FILE_SIZE_BYTES) {
+        setError({
+          message: `A imagem está muito grande mesmo após compressão (${(fileToUpload.size / (1024 * 1024)).toFixed(2)}MB). Use uma imagem menor.`,
+          isConfigError: false
+        });
+        setUploadStatus('error');
+        URL.revokeObjectURL(localPreviewUrl);
+        return;
+      }
+
+    } catch (compressionError: any) {
+      console.warn('Falha na compressão, usando original:', compressionError);
+      fileToUpload = file;
+      thumbnailToUpload = file;
+      const ext = file.name.split('.').pop() || 'jpg';
+      const timestamp = Date.now();
+      fileName = `${timestamp}.${ext}`;
+      thumbnailFileName = `${timestamp}_thumb.${ext}`;
+    }
+
+    // ============================================
+    // UPLOAD (imagem principal + thumbnail)
+    // ============================================
+    setUploadStatus('uploading');
+
+    try {
+      const storagePath = `animal_photos/${userId}/${animalId}/${fileName}`;
+      const thumbnailPath = `animal_photos/${userId}/${animalId}/${thumbnailFileName}`;
       const storageRef = storage.ref(storagePath);
+      const thumbnailRef = storage.ref(thumbnailPath);
 
       const uploadTask = storageRef.put(fileToUpload);
       uploadTaskRef.current = uploadTask;
@@ -195,27 +191,27 @@ const ImageAnalyzer = ({ imageUrl, onUploadComplete, animalId, userId }: ImageAn
 
           switch (uploadError.code) {
             case 'storage/unauthorized':
-              detailedMessage = "🔒 Permissão Negada. Verifique as Regras de Segurança do Firebase Storage (devem permitir write para usuários autenticados).";
+              detailedMessage = "🔒 Permissão Negada. Verifique as Regras de Segurança do Firebase Storage.";
               break;
             case 'storage/object-not-found':
             case 'storage/bucket-not-found':
-              detailedMessage = "📦 O bucket de armazenamento não foi encontrado. Verifique se o 'storageBucket' no index.html está correto.";
+              detailedMessage = "📦 O bucket de armazenamento não foi encontrado.";
               break;
             case 'storage/project-not-found':
-              detailedMessage = "🔍 Projeto Firebase não encontrado. Verifique o 'projectId' no index.html.";
+              detailedMessage = "🔍 Projeto Firebase não encontrado.";
               break;
             case 'storage/unknown':
               if (!navigator.onLine) {
-                detailedMessage = "📡 Sem conexão com a internet. Verifique sua rede e tente novamente.";
+                detailedMessage = "📡 Sem conexão com a internet.";
                 isConfigError = false;
               } else if (uploadError.message?.toLowerCase().includes('cors')) {
-                detailedMessage = "🌐 Erro de CORS detectado. O bucket precisa permitir requisições da sua origem.";
+                detailedMessage = "🌐 Erro de CORS detectado.";
               } else {
-                detailedMessage = `❓ Erro desconhecido: ${uploadError.message || 'Verifique o console do navegador (F12) para mais detalhes.'}`;
+                detailedMessage = `❓ Erro desconhecido: ${uploadError.message || 'Verifique o console.'}`;
               }
               break;
             default:
-              detailedMessage = `⚠️ Falha no upload (código: ${uploadError.code || 'desconhecido'}). Verifique as configurações do Firebase.`;
+              detailedMessage = `⚠️ Falha no upload (código: ${uploadError.code || 'desconhecido'}).`;
               break;
           }
 
@@ -228,8 +224,22 @@ const ImageAnalyzer = ({ imageUrl, onUploadComplete, animalId, userId }: ImageAn
             clearTimeout(uploadTimeoutRef.current);
             uploadTimeoutRef.current = null;
           }
+          
+          // Obtém URL da imagem principal
           const downloadURL = await uploadTask.snapshot.ref.getDownloadURL();
-          onUploadComplete(downloadURL);
+          
+          // Upload do thumbnail em background (não bloqueia)
+          let thumbnailURL: string | undefined;
+          try {
+            await thumbnailRef.put(thumbnailToUpload);
+            thumbnailURL = await thumbnailRef.getDownloadURL();
+            console.log('📷 Thumbnail enviado com sucesso');
+          } catch (thumbError) {
+            console.warn('Falha no upload do thumbnail:', thumbError);
+            // Continua sem thumbnail - não é crítico
+          }
+          
+          onUploadComplete(downloadURL, thumbnailURL);
           setUploadStatus('success');
           uploadTaskRef.current = null;
           URL.revokeObjectURL(localPreviewUrl);
@@ -255,14 +265,27 @@ const ImageAnalyzer = ({ imageUrl, onUploadComplete, animalId, userId }: ImageAn
 
   return (
     <div className="relative aspect-square bg-base-900 rounded-lg overflow-hidden flex items-center justify-center w-full max-w-sm mx-auto">
-      <img src={previewUrl} alt="Pré-visualização do animal" className="w-full h-full object-cover" />
+      <img src={previewUrl} alt="Pré-visualização do animal" className="w-full h-full object-cover" loading="lazy" />
+
+      {/* Status: Comprimindo */}
+      {uploadStatus === 'compressing' && (
+        <div className="absolute inset-0 bg-base-900/80 flex flex-col items-center justify-center text-white">
+          <Spinner />
+          <p className="mt-2 text-sm">Otimizando imagem...</p>
+        </div>
+      )}
 
       {uploadStatus === 'uploading' && (
         <div className="absolute inset-0 bg-base-900 bg-opacity-70 flex flex-col items-center justify-center text-white p-4">
           <div className="w-3/4 bg-gray-600 rounded-full h-2.5">
-            <div className="bg-brand-primary h-2.5 rounded-full" style={{ width: `${uploadProgress}%` }}></div>
+            <div className="bg-brand-primary h-2.5 rounded-full transition-all duration-300" style={{ width: `${uploadProgress}%` }}></div>
           </div>
           <p className="mt-2 text-sm">{Math.round(uploadProgress)}%</p>
+          {compressionSavings && (
+            <p className="mt-1 text-xs text-green-400">
+              📦 Economia: {compressionSavings}
+            </p>
+          )}
         </div>
       )}
 
@@ -270,6 +293,11 @@ const ImageAnalyzer = ({ imageUrl, onUploadComplete, animalId, userId }: ImageAn
         <div className="absolute inset-0 bg-green-900/80 flex flex-col items-center justify-center text-white">
           <CheckIcon className="w-12 h-12" />
           <p className="mt-2 font-bold">Upload Concluído!</p>
+          {compressionSavings && (
+            <p className="mt-1 text-sm text-green-300">
+              Economia: {compressionSavings}
+            </p>
+          )}
         </div>
       )}
 
@@ -375,7 +403,7 @@ const ImageAnalyzer = ({ imageUrl, onUploadComplete, animalId, userId }: ImageAn
         </div>
       )}
 
-      {uploadStatus !== 'error' && (
+      {uploadStatus !== 'error' && uploadStatus !== 'compressing' && uploadStatus !== 'uploading' && (
         <label htmlFor="photo-upload" className="absolute bottom-4 right-4 bg-brand-primary hover:bg-brand-primary-light text-white p-3 rounded-full cursor-pointer shadow-lg transition-transform hover:scale-110">
           <PhotoIcon className="w-6 h-6" />
           <input 
@@ -384,7 +412,7 @@ const ImageAnalyzer = ({ imageUrl, onUploadComplete, animalId, userId }: ImageAn
             accept="image/*" 
             onChange={handleFileChange} 
             className="sr-only" 
-            disabled={uploadStatus === 'uploading'}
+            disabled={uploadStatus !== 'idle' && uploadStatus !== 'success'}
           />
         </label>
       )}

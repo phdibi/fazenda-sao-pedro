@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import {
   Animal,
   ManagementArea,
@@ -14,6 +14,11 @@ import {
 } from '../types';
 import { debounce } from '../utils/helpers';
 import { calcularGMDAnimal } from '../utils/gmdCalculations';
+
+// ============================================
+// 🔧 OTIMIZAÇÃO: DEBOUNCE DELAY CONFIGURÁVEL
+// ============================================
+const DEBOUNCE_DELAY_MS = 300; // Delay para evitar re-renders excessivos
 
 interface UseAdvancedFiltersProps {
   animals: Animal[];
@@ -39,6 +44,7 @@ interface UseAdvancedFiltersReturn {
   activeFiltersCount: number;
   allMedications: string[];
   allReasons: string[];
+  isFiltering: boolean; // 🔧 Novo: indica se está processando filtros
 }
 
 const getAgeInMonths = (birthDate: Date): number => {
@@ -54,9 +60,35 @@ export const useAdvancedFilters = ({
 }: UseAdvancedFiltersProps): UseAdvancedFiltersReturn => {
   const [filters, setFilters] = useState<AdvancedFilters>(DEFAULT_ADVANCED_FILTERS);
   const [debouncedSearch, setDebouncedSearch] = useState('');
+  
+  // 🔧 OTIMIZAÇÃO: Estados debounced para filtros numéricos
+  const [debouncedWeightRange, setDebouncedWeightRange] = useState<WeightRange>({ min: null, max: null });
+  const [debouncedAgeRange, setDebouncedAgeRange] = useState<AgeRange>({ minMonths: null, maxMonths: null });
+  const [isFiltering, setIsFiltering] = useState(false);
 
   const debouncedSetSearch = useMemo(
-    () => debounce((value: string) => setDebouncedSearch(value), 300),
+    () => debounce((value: string) => {
+      setDebouncedSearch(value);
+      setIsFiltering(false);
+    }, DEBOUNCE_DELAY_MS),
+    []
+  );
+
+  // 🔧 OTIMIZAÇÃO: Debounce para filtros de peso (evita re-render a cada tecla)
+  const debouncedSetWeightRange = useMemo(
+    () => debounce((range: WeightRange) => {
+      setDebouncedWeightRange(range);
+      setIsFiltering(false);
+    }, DEBOUNCE_DELAY_MS),
+    []
+  );
+
+  // 🔧 OTIMIZAÇÃO: Debounce para filtros de idade
+  const debouncedSetAgeRange = useMemo(
+    () => debounce((range: AgeRange) => {
+      setDebouncedAgeRange(range);
+      setIsFiltering(false);
+    }, DEBOUNCE_DELAY_MS),
     []
   );
 
@@ -170,18 +202,19 @@ export const useAdvancedFilters = ({
         }
       }
 
-      if (filters.weightRange.min !== null && animal.pesoKg < filters.weightRange.min) {
+      // 🔧 OTIMIZAÇÃO: Usa valores debounced para peso e idade
+      if (debouncedWeightRange.min !== null && animal.pesoKg < debouncedWeightRange.min) {
         return false;
       }
-      if (filters.weightRange.max !== null && animal.pesoKg > filters.weightRange.max) {
+      if (debouncedWeightRange.max !== null && animal.pesoKg > debouncedWeightRange.max) {
         return false;
       }
 
       const ageInMonths = getAgeInMonths(animal.dataNascimento);
-      if (filters.ageRange.minMonths !== null && ageInMonths < filters.ageRange.minMonths) {
+      if (debouncedAgeRange.minMonths !== null && ageInMonths < debouncedAgeRange.minMonths) {
         return false;
       }
-      if (filters.ageRange.maxMonths !== null && ageInMonths > filters.ageRange.maxMonths) {
+      if (debouncedAgeRange.maxMonths !== null && ageInMonths > debouncedAgeRange.maxMonths) {
         return false;
       }
 
@@ -217,7 +250,7 @@ export const useAdvancedFilters = ({
     });
 
     return result;
-  }, [animals, debouncedSearch, filters]);
+  }, [animals, debouncedSearch, debouncedWeightRange, debouncedAgeRange, filters.selectedMedication, filters.selectedReason, filters.selectedStatus, filters.selectedSexo, filters.selectedRaca, filters.selectedAreaId, filters.searchFields, filters.sortConfig]);
 
   const stats = useMemo((): FilteredStats => {
     const activeAnimals = filteredAnimals.filter(a => a.status === AnimalStatus.Ativo);
@@ -334,6 +367,7 @@ export const useAdvancedFilters = ({
 
   const setSearchTerm = useCallback((term: string) => {
     setFilters(prev => ({ ...prev, searchTerm: term }));
+    setIsFiltering(true); // 🔧 Indica que está processando
     debouncedSetSearch(term);
   }, [debouncedSetSearch]);
 
@@ -363,11 +397,15 @@ export const useAdvancedFilters = ({
 
   const setWeightRange = useCallback((range: WeightRange) => {
     setFilters(prev => ({ ...prev, weightRange: range }));
-  }, []);
+    setIsFiltering(true); // 🔧 Indica que está processando
+    debouncedSetWeightRange(range);
+  }, [debouncedSetWeightRange]);
 
   const setAgeRange = useCallback((range: AgeRange) => {
     setFilters(prev => ({ ...prev, ageRange: range }));
-  }, []);
+    setIsFiltering(true); // 🔧 Indica que está processando
+    debouncedSetAgeRange(range);
+  }, [debouncedSetAgeRange]);
 
   const setSearchFields = useCallback((fields: SearchField[]) => {
     setFilters(prev => ({ ...prev, searchFields: fields }));
@@ -380,6 +418,9 @@ export const useAdvancedFilters = ({
   const clearAllFilters = useCallback(() => {
     setFilters(DEFAULT_ADVANCED_FILTERS);
     setDebouncedSearch('');
+    setDebouncedWeightRange({ min: null, max: null });
+    setDebouncedAgeRange({ minMonths: null, maxMonths: null });
+    setIsFiltering(false);
   }, []);
 
   return {
@@ -401,5 +442,6 @@ export const useAdvancedFilters = ({
     activeFiltersCount,
     allMedications,
     allReasons,
+    isFiltering, // 🔧 Novo: permite mostrar indicador de loading
   };
 };
