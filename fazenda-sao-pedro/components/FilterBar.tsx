@@ -393,6 +393,33 @@ const FilterBar = ({
           style={{ scrollbarWidth: 'none', msOverflowStyle: 'none', overflowY: 'visible' }}
         >
           {/* Status */}
+        {/* Status */}
+        <DropdownChip
+          label="Status"
+          value={selectedStatus}
+          options={statusOptions}
+          onChange={setSelectedStatus}
+          icon={<span className="w-2 h-2 rounded-full bg-emerald-400" />}
+        />
+
+        {/* Sexo */}
+        <DropdownChip
+          label="Sexo"
+          value={selectedSexo}
+          options={sexoOptions}
+          onChange={setSelectedSexo}
+        />
+
+        {/* Raça */}
+        <DropdownChip
+          label="Raça"
+          value={selectedRaca}
+          options={racaOptions}
+          onChange={setSelectedRaca}
+        />
+
+        {/* Área */}
+        {areas.length > 0 && (
           <DropdownChip
             label="Status"
             value={selectedStatus}
