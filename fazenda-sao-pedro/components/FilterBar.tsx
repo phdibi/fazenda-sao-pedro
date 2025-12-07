@@ -287,7 +287,7 @@ const FilterBar = ({
         <div
           ref={scrollRef}
           className="flex gap-2 overflow-x-auto overflow-y-visible pb-2 scrollbar-hide -mx-4 px-4 md:mx-0 md:px-0 md:flex-wrap"
-          style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+          style={{ scrollbarWidth: 'none', msOverflowStyle: 'none', overflowY: 'visible' }}
         >
         {/* Status */}
         <DropdownChip
