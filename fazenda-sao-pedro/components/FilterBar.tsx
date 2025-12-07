@@ -11,7 +11,7 @@ import {
   AgeRange,
   SearchField
 } from '../types';
-import { ChevronDownIcon, ChevronUpIcon } from './common/Icons';
+import { ChevronDownIcon } from './common/Icons';
 
 // Ícones
 const SearchIcon = ({ className }: { className?: string }) => (
@@ -81,98 +81,101 @@ interface DropdownChipProps {
   options: { value: string; label: string }[];
   onChange: (value: string) => void;
   icon?: React.ReactNode;
+  isOpen: boolean;
+  onToggle: () => void;
 }
 
-const DropdownChip: React.FC<DropdownChipProps> = ({ label, value, options, onChange, icon }) => {
-  const [isOpen, setIsOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-
-  // Fechar ao clicar fora
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) {
-        setIsOpen(false);
-      }
-    };
-    
-    if (isOpen) {
-      document.addEventListener('mousedown', handleClickOutside);
-      return () => document.removeEventListener('mousedown', handleClickOutside);
-    }
-  }, [isOpen]);
-
+const DropdownChip: React.FC<DropdownChipProps> = ({ label, value, options, onChange, icon, isOpen, onToggle }) => {
   const isActive = value !== '';
-  const displayLabel = isActive 
-    ? options.find(o => o.value === value)?.label || value 
+  const displayLabel = isActive
+    ? options.find(o => o.value === value)?.label || value
     : label;
 
-  const handleSelect = (newValue: string) => {
-    onChange(newValue);
-    setIsOpen(false);
-  };
-
   return (
-    <div ref={ref} className="relative flex-shrink-0">
-      {/* Botão do chip */}
-      <button
-        type="button"
-        onClick={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          setIsOpen(!isOpen);
-        }}
-        className={`
-          inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium
-          transition-all duration-200 whitespace-nowrap cursor-pointer
-          ${isActive 
-            ? 'bg-brand-primary text-white shadow-md shadow-brand-primary/20' 
-            : 'bg-base-700 text-gray-300 hover:bg-base-600 hover:text-white'
-          }
-        `}
-      >
-        {icon}
-        <span>{displayLabel}</span>
-        <ChevronDownIcon className={`w-3 h-3 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
-        {isActive && (
-          <span 
-            onClick={(e) => { 
-              e.preventDefault();
-              e.stopPropagation(); 
-              onChange(''); 
-            }}
-            className="ml-0.5 hover:bg-white/20 rounded-full p-0.5 cursor-pointer"
-          >
-            <XIcon className="w-3 h-3" />
-          </span>
-        )}
-      </button>
-
-      {/* Menu dropdown */}
-      {isOpen && (
-        <div 
-          className="absolute top-full left-0 mt-2 bg-base-800 border border-base-600 rounded-xl shadow-2xl min-w-[180px] py-2 max-h-64 overflow-y-auto"
-          style={{ zIndex: 9999 }}
+    <button
+      type="button"
+      onClick={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        onToggle();
+      }}
+      aria-expanded={isOpen}
+      className={`
+        inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium
+        transition-all duration-200 whitespace-nowrap cursor-pointer flex-shrink-0
+        ${isActive
+          ? 'bg-brand-primary text-white shadow-md shadow-brand-primary/20'
+          : 'bg-base-700 text-gray-300 hover:bg-base-600 hover:text-white'
+        }
+      `}
+    >
+      {icon}
+      <span className="text-left">{displayLabel}</span>
+      <ChevronDownIcon className={`w-3 h-3 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+      {isActive && (
+        <span
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            onChange('');
+          }}
+          className="ml-0.5 hover:bg-white/20 rounded-full p-0.5 cursor-pointer"
+          aria-label={`Limpar ${label}`}
         >
+          <XIcon className="w-3 h-3" />
+        </span>
+      )}
+    </button>
+  );
+};
+
+interface DropdownPanelProps {
+  label: string;
+  value: string;
+  options: { value: string; label: string }[];
+  onChange: (value: string) => void;
+  onClose: () => void;
+}
+
+const DropdownPanel: React.FC<DropdownPanelProps> = ({ label, value, options, onChange, onClose }) => {
+  return (
+    <div className="mt-2 bg-base-800 border border-base-700 rounded-xl shadow-xl p-3 space-y-2" role="menu">
+      <div className="flex items-center justify-between gap-2">
+        <div>
+          <p className="text-sm font-semibold text-white">{label}</p>
+          <p className="text-xs text-gray-400">Selecione uma opção para filtrar</p>
+        </div>
+        <button
+          type="button"
+          onClick={onClose}
+          className="p-1 rounded-full hover:bg-base-700 text-gray-400 hover:text-white"
+          aria-label="Fechar filtro"
+        >
+          <XIcon className="w-4 h-4" />
+        </button>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-1">
+        <button
+          type="button"
+          onClick={() => onChange('')}
+          className={`text-left px-3 py-2 rounded-lg text-sm transition-colors ${!value ? 'bg-brand-primary/10 text-brand-primary-light border border-brand-primary/40' : 'bg-base-700 hover:bg-base-600 text-gray-200'}`}
+          role="menuitem"
+        >
+          Todos
+        </button>
+        {options.map(opt => (
           <button
             type="button"
-            onClick={() => handleSelect('')}
-            className={`w-full text-left px-4 py-2.5 text-sm hover:bg-base-700 transition-colors ${!value ? 'text-brand-primary-light font-medium' : 'text-gray-300'}`}
+            key={opt.value}
+            onClick={() => onChange(opt.value)}
+            className={`text-left px-3 py-2 rounded-lg text-sm transition-colors ${value === opt.value ? 'bg-brand-primary/10 text-brand-primary-light border border-brand-primary/40' : 'bg-base-700 hover:bg-base-600 text-gray-200'}`}
+            role="menuitem"
           >
-            Todos
+            {opt.label}
           </button>
-          <div className="h-px bg-base-700 my-1" />
-          {options.map(opt => (
-            <button
-              type="button"
-              key={opt.value}
-              onClick={() => handleSelect(opt.value)}
-              className={`w-full text-left px-4 py-2.5 text-sm hover:bg-base-700 transition-colors ${value === opt.value ? 'text-brand-primary-light font-medium bg-base-700/50' : 'text-gray-300'}`}
-            >
-              {opt.label}
-            </button>
-          ))}
-        </div>
-      )}
+        ))}
+      </div>
     </div>
   );
 };
@@ -211,7 +214,20 @@ const FilterBar = ({
   isFiltering = false,
 }: FilterBarProps) => {
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [openFilter, setOpenFilter] = useState<null | 'status' | 'sexo' | 'raca' | 'area' | 'sort'>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const filterAreaRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (filterAreaRef.current && !filterAreaRef.current.contains(event.target as Node)) {
+        setOpenFilter(null);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const handleSortFieldChange = (field: SortField) => {
     if (sortConfig.field === field) {
@@ -232,6 +248,92 @@ const FilterBar = ({
     { value: 'sem-area', label: 'Sem área' },
     ...areas.map(a => ({ value: a.id, label: a.name }))
   ];
+
+  const handleToggleFilter = (key: 'status' | 'sexo' | 'raca' | 'area' | 'sort') => {
+    setOpenFilter(prev => prev === key ? null : key);
+  };
+
+  const handleStatusChange = (value: string) => {
+    setSelectedStatus(value);
+    setOpenFilter(null);
+  };
+
+  const handleSexoChange = (value: string) => {
+    setSelectedSexo(value);
+    setOpenFilter(null);
+  };
+
+  const handleRacaChange = (value: string) => {
+    setSelectedRaca(value);
+    setOpenFilter(null);
+  };
+
+  const handleAreaChange = (value: string) => {
+    setSelectedAreaId(value);
+    setOpenFilter(null);
+  };
+
+  const handleSortChange = (value: SortField) => {
+    handleSortFieldChange(value);
+    setOpenFilter(null);
+  };
+
+  const renderOpenPanel = () => {
+    switch (openFilter) {
+      case 'status':
+        return (
+          <DropdownPanel
+            label="Status"
+            value={selectedStatus}
+            options={statusOptions}
+            onChange={handleStatusChange}
+            onClose={() => setOpenFilter(null)}
+          />
+        );
+      case 'sexo':
+        return (
+          <DropdownPanel
+            label="Sexo"
+            value={selectedSexo}
+            options={sexoOptions}
+            onChange={handleSexoChange}
+            onClose={() => setOpenFilter(null)}
+          />
+        );
+      case 'raca':
+        return (
+          <DropdownPanel
+            label="Raça"
+            value={selectedRaca}
+            options={racaOptions}
+            onChange={handleRacaChange}
+            onClose={() => setOpenFilter(null)}
+          />
+        );
+      case 'area':
+        return (
+          <DropdownPanel
+            label="Área"
+            value={selectedAreaId}
+            options={areaOptions}
+            onChange={handleAreaChange}
+            onClose={() => setOpenFilter(null)}
+          />
+        );
+      case 'sort':
+        return (
+          <DropdownPanel
+            label="Ordenar por"
+            value={sortConfig.field}
+            options={SORT_FIELDS}
+            onChange={(v) => handleSortChange(v as SortField)}
+            onClose={() => setOpenFilter(null)}
+          />
+        );
+      default:
+        return null;
+    }
+  };
 
   return (
     <div className="mb-4 space-y-3">
@@ -284,75 +386,89 @@ const FilterBar = ({
       </div>
 
       {/* Chips de filtro rápido - Scroll horizontal no mobile */}
-      <div 
-        ref={scrollRef}
-        className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide -mx-4 px-4 md:mx-0 md:px-0 md:flex-wrap"
-        style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
-      >
-        {/* Status */}
-        <DropdownChip
-          label="Status"
-          value={selectedStatus}
-          options={statusOptions}
-          onChange={setSelectedStatus}
-          icon={<span className="w-2 h-2 rounded-full bg-emerald-400" />}
-        />
-
-        {/* Sexo */}
-        <DropdownChip
-          label="Sexo"
-          value={selectedSexo}
-          options={sexoOptions}
-          onChange={setSelectedSexo}
-        />
-
-        {/* Raça */}
-        <DropdownChip
-          label="Raça"
-          value={selectedRaca}
-          options={racaOptions}
-          onChange={setSelectedRaca}
-        />
-
-        {/* Área */}
-        {areas.length > 0 && (
+      <div ref={filterAreaRef}>
+        <div
+          ref={scrollRef}
+          className="flex gap-2 overflow-x-auto overflow-y-visible pb-2 scrollbar-hide -mx-4 px-4 md:mx-0 md:px-0 md:flex-wrap"
+          style={{ scrollbarWidth: 'none', msOverflowStyle: 'none', overflowY: 'visible' }}
+        >
+          {/* Status */}
           <DropdownChip
-            label="Área"
-            value={selectedAreaId}
-            options={areaOptions}
-            onChange={setSelectedAreaId}
+            label="Status"
+            value={selectedStatus}
+            options={statusOptions}
+            onChange={handleStatusChange}
+            isOpen={openFilter === 'status'}
+            onToggle={() => handleToggleFilter('status')}
+            icon={<span className="w-2 h-2 rounded-full bg-emerald-400" />}
           />
-        )}
 
-        {/* Ordenação */}
-        <DropdownChip
-          label="Ordenar"
-          value={sortConfig.field}
-          options={SORT_FIELDS}
-          onChange={(v) => handleSortFieldChange(v as SortField)}
-          icon={
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
-                d={sortConfig.direction === 'asc' 
-                  ? "M3 4h13M3 8h9m-9 4h6m4 0l4-4m0 0l4 4m-4-4v12"
-                  : "M3 4h13M3 8h9m-9 4h9m5-4v12m0 0l-4-4m4 4l4-4"
-                } 
-              />
-            </svg>
-          }
-        />
+          {/* Sexo */}
+          <DropdownChip
+            label="Sexo"
+            value={selectedSexo}
+            options={sexoOptions}
+            onChange={handleSexoChange}
+            isOpen={openFilter === 'sexo'}
+            onToggle={() => handleToggleFilter('sexo')}
+          />
 
-        {/* Limpar filtros */}
-        {activeFiltersCount > 0 && (
-          <button
-            onClick={onClear}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium
-                       bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-all whitespace-nowrap"
-          >
-            <XIcon className="w-3 h-3" />
-            Limpar ({activeFiltersCount})
-          </button>
-        )}
+          {/* Raça */}
+          <DropdownChip
+            label="Raça"
+            value={selectedRaca}
+            options={racaOptions}
+            onChange={handleRacaChange}
+            isOpen={openFilter === 'raca'}
+            onToggle={() => handleToggleFilter('raca')}
+          />
+
+          {/* Área */}
+          {areas.length > 0 && (
+            <DropdownChip
+              label="Área"
+              value={selectedAreaId}
+              options={areaOptions}
+              onChange={handleAreaChange}
+              isOpen={openFilter === 'area'}
+              onToggle={() => handleToggleFilter('area')}
+            />
+          )}
+
+          {/* Ordenação */}
+          <DropdownChip
+            label="Ordenar"
+            value={sortConfig.field}
+            options={SORT_FIELDS}
+            onChange={(v) => handleSortChange(v as SortField)}
+            isOpen={openFilter === 'sort'}
+            onToggle={() => handleToggleFilter('sort')}
+            icon={
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                  d={sortConfig.direction === 'asc'
+                    ? "M3 4h13M3 8h9m-9 4h6m4 0l4-4m0 0l4 4m-4-4v12"
+                    : "M3 4h13M3 8h9m-9 4h9m5-4v12m0 0l-4-4m4 4l4-4"
+                  }
+                />
+              </svg>
+            }
+          />
+
+          {/* Limpar filtros */}
+          {activeFiltersCount > 0 && (
+            <button
+              onClick={onClear}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium
+                         bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-all whitespace-nowrap"
+            >
+              <XIcon className="w-3 h-3" />
+              Limpar ({activeFiltersCount})
+            </button>
+          )}
+        </div>
+
+        {renderOpenPanel()}
       </div>
 
       {/* Painel de filtros avançados */}
