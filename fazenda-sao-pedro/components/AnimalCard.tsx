@@ -96,7 +96,7 @@ const AnimalCard: React.FC<AnimalCardProps> = ({
 
   const config = statusConfig[animal.status] || statusConfig[AnimalStatus.Ativo];
   const mainPhoto = animal.fotos?.[0];
-  const displayName = animal.nome || `#${animal.brinco}`;
+  const displayName = animal.nome || `Brinco ${animal.brinco}`;
 
   // Indicador de manejo recente (pesagem nos últimos 30 dias)
   const hasRecentWeighing = animal.historicoPesagens?.some(p => {
