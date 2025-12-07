@@ -313,8 +313,8 @@ const AnimalCard: React.FC<AnimalCardProps> = ({
               <span className="font-semibold text-white">{animal.sexo}</span>
             </div>
             <div className="flex items-center gap-2">
-              <span className="text-gray-400">Brinco da mãe:</span>
-              <span className="font-semibold text-white">{animal.maeNome || 'Não informado'}</span>
+              <span className="text-gray-400">Mãe:</span>
+              <span className="font-semibold text-white">{animal.maeNome || 'Não inf.'}</span>
             </div>
           </div>
 
