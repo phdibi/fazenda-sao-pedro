@@ -305,18 +305,22 @@ const AnimalCard: React.FC<AnimalCardProps> = ({
           <h3 className="font-bold text-sm text-white truncate leading-tight">
             {displayName}
           </h3>
-          
-          {/* Peso em destaque */}
-          <div className="mt-1 flex items-baseline gap-1">
-            <span className="text-lg font-bold text-brand-primary-light">{animal.pesoKg}</span>
-            <span className="text-xs text-gray-400">kg</span>
+
+          {/* Dados principais */}
+          <div className="mt-2 space-y-1 text-sm text-gray-200">
+            <div className="flex items-center gap-2">
+              <span className="text-gray-400">Sexo:</span>
+              <span className="font-semibold text-white">{animal.sexo}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-gray-400">Brinco da mãe:</span>
+              <span className="font-semibold text-white">{animal.maeNome || 'Não informado'}</span>
+            </div>
           </div>
-          
+
           {/* Info secundária */}
           <div className="mt-1.5 flex items-center gap-2 text-[11px] text-gray-400">
             <span className="truncate">{animal.raca}</span>
-            <span className="text-gray-600">•</span>
-            <span>{animal.sexo === 'Macho' ? '♂' : '♀'}</span>
           </div>
         </div>
       </div>
