@@ -1,5 +1,5 @@
 import React, { useState, useRef, useCallback } from 'react';
-import { Animal } from '../types';
+import { Animal, AnimalStatus } from '../types';
 import { calcularGMDAnimal, formatarGMD, classificarGMD } from '../utils/gmdCalculations';
 
 interface AnimalCardProps {
@@ -25,8 +25,10 @@ const LazyImage: React.FC<{
   
   if (hasError) {
     return (
-      <div className="w-full h-full flex items-center justify-center bg-base-700 text-[10px] text-gray-300">
-        Sem foto
+      <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-base-700 to-base-800">
+        <svg className="w-10 h-10 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+        </svg>
       </div>
     );
   }
@@ -47,6 +49,25 @@ const LazyImage: React.FC<{
       />
     </>
   );
+};
+
+// Configuração de cores por status
+const statusConfig: Record<string, { bg: string; border: string; text: string }> = {
+  [AnimalStatus.Ativo]: { 
+    bg: 'bg-emerald-500/10', 
+    border: 'border-l-emerald-500', 
+    text: 'text-emerald-400' 
+  },
+  [AnimalStatus.Vendido]: { 
+    bg: 'bg-amber-500/10', 
+    border: 'border-l-amber-500', 
+    text: 'text-amber-400' 
+  },
+  [AnimalStatus.Obito]: { 
+    bg: 'bg-red-500/10', 
+    border: 'border-l-red-500', 
+    text: 'text-red-400' 
+  },
 };
 
 const AnimalCard: React.FC<AnimalCardProps> = ({ 
@@ -73,15 +94,16 @@ const AnimalCard: React.FC<AnimalCardProps> = ({
   const gmd = showGMD ? calcularGMDAnimal(animal) : null;
   const gmdClass = gmd?.gmdTotal ? classificarGMD(gmd.gmdTotal) : null;
 
-  const statusColor: Record<string, string> = {
-    Ativo: 'bg-green-500',
-    Vendido: 'bg-yellow-500',
-    Óbito: 'bg-red-500',
-  };
-
+  const config = statusConfig[animal.status] || statusConfig[AnimalStatus.Ativo];
   const mainPhoto = animal.fotos?.[0];
-  const badgeColor = statusColor[animal.status] ?? 'bg-gray-500';
-  const displayName = animal.nome || `Brinco ${animal.brinco}`;
+  const displayName = animal.nome || `#${animal.brinco}`;
+
+  // Indicador de manejo recente (pesagem nos últimos 30 dias)
+  const hasRecentWeighing = animal.historicoPesagens?.some(p => {
+    const date = new Date(p.date);
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    return date >= thirtyDaysAgo;
+  });
 
   const clearTimer = () => {
     if (longPressTimer.current) {
@@ -188,19 +210,19 @@ const AnimalCard: React.FC<AnimalCardProps> = ({
   const showMedicationAction = swipeOffset < -30;
 
   return (
-    <div className="animal-card relative overflow-hidden rounded-lg">
+    <div className="animal-card relative overflow-hidden rounded-xl">
       {/* Fundo azul - Peso */}
       {onQuickWeight && (
         <div 
-          className="absolute inset-0 bg-blue-600 flex items-center justify-start pl-2 rounded-lg"
+          className="absolute inset-0 bg-gradient-to-r from-blue-600 to-blue-500 flex items-center justify-start pl-3 rounded-xl"
           style={{ 
             opacity: showWeightAction ? Math.min(1, Math.abs(swipeOffset) / 100) : 0,
             transition: isSwiping ? 'none' : 'opacity 0.2s'
           }}
         >
           <div className="text-white text-center">
-            <span className="text-xl">⚖️</span>
-            <p className="text-[9px]">Peso</p>
+            <span className="text-2xl">⚖️</span>
+            <p className="text-xs font-medium">Peso</p>
           </div>
         </div>
       )}
@@ -208,20 +230,20 @@ const AnimalCard: React.FC<AnimalCardProps> = ({
       {/* Fundo vermelho - Medicação */}
       {onQuickMedication && (
         <div 
-          className="absolute inset-0 bg-red-600 flex items-center justify-end pr-2 rounded-lg"
+          className="absolute inset-0 bg-gradient-to-l from-red-600 to-red-500 flex items-center justify-end pr-3 rounded-xl"
           style={{ 
             opacity: showMedicationAction ? Math.min(1, Math.abs(swipeOffset) / 100) : 0,
             transition: isSwiping ? 'none' : 'opacity 0.2s'
           }}
         >
           <div className="text-white text-center">
-            <span className="text-xl">💊</span>
-            <p className="text-[9px]">Medicação</p>
+            <span className="text-2xl">💊</span>
+            <p className="text-xs font-medium">Med</p>
           </div>
         </div>
       )}
 
-      {/* Card */}
+      {/* Card principal com borda colorida por status */}
       <div
         ref={cardRef}
         onClick={handleClick}
@@ -236,7 +258,11 @@ const AnimalCard: React.FC<AnimalCardProps> = ({
           transform: `translateX(${swipeOffset}px)`,
           transition: isSwiping ? 'none' : 'transform 0.2s ease-out'
         }}
-        className="bg-base-800 rounded-lg shadow-lg overflow-hidden cursor-pointer relative"
+        className={`
+          bg-base-800 rounded-xl shadow-lg overflow-hidden cursor-pointer relative
+          border-l-4 ${config.border}
+          hover:bg-base-750 transition-colors
+        `}
       >
         {/* Foto */}
         <div className="relative aspect-square w-full">
@@ -247,38 +273,50 @@ const AnimalCard: React.FC<AnimalCardProps> = ({
               alt={displayName}
             />
           ) : (
-            <div className="w-full h-full flex items-center justify-center bg-base-700 text-[10px] text-gray-300">
-              Sem foto
+            <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-base-700 to-base-800">
+              <svg className="w-10 h-10 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
             </div>
           )}
 
-          {/* Status badge */}
-          <div className={`absolute top-1.5 right-1.5 px-1.5 py-0.5 text-[9px] font-bold text-white rounded-full ${badgeColor}`}>
+          {/* Indicador de manejo recente */}
+          {hasRecentWeighing && (
+            <div className="absolute top-2 left-2">
+              <span className="w-2.5 h-2.5 bg-emerald-400 rounded-full block shadow-lg shadow-emerald-400/50" title="Pesado recentemente" />
+            </div>
+          )}
+
+          {/* Badge de status - Pill style */}
+          <div className={`absolute top-2 right-2 px-2 py-0.5 text-[10px] font-semibold rounded-full ${config.bg} ${config.text} backdrop-blur-sm`}>
             {animal.status}
           </div>
 
           {/* GMD badge */}
-
+          {gmdClass && gmd?.gmdTotal && gmd.gmdTotal > 0 && (
+            <div className={`absolute bottom-2 right-2 px-2 py-0.5 text-[10px] font-medium rounded-full bg-base-900/80 backdrop-blur-sm ${gmdClass.color}`}>
+              {gmd.gmdTotal.toFixed(2)} kg/d
+            </div>
+          )}
         </div>
 
         {/* Info */}
-        <div className="p-1.5">
-          <h3 className="font-bold text-[11px] text-white truncate">
+        <div className="p-2.5">
+          <h3 className="font-bold text-sm text-white truncate leading-tight">
             {displayName}
           </h3>
-          <div className="mt-1 pt-1 border-t border-base-700/50 space-y-0.5 text-[9px]">
-            <div className="flex justify-between">
-              <span className="text-gray-400">Raça:</span>
-              <span className="text-gray-200">{animal.raca}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-400">Sexo:</span>
-              <span className="text-gray-200">{animal.sexo}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-400">Mãe:</span>
-              <span className="text-gray-200 truncate max-w-[55%]">{animal.maeNome || 'Não inf.'}</span>
-            </div>
+          
+          {/* Peso em destaque */}
+          <div className="mt-1 flex items-baseline gap-1">
+            <span className="text-lg font-bold text-brand-primary-light">{animal.pesoKg}</span>
+            <span className="text-xs text-gray-400">kg</span>
+          </div>
+          
+          {/* Info secundária */}
+          <div className="mt-1.5 flex items-center gap-2 text-[11px] text-gray-400">
+            <span className="truncate">{animal.raca}</span>
+            <span className="text-gray-600">•</span>
+            <span>{animal.sexo === 'Macho' ? '♂' : '♀'}</span>
           </div>
         </div>
       </div>
