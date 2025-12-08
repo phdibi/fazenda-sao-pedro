@@ -105,11 +105,6 @@ const ReportsView = ({ animals, focusNFe = false, onNFeHandled }: ReportsViewPro
           <NFeIntegrationPanel animals={animals} />
         </div>
 
-        <div id="nfe-integration-panel" className="mb-6 rounded-lg">
-        <div className="mb-6">
-            <NFeIntegrationPanel animals={animals} />
-        </div>
-
         {/* --- Controls --- */}
         <div className="bg-base-800 p-4 mb-6 rounded-lg shadow-lg flex flex-col md:flex-row gap-4 items-center justify-between print-hide">
           <div className="flex items-center gap-2 flex-wrap">
