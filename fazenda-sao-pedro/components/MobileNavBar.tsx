@@ -1,12 +1,12 @@
 import React from 'react';
-import { CalendarDaysIcon, ClipboardDocumentCheckIcon, MapPinIcon, PlusIcon, ScaleIcon } from './common/Icons';
+import { CalendarDaysIcon, ClipboardDocumentCheckIcon, MapPinIcon, PlusIcon, ScaleIcon, CurrencyDollarIcon } from './common/Icons';
 
-type ViewType = 'dashboard' | 'reports' | 'calendar' | 'tasks' | 'management' | 'batches';
+type ViewType = 'dashboard' | 'reports' | 'calendar' | 'tasks' | 'management' | 'batches' | 'sales';
 
 interface MobileNavBarProps {
     currentView: ViewType;
     setCurrentView: (view: ViewType) => void;
-    onAddAnimalClick: () => void;
+    onAddAnimalClick?: () => void;
 }
 
 interface NavButtonProps {
@@ -84,9 +84,14 @@ const MobileNavBar = ({ currentView, setCurrentView, onAddAnimalClick }: MobileN
                     <NavButton view="tasks" label="Tarefas" isActive={currentView === 'tasks'} onClick={setCurrentView}>
                         <ClipboardDocumentCheckIcon className="w-5 h-5" />
                     </NavButton>
+
+                    <NavButton view="sales" label="Vendas" isActive={currentView === 'sales'} onClick={setCurrentView}>
+                        <CurrencyDollarIcon className="w-5 h-5" />
+                    </NavButton>
                 </div>
 
                 {/* Botão de adicionar animal - à direita */}
+                {onAddAnimalClick && (
                 <button
                     onClick={onAddAnimalClick}
                     className="
@@ -102,6 +107,7 @@ const MobileNavBar = ({ currentView, setCurrentView, onAddAnimalClick }: MobileN
                 >
                     <PlusIcon className="w-6 h-6" />
                 </button>
+                )}
             </nav>
             
             {/* Safe area padding for iPhone */}
