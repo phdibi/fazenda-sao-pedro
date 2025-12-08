@@ -99,6 +99,7 @@ const ReportsView = ({ animals, focusNFe = false, onNFeHandled }: ReportsViewPro
         </div>
 
         <div id="nfe-integration-panel" className="mb-6 rounded-lg">
+        <div className="mb-6">
             <NFeIntegrationPanel animals={animals} />
         </div>
 
