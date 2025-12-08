@@ -14,6 +14,7 @@ interface HeaderProps {
     lastSync?: number | null;
     userRole?: UserRole;
     onRoleClick?: () => void;
+    onOpenNFe?: () => void;
 }
 
 const roleLabels: Record<UserRole, { icon: string; label: string }> = {
@@ -60,12 +61,13 @@ const LogoutIcon = ({ className }: { className?: string }) => (
 const Header = ({ 
     currentView, 
     setCurrentView, 
-    onAddAnimalClick, 
+    onAddAnimalClick,
     user,
     onForceSync,
     lastSync,
     userRole = UserRole.Proprietario,
-    onRoleClick
+    onRoleClick,
+    onOpenNFe
 }: HeaderProps) => {
     const [isSyncing, setIsSyncing] = useState(false);
 
@@ -170,12 +172,25 @@ const Header = ({
 
                         {/* Adicionar Animal - Desktop */}
                         {onAddAnimalClick && (
-                            <button 
-                                onClick={onAddAnimalClick} 
+                            <button
+                                onClick={onAddAnimalClick}
                                 className="hidden md:flex items-center gap-2 bg-brand-primary hover:bg-brand-primary-light text-white font-semibold py-2 px-4 rounded-lg transition-all shadow-md shadow-brand-primary/20"
                             >
                                 <PlusIcon className="w-4 h-4" />
                                 <span>Novo Animal</span>
+                            </button>
+                        )}
+
+                        {onOpenNFe && (
+                            <button
+                                onClick={() => {
+                                    setCurrentView('reports');
+                                    onOpenNFe();
+                                }}
+                                className="hidden md:flex items-center gap-2 bg-base-700 hover:bg-base-600 text-white font-semibold py-2 px-4 rounded-lg transition-all border border-base-600"
+                            >
+                                <DocumentChartBarIcon className="w-4 h-4" />
+                                <span>NF-e</span>
                             </button>
                         )}
 
