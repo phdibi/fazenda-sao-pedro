@@ -587,7 +587,6 @@ const App = ({ user, firebaseReady }: AppProps) => {
                 currentView={currentView}
                 setCurrentView={setCurrentView}
                 onAddAnimalClick={canAccess('canEditAnimals') ? handleOpenAddAnimalModal : undefined}
-                onOpenNFe={handleOpenNFePanel}
             />
 
             {showDashboardSettings && (
