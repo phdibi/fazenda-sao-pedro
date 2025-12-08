@@ -30,7 +30,6 @@ const ReportsView = lazy(() => import('./components/ReportsView'));
 const ManagementView = lazy(() => import('./components/ManagementView'));
 const BatchManagement = lazy(() => import('./components/BatchManagement'));
 const ScaleImportModal = lazy(() => import('./components/ScaleImportModal'));
-const SalesView = lazy(() => import('./components/SalesView'));
 
 interface AppProps {
     user: AppUser;
@@ -61,7 +60,7 @@ const App = ({ user, firebaseReady }: AppProps) => {
     const { role, changeRole, canAccess, isCapataz, getUserProfile } = useUserProfile(user);
     const [showRoleSelector, setShowRoleSelector] = useState(false);
 
-    const [currentView, setCurrentView] = useState<'dashboard' | 'reports' | 'calendar' | 'tasks' | 'management' | 'batches' | 'sales'>('dashboard');
+    const [currentView, setCurrentView] = useState<'dashboard' | 'reports' | 'calendar' | 'tasks' | 'management' | 'batches'>('dashboard');
     const [selectedAnimalId, setSelectedAnimalId] = useState<string | null>(null);
     const [isAddAnimalModalOpen, setIsAddAnimalModalOpen] = useState(false);
     const [showDashboardSettings, setShowDashboardSettings] = useState(false);
@@ -525,15 +524,6 @@ const App = ({ user, firebaseReady }: AppProps) => {
                             onUpdateBatch={updateBatch}
                             onDeleteBatch={deleteBatch}
                             onCompleteBatch={completeBatch}
-                        />
-                    </Suspense>
-                )}
-
-                {currentView === 'sales' && (
-                    <Suspense fallback={<div className="flex justify-center p-8"><Spinner size="lg" /></div>}>
-                        <SalesView
-                            animals={state.animals}
-                            onUpdateAnimal={updateAnimal}
                         />
                     </Suspense>
                 )}
