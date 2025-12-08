@@ -1,12 +1,13 @@
 import React from 'react';
-import { CalendarDaysIcon, ClipboardDocumentCheckIcon, MapPinIcon, PlusIcon, ScaleIcon } from './common/Icons';
+import { CalendarDaysIcon, ClipboardDocumentCheckIcon, DocumentChartBarIcon, MapPinIcon, PlusIcon, ScaleIcon } from './common/Icons';
 
 type ViewType = 'dashboard' | 'reports' | 'calendar' | 'tasks' | 'management' | 'batches';
 
 interface MobileNavBarProps {
     currentView: ViewType;
     setCurrentView: (view: ViewType) => void;
-    onAddAnimalClick: () => void;
+    onAddAnimalClick?: () => void;
+    onOpenNFe?: () => void;
 }
 
 interface NavButtonProps {
@@ -55,7 +56,7 @@ const HomeIcon = ({ className }: { className?: string }) => (
     </svg>
 );
 
-const MobileNavBar = ({ currentView, setCurrentView, onAddAnimalClick }: MobileNavBarProps) => {
+const MobileNavBar = ({ currentView, setCurrentView, onAddAnimalClick, onOpenNFe }: MobileNavBarProps) => {
     return (
         <div className="fixed bottom-0 left-0 right-0 z-50 md:hidden">
             {/* Background com blur */}
@@ -80,28 +81,42 @@ const MobileNavBar = ({ currentView, setCurrentView, onAddAnimalClick }: MobileN
                     <NavButton view="calendar" label="Agenda" isActive={currentView === 'calendar'} onClick={setCurrentView}>
                         <CalendarDaysIcon className="w-5 h-5" />
                     </NavButton>
-                    
+
                     <NavButton view="tasks" label="Tarefas" isActive={currentView === 'tasks'} onClick={setCurrentView}>
                         <ClipboardDocumentCheckIcon className="w-5 h-5" />
+                    </NavButton>
+
+                    <NavButton
+                        view="reports"
+                        label="Relatórios"
+                        isActive={currentView === 'reports'}
+                        onClick={(view) => {
+                            setCurrentView(view);
+                            onOpenNFe?.();
+                        }}
+                    >
+                        <DocumentChartBarIcon className="w-5 h-5" />
                     </NavButton>
                 </div>
 
                 {/* Botão de adicionar animal - à direita */}
-                <button
-                    onClick={onAddAnimalClick}
-                    className="
-                        flex items-center justify-center 
-                        w-12 h-12 ml-2
-                        bg-brand-primary
-                        text-white rounded-xl 
-                        shadow-lg shadow-brand-primary/30
-                        transition-all duration-200 
-                        active:scale-95 active:bg-brand-primary-light
-                    "
-                    aria-label="Cadastrar animal"
-                >
-                    <PlusIcon className="w-6 h-6" />
-                </button>
+                {onAddAnimalClick && (
+                    <button
+                        onClick={onAddAnimalClick}
+                        className="
+                            flex items-center justify-center
+                            w-12 h-12 ml-2
+                            bg-brand-primary
+                            text-white rounded-xl
+                            shadow-lg shadow-brand-primary/30
+                            transition-all duration-200
+                            active:scale-95 active:bg-brand-primary-light
+                        "
+                        aria-label="Cadastrar animal"
+                    >
+                        <PlusIcon className="w-6 h-6" />
+                    </button>
+                )}
             </nav>
             
             {/* Safe area padding for iPhone */}
