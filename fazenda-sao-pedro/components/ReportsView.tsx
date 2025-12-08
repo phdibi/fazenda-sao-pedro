@@ -18,9 +18,9 @@ interface ReportsViewProps {
 type TabName = 'sanitary' | 'reproductive' | 'performance' | 'comparatives';
 
 interface TabButtonProps {
-    tabName: TabName;
-    label: string;
-    disabled?: boolean
+  tabName: TabName;
+  label: string;
+  disabled?: boolean;
 }
 
 const ReportsView = ({ animals, focusNFe = false, onNFeHandled }: ReportsViewProps) => {
@@ -50,16 +50,18 @@ const ReportsView = ({ animals, focusNFe = false, onNFeHandled }: ReportsViewPro
 
   const handleGenerateReport = async () => {
     if (!startDate || !endDate) {
-        setError("Por favor, selecione as datas de início e fim para gerar o relatório.");
-        return;
+      setError('Por favor, selecione as datas de início e fim para gerar o relatório.');
+      return;
     }
+
     setIsLoading(true);
     setError('');
     setReportData(null);
+
     try {
-      const result = await generateComprehensiveReport(animals, { 
-        start: new Date(startDate + 'T00:00:00'), 
-        end: new Date(endDate + 'T23:59:59') 
+      const result = await generateComprehensiveReport(animals, {
+        start: new Date(`${startDate}T00:00:00`),
+        end: new Date(`${endDate}T23:59:59`)
       });
       setReportData(result);
     } catch (err) {
@@ -70,17 +72,16 @@ const ReportsView = ({ animals, focusNFe = false, onNFeHandled }: ReportsViewPro
     }
   };
   
-  const TabButton = ({tabName, label, disabled}: TabButtonProps) => (
-      <button
-        onClick={() => !disabled && setActiveTab(tabName)}
-        disabled={disabled}
-        className={`w-full sm:w-auto text-center px-4 py-2 text-sm font-medium rounded-md transition-colors ${
-            activeTab === tabName
-            ? 'bg-brand-primary text-white' 
-            : 'text-gray-300 hover:bg-base-700/50'
-        } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}>
-          {label}
-      </button>
+  const TabButton = ({ tabName, label, disabled }: TabButtonProps) => (
+    <button
+      onClick={() => !disabled && setActiveTab(tabName)}
+      disabled={disabled}
+      className={`w-full sm:w-auto text-center px-4 py-2 text-sm font-medium rounded-md transition-colors ${
+        activeTab === tabName ? 'bg-brand-primary text-white' : 'text-gray-300 hover:bg-base-700/50'
+      } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+    >
+      {label}
+    </button>
   );
 
   return (
