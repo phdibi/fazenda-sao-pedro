@@ -1,4 +1,4 @@
-import { Animal, FilteredStats, ManagementArea } from '../types';
+import { Animal, AnimalStatus, FilteredStats, ManagementArea, Sexo, WeighingType } from '../types';
 
 // ============================================
 // CSV EXPORT
@@ -47,6 +47,26 @@ interface PDFExportOptions {
 
 const formatDateBR = (date: Date): string => {
   return new Date(date).toLocaleDateString('pt-BR');
+};
+
+const extractSpecialWeights = (animal: Animal) => {
+  let birth: { weightKg: number; date: Date } | undefined;
+  let weaning: { weightKg: number; date: Date } | undefined;
+  let yearling: { weightKg: number; date: Date } | undefined;
+
+  animal.historicoPesagens?.forEach(entry => {
+    if (entry.type === WeighingType.Birth) {
+      birth = { weightKg: entry.weightKg, date: entry.date };
+    }
+    if (entry.type === WeighingType.Weaning) {
+      weaning = { weightKg: entry.weightKg, date: entry.date };
+    }
+    if (entry.type === WeighingType.Yearling) {
+      yearling = { weightKg: entry.weightKg, date: entry.date };
+    }
+  });
+
+  return { birth, weaning, yearling };
 };
 
 const generatePDFContent = (
@@ -357,6 +377,180 @@ export const exportAsHTML = (
   const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8' });
   const filename = `${options.title.toLowerCase().replace(/\s+/g, '_')}_${new Date().toISOString().slice(0, 10)}.html`;
   downloadBlob(blob, filename);
+};
+
+// ============================================
+// RELATÓRIO DE TERNEIROS (DESMAME/SOBREANO)
+// ============================================
+
+const formatAreaName = (areas: ManagementArea[], id?: string) => {
+  if (!id) return 'Sem área';
+  return areas.find(a => a.id === id)?.name || 'Área desconhecida';
+};
+
+export const prepareCalfSnapshotData = (animals: Animal[], areas: ManagementArea[]) => {
+  return animals
+    .filter(animal => animal.status !== AnimalStatus.Obito)
+    .map(animal => {
+      const { birth, weaning, yearling } = extractSpecialWeights(animal);
+
+      return {
+        brinco: animal.brinco,
+        nome: animal.nome || '',
+        sexo: animal.sexo,
+        raca: animal.raca,
+        status: animal.status,
+        dataNascimento: animal.dataNascimento ? formatDateBR(animal.dataNascimento) : '',
+        maeNome: animal.maeNome || '',
+        maeRaca: animal.maeRaca || '',
+        area: formatAreaName(areas, animal.managementAreaId),
+        pesoNascimentoKg: birth?.weightKg ?? '',
+        dataPesoNascimento: birth ? formatDateBR(birth.date) : '',
+        pesoDesmameKg: weaning?.weightKg ?? '',
+        dataDesmame: weaning ? formatDateBR(weaning.date) : '',
+        pesoSobreanoKg: yearling?.weightKg ?? '',
+        dataSobreano: yearling ? formatDateBR(yearling.date) : '',
+        pesoAtualKg: animal.pesoKg,
+      };
+    })
+    .filter(record =>
+      record.maeNome || record.pesoNascimentoKg || record.pesoDesmameKg || record.pesoSobreanoKg
+    );
+};
+
+export const CALF_SNAPSHOT_HEADERS: Record<string, string> = {
+  brinco: 'Brinco',
+  nome: 'Nome',
+  sexo: 'Sexo',
+  raca: 'Raça',
+  status: 'Status',
+  area: 'Área',
+  dataNascimento: 'Nascimento',
+  maeNome: 'Mãe',
+  maeRaca: 'Raça da Mãe',
+  pesoNascimentoKg: 'Peso Nasc. (kg)',
+  dataPesoNascimento: 'Data Nasc.',
+  pesoDesmameKg: 'Peso Desmame (kg)',
+  dataDesmame: 'Data Desmame',
+  pesoSobreanoKg: 'Peso Sobreano (kg)',
+  dataSobreano: 'Data Sobreano',
+  pesoAtualKg: 'Peso Atual (kg)',
+};
+
+export const exportCalfSnapshotToCSV = (
+  animals: Animal[],
+  areas: ManagementArea[],
+  filename = `terneiros_memoria_${new Date().toISOString().slice(0, 10)}.csv`
+) => {
+  const data = prepareCalfSnapshotData(animals, areas);
+  if (data.length === 0) {
+    alert('Nenhum registro de terneiros com pesos de desmame/sobreano ou mãe informada para exportar.');
+    return;
+  }
+
+  exportToCSV(data, CALF_SNAPSHOT_HEADERS, filename);
+};
+
+export const exportCalfSnapshotToPDF = (
+  animals: Animal[],
+  areas: ManagementArea[],
+  title = 'Memória de Terneiros para Venda'
+) => {
+  const data = prepareCalfSnapshotData(animals, areas);
+  if (data.length === 0) {
+    alert('Nenhum registro de terneiros com pesos de desmame/sobreano ou mãe informada para exportar.');
+    return;
+  }
+
+  const currentDate = new Date().toLocaleDateString('pt-BR');
+
+  const styles = `
+    <style>
+      @page { size: A4; margin: 1.5cm; }
+      body { font-family: 'Segoe UI', Arial, sans-serif; font-size: 10px; color: #222; }
+      h1 { margin: 0; color: #381b18; font-size: 20px; }
+      .header { text-align: center; margin-bottom: 16px; }
+      .subtitle { color: #666; margin-top: 4px; font-size: 12px; }
+      .note { background: #f8f9fa; border: 1px solid #e5e7eb; padding: 10px; border-radius: 6px; margin-bottom: 12px; }
+      table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+      th { background: #381b18; color: white; padding: 6px; text-align: left; font-weight: 600; }
+      td { border-bottom: 1px solid #eee; padding: 6px; }
+      tr:nth-child(even) { background: #fafafa; }
+      .footer { margin-top: 16px; text-align: center; color: #888; font-size: 9px; }
+    </style>
+  `;
+
+  const html = `
+    <!DOCTYPE html>
+    <html lang="pt-BR">
+    <head>
+      <meta charset="UTF-8" />
+      <title>${title}</title>
+      ${styles}
+    </head>
+    <body>
+      <div class="header">
+        <h1>${title}</h1>
+        <div class="subtitle">${data.length} terneiros exportados • ${currentDate}</div>
+      </div>
+      <div class="note">
+        Relatório preparado para guardar o histórico de pesos (nascimento, desmame, sobreano) e genealogia materna antes da venda anual.
+        Utilize os filtros da listagem para selecionar apenas os terneiros daquele ano antes de exportar.
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>Brinco</th>
+            <th>Nome</th>
+            <th>Sexo</th>
+            <th>Raça</th>
+            <th>Mãe</th>
+            <th>Raça da Mãe</th>
+            <th>Nascimento</th>
+            <th>Peso Nasc. (kg)</th>
+            <th>Peso Desmame (kg)</th>
+            <th>Peso Sobreano (kg)</th>
+            <th>Peso Atual (kg)</th>
+            <th>Área</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${data.map(item => `
+            <tr>
+              <td><strong>${item.brinco}</strong></td>
+              <td>${item.nome || '-'}</td>
+              <td>${item.sexo}</td>
+              <td>${item.raca}</td>
+              <td>${item.maeNome || '-'}</td>
+              <td>${item.maeRaca || '-'}</td>
+              <td>${item.dataNascimento || '-'}</td>
+              <td>${item.pesoNascimentoKg || '-'}</td>
+              <td>${item.pesoDesmameKg || '-'}</td>
+              <td>${item.pesoSobreanoKg || '-'}</td>
+              <td>${item.pesoAtualKg || '-'}</td>
+              <td>${item.area}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+      <div class="footer">Fazenda+ • Relatório gerado automaticamente para memória de venda anual de terneiros</div>
+    </body>
+    </html>
+  `;
+
+  const printWindow = window.open('', '_blank');
+  if (!printWindow) {
+    alert('Popup bloqueado! Permita popups para gerar o PDF.');
+    return;
+  }
+
+  printWindow.document.write(html);
+  printWindow.document.close();
+  printWindow.onload = () => {
+    setTimeout(() => {
+      printWindow.print();
+    }, 250);
+  };
 };
 
 // ============================================
