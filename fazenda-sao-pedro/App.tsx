@@ -65,6 +65,7 @@ const App = ({ user, firebaseReady }: AppProps) => {
     const [isAddAnimalModalOpen, setIsAddAnimalModalOpen] = useState(false);
     const [showDashboardSettings, setShowDashboardSettings] = useState(false);
     const [showScaleImportModal, setShowScaleImportModal] = useState(false);
+    const [focusNFePanel, setFocusNFePanel] = useState(false);
     
     // Estados para ações rápidas (swipe)
     const [quickWeightAnimal, setQuickWeightAnimal] = useState<Animal | null>(null);
@@ -191,6 +192,11 @@ const App = ({ user, firebaseReady }: AppProps) => {
 
     const handleOpenAddAnimalModal = () => {
         setIsAddAnimalModalOpen(true);
+    };
+
+    const handleOpenNFePanel = () => {
+        setCurrentView('reports');
+        setFocusNFePanel(true);
     };
 
     // Handler para salvar peso rápido (swipe direita)
@@ -344,6 +350,7 @@ const App = ({ user, firebaseReady }: AppProps) => {
                 lastSync={state.lastSync}
                 userRole={role}
                 onRoleClick={() => setShowRoleSelector(true)}
+                onOpenNFe={handleOpenNFePanel}
             />
 
             <main className="p-4 md:p-8 max-w-7xl mx-auto">
@@ -478,7 +485,11 @@ const App = ({ user, firebaseReady }: AppProps) => {
 
                 {currentView === 'reports' && (
                     <Suspense fallback={<div className="flex justify-center p-8"><Spinner size="lg" /></div>}>
-                        <ReportsView animals={state.animals} />
+                        <ReportsView
+                            animals={state.animals}
+                            focusNFe={focusNFePanel}
+                            onNFeHandled={() => setFocusNFePanel(false)}
+                        />
                     </Suspense>
                 )}
 
@@ -573,10 +584,11 @@ const App = ({ user, firebaseReady }: AppProps) => {
                 onSave={handleQuickMedicationSave}
             />
             
-            <MobileNavBar 
-                currentView={currentView} 
+            <MobileNavBar
+                currentView={currentView}
                 setCurrentView={setCurrentView}
                 onAddAnimalClick={canAccess('canEditAnimals') ? handleOpenAddAnimalModal : undefined}
+                onOpenNFe={handleOpenNFePanel}
             />
 
             {showDashboardSettings && (
