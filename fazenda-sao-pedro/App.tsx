@@ -350,7 +350,6 @@ const App = ({ user, firebaseReady }: AppProps) => {
                 lastSync={state.lastSync}
                 userRole={role}
                 onRoleClick={() => setShowRoleSelector(true)}
-                onOpenNFe={handleOpenNFePanel}
             />
 
             <main className="p-4 md:p-8 max-w-7xl mx-auto">

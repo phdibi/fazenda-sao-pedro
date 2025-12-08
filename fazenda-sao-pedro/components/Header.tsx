@@ -14,7 +14,6 @@ interface HeaderProps {
     lastSync?: number | null;
     userRole?: UserRole;
     onRoleClick?: () => void;
-    onOpenNFe?: () => void;
 }
 
 const roleLabels: Record<UserRole, { icon: string; label: string }> = {
@@ -66,8 +65,7 @@ const Header = ({
     onForceSync,
     lastSync,
     userRole = UserRole.Proprietario,
-    onRoleClick,
-    onOpenNFe
+    onRoleClick
 }: HeaderProps) => {
     const [isSyncing, setIsSyncing] = useState(false);
 
@@ -178,19 +176,6 @@ const Header = ({
                             >
                                 <PlusIcon className="w-4 h-4" />
                                 <span>Novo Animal</span>
-                            </button>
-                        )}
-
-                        {onOpenNFe && (
-                            <button
-                                onClick={() => {
-                                    setCurrentView('reports');
-                                    onOpenNFe();
-                                }}
-                                className="hidden md:flex items-center gap-2 bg-base-700 hover:bg-base-600 text-white font-semibold py-2 px-4 rounded-lg transition-all border border-base-600"
-                            >
-                                <DocumentChartBarIcon className="w-4 h-4" />
-                                <span>NF-e</span>
                             </button>
                         )}
 
