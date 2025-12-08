@@ -7,9 +7,12 @@ import SanitaryReportDisplay from './SanitaryReportDisplay';
 import ReproductiveReportDisplay from './ReproductiveReportDisplay';
 import PerformanceComparisonView from './PerformanceComparisonView';
 import { WeatherCorrelationView } from './WeatherWidget';
+import NFeIntegrationPanel from './NFeIntegrationPanel';
 
 interface ReportsViewProps {
   animals: Animal[];
+  focusNFe?: boolean;
+  onNFeHandled?: () => void;
 }
 
 type TabName = 'sanitary' | 'reproductive' | 'performance' | 'comparatives';
@@ -20,10 +23,21 @@ interface TabButtonProps {
     disabled?: boolean
 }
 
-const ReportsView = ({ animals }: ReportsViewProps) => {
+const ReportsView = ({ animals, focusNFe = false, onNFeHandled }: ReportsViewProps) => {
   const [reportData, setReportData] = useState<ComprehensiveReport | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string>('');
+
+  React.useEffect(() => {
+    if (!focusNFe) return;
+    const element = document.getElementById('nfe-integration-panel');
+    if (element) {
+      element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      element.classList.add('ring-2', 'ring-brand-primary');
+      setTimeout(() => element.classList.remove('ring-2', 'ring-brand-primary'), 2000);
+    }
+    onNFeHandled?.();
+  }, [focusNFe, onNFeHandled]);
   
   const today = new Date();
   const ninetyDaysAgo = new Date(new Date().setDate(today.getDate() - 90));
@@ -82,6 +96,10 @@ const ReportsView = ({ animals }: ReportsViewProps) => {
                     Imprimir / Exportar PDF
                 </button>
             )}
+        </div>
+
+        <div id="nfe-integration-panel" className="mb-6 rounded-lg">
+            <NFeIntegrationPanel animals={animals} />
         </div>
 
         {/* --- Controls --- */}
