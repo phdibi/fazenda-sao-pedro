@@ -7,6 +7,7 @@ import SanitaryReportDisplay from './SanitaryReportDisplay';
 import ReproductiveReportDisplay from './ReproductiveReportDisplay';
 import PerformanceComparisonView from './PerformanceComparisonView';
 import { WeatherCorrelationView } from './WeatherWidget';
+import NFeIntegrationPanel from './NFeIntegrationPanel';
 
 interface ReportsViewProps {
   animals: Animal[];
@@ -82,6 +83,10 @@ const ReportsView = ({ animals }: ReportsViewProps) => {
                     Imprimir / Exportar PDF
                 </button>
             )}
+        </div>
+
+        <div className="mb-6">
+            <NFeIntegrationPanel animals={animals} />
         </div>
 
         {/* --- Controls --- */}
