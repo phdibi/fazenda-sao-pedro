@@ -1,13 +1,14 @@
 import { useState, useEffect, useCallback, useReducer, useRef } from 'react';
 import { db, Timestamp, FieldValue } from '../services/firebase';
 import { localCache } from '../services/localCache';
-import { 
-    Animal, 
-    CalendarEvent, 
-    Task, 
-    ManagementArea, 
-    Sexo, 
-    WeighingType, 
+import {
+    Animal,
+    CalendarEvent,
+    Task,
+    ManagementArea,
+    ManagementBatch, // New Import
+    Sexo,
+    WeighingType,
     AppUser,
     FirestoreCollectionName,
     LocalStateCollectionName,
@@ -23,11 +24,13 @@ interface FirestoreState {
     calendarEvents: CalendarEvent[];
     tasks: Task[];
     managementAreas: ManagementArea[];
+    batches: ManagementBatch[];
     loading: {
         animals: boolean;
         calendar: boolean;
         tasks: boolean;
         areas: boolean;
+        batches: boolean;
     };
     error: string | null;
     lastSync: number | null;
@@ -42,25 +45,30 @@ type FirestoreAction =
     | { type: 'LOCAL_ADD_ANIMAL'; payload: Animal }
     | { type: 'LOCAL_UPDATE_ANIMAL'; payload: { animalId: string; updatedData: Partial<Animal> } }
     | { type: 'LOCAL_DELETE_ANIMAL'; payload: { animalId: string } }
-    // Calendar Events - NOVO
+    // Calendar Events
     | { type: 'LOCAL_ADD_CALENDAR_EVENT'; payload: CalendarEvent }
     | { type: 'LOCAL_UPDATE_CALENDAR_EVENT'; payload: CalendarEvent }
     | { type: 'LOCAL_DELETE_CALENDAR_EVENT'; payload: { eventId: string } }
-    // Tasks - NOVO
+    // Tasks
     | { type: 'LOCAL_ADD_TASK'; payload: Task }
     | { type: 'LOCAL_UPDATE_TASK'; payload: { taskId: string; updatedData: Partial<Task> } }
     | { type: 'LOCAL_DELETE_TASK'; payload: { taskId: string } }
-    // Management Areas - NOVO
+    // Management Areas
     | { type: 'LOCAL_ADD_AREA'; payload: ManagementArea }
     | { type: 'LOCAL_UPDATE_AREA'; payload: ManagementArea }
-    | { type: 'LOCAL_DELETE_AREA'; payload: { areaId: string } };
+    | { type: 'LOCAL_DELETE_AREA'; payload: { areaId: string } }
+    // Batches
+    | { type: 'LOCAL_ADD_BATCH'; payload: ManagementBatch }
+    | { type: 'LOCAL_UPDATE_BATCH'; payload: { batchId: string; updatedData: Partial<ManagementBatch> } }
+    | { type: 'LOCAL_DELETE_BATCH'; payload: { batchId: string } };
 
 const initialState: FirestoreState = {
     animals: [],
     calendarEvents: [],
     tasks: [],
     managementAreas: [],
-    loading: { animals: true, calendar: true, tasks: true, areas: true },
+    batches: [],
+    loading: { animals: true, calendar: true, tasks: true, areas: true, batches: true },
     error: null,
     lastSync: null
 };
@@ -121,7 +129,7 @@ const firestoreReducer = (state: FirestoreState, action: FirestoreAction): Fires
             return { ...state, error: action.payload };
         case 'SET_LAST_SYNC':
             return { ...state, lastSync: action.payload };
-        
+
         // ============================================
         // ANIMALS
         // ============================================
@@ -138,14 +146,14 @@ const firestoreReducer = (state: FirestoreState, action: FirestoreAction): Fires
             };
         case 'LOCAL_DELETE_ANIMAL':
             return { ...state, animals: state.animals.filter(animal => animal.id !== action.payload.animalId) };
-        
+
         // ============================================
         // CALENDAR EVENTS - ATUALIZAÇÃO OTIMISTA
         // ============================================
         case 'LOCAL_ADD_CALENDAR_EVENT':
-            return { 
-                ...state, 
-                calendarEvents: [...state.calendarEvents, action.payload] 
+            return {
+                ...state,
+                calendarEvents: [...state.calendarEvents, action.payload]
             };
         case 'LOCAL_UPDATE_CALENDAR_EVENT':
             return {
@@ -155,18 +163,18 @@ const firestoreReducer = (state: FirestoreState, action: FirestoreAction): Fires
                 ),
             };
         case 'LOCAL_DELETE_CALENDAR_EVENT':
-            return { 
-                ...state, 
-                calendarEvents: state.calendarEvents.filter(event => event.id !== action.payload.eventId) 
+            return {
+                ...state,
+                calendarEvents: state.calendarEvents.filter(event => event.id !== action.payload.eventId)
             };
-        
+
         // ============================================
         // TASKS - ATUALIZAÇÃO OTIMISTA
         // ============================================
         case 'LOCAL_ADD_TASK':
-            return { 
-                ...state, 
-                tasks: [...state.tasks, action.payload] 
+            return {
+                ...state,
+                tasks: [...state.tasks, action.payload]
             };
         case 'LOCAL_UPDATE_TASK':
             return {
@@ -178,18 +186,18 @@ const firestoreReducer = (state: FirestoreState, action: FirestoreAction): Fires
                 ),
             };
         case 'LOCAL_DELETE_TASK':
-            return { 
-                ...state, 
-                tasks: state.tasks.filter(task => task.id !== action.payload.taskId) 
+            return {
+                ...state,
+                tasks: state.tasks.filter(task => task.id !== action.payload.taskId)
             };
-        
+
         // ============================================
         // MANAGEMENT AREAS - ATUALIZAÇÃO OTIMISTA
         // ============================================
         case 'LOCAL_ADD_AREA':
-            return { 
-                ...state, 
-                managementAreas: [...state.managementAreas, action.payload] 
+            return {
+                ...state,
+                managementAreas: [...state.managementAreas, action.payload]
             };
         case 'LOCAL_UPDATE_AREA':
             return {
@@ -199,11 +207,11 @@ const firestoreReducer = (state: FirestoreState, action: FirestoreAction): Fires
                 ),
             };
         case 'LOCAL_DELETE_AREA':
-            return { 
-                ...state, 
-                managementAreas: state.managementAreas.filter(area => area.id !== action.payload.areaId) 
+            return {
+                ...state,
+                managementAreas: state.managementAreas.filter(area => area.id !== action.payload.areaId)
             };
-        
+
         default:
             return state;
     }
@@ -230,7 +238,7 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
         if (!userId || !db) return [];
 
         const cacheKey = `${userId}_${collectionName}`;
-        
+
         // Função para buscar do Firestore
         const fetchFromFirestore = async (): Promise<T[]> => {
             console.log(`🔥 [FIRESTORE] Buscando ${collectionName}...`);
@@ -245,16 +253,16 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
                 return entity;
             });
         };
-        
+
         // 1. Tenta carregar do cache primeiro
         const cached = await localCache.get<T>(cacheKey);
-        
+
         if (cached) {
             // STALE-WHILE-REVALIDATE: Retorna cache imediatamente
             console.log(`📦 [CACHE ${localCache.isFresh(cached.timestamp) ? 'HIT' : 'STALE'}] ${collectionName}`);
             dispatch({ type: 'SET_DATA', payload: { collection: collectionName as any, data: cached.data } });
             dispatch({ type: 'SET_LOADING_STATUS', payload: { collection: loadingKey, status: false } });
-            
+
             // Se expirou, revalida em background (sem bloquear UI)
             if (!localCache.isFresh(cached.timestamp)) {
                 fetchFromFirestore().then(async (data) => {
@@ -270,10 +278,10 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
         try {
             const data = await fetchFromFirestore();
             await localCache.set(cacheKey, data);
-            
+
             dispatch({ type: 'SET_DATA', payload: { collection: collectionName as any, data } });
             dispatch({ type: 'SET_LOADING_STATUS', payload: { collection: loadingKey, status: false } });
-            
+
             return data;
         } catch (error) {
             console.error(`Erro ao buscar ${collectionName}:`, error);
@@ -289,7 +297,7 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
     const processAnimalEntity = (entity: any): Animal => {
         let finalFotos: string[] = [];
         const rawFotos = entity.fotos;
-        
+
         if (typeof rawFotos === 'string' && rawFotos.trim()) {
             finalFotos = [rawFotos];
         } else if (Array.isArray(rawFotos)) {
@@ -297,7 +305,7 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
                 .map(item => typeof item === 'string' ? item : item?.url)
                 .filter((url): url is string => !!url && url.trim() !== '');
         }
-        
+
         if (finalFotos.length === 0) {
             finalFotos = ['https://storage.googleapis.com/aistudio-marketplace/gallery/cattle_management/cow_placeholder.png'];
         }
@@ -343,6 +351,7 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
                     loadWithCache<CalendarEvent>('calendarEvents', 'calendar', 'calendar'),
                     loadWithCache<Task>('tasks', 'tasks', 'tasks'),
                     loadWithCache<ManagementArea>('managementAreas', 'areas', 'areas'),
+                    loadWithCache<ManagementBatch>('batches', 'batches', 'batches'),
                 ]);
 
                 dispatch({ type: 'SET_LAST_SYNC', payload: Date.now() });
@@ -359,9 +368,9 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
     // ============================================
     const forceSync = useCallback(async () => {
         if (!userId || syncInProgressRef.current) return;
-        
+
         await localCache.clear();
-        
+
         Object.keys(initialState.loading).forEach(key => {
             dispatch({ type: 'SET_LOADING_STATUS', payload: { collection: key as any, status: true } });
         });
@@ -371,6 +380,7 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
             loadWithCache<CalendarEvent>('calendarEvents', 'calendar', 'calendar'),
             loadWithCache<Task>('tasks', 'tasks', 'tasks'),
             loadWithCache<ManagementArea>('managementAreas', 'areas', 'areas'),
+            loadWithCache<ManagementBatch>('batches', 'batches', 'batches'),
         ]);
 
         dispatch({ type: 'SET_LAST_SYNC', payload: Date.now() });
@@ -381,12 +391,12 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
     // ============================================
     const addAnimal = useCallback(async (animalData: Omit<Animal, 'id' | 'fotos' | 'historicoSanitario' | 'historicoPesagens'>) => {
         if (!userId || !db) return;
-        
+
         try {
             const batch = db.batch();
             const newAnimalRef = db.collection('animals').doc();
-            
-            const initialWeightHistory = animalData.pesoKg > 0 
+
+            const initialWeightHistory = animalData.pesoKg > 0
                 ? [{ id: `initial-${newAnimalRef.id}`, date: animalData.dataNascimento, weightKg: animalData.pesoKg, type: WeighingType.None }]
                 : [];
 
@@ -400,13 +410,13 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
                 historicoProgenie: [],
             };
 
-                // remove qualquer campo undefined, incluindo dataNascimento se vier vazio
-                const sanitizedAnimalData = removeUndefined(fullAnimalData);
+            // remove qualquer campo undefined, incluindo dataNascimento se vier vazio
+            const sanitizedAnimalData = removeUndefined(fullAnimalData);
 
-                // só depois converte datas em Timestamps
-                const dataWithTimestamp = convertDatesToTimestamps(sanitizedAnimalData);
+            // só depois converte datas em Timestamps
+            const dataWithTimestamp = convertDatesToTimestamps(sanitizedAnimalData);
 
-                batch.set(newAnimalRef, { ...dataWithTimestamp, userId });
+            batch.set(newAnimalRef, { ...dataWithTimestamp, userId });
 
             if (animalData.maeNome) {
                 const motherBrinco = animalData.maeNome.toLowerCase().trim();
@@ -415,7 +425,7 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
                     .where('brinco', '==', motherBrinco)
                     .where('sexo', '==', Sexo.Femea)
                     .limit(1).get();
-                
+
                 if (!motherQuery.empty) {
                     const motherRef = motherQuery.docs[0].ref;
                     const newOffspringRecord: any = {
@@ -439,10 +449,10 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
             dispatch({ type: 'LOCAL_ADD_ANIMAL', payload: newAnimal });
 
             await batch.commit();
-            
+
             // Atualiza cache
             await updateLocalCache('animals', [...state.animals, newAnimal]);
-            
+
         } catch (error) {
             console.error("Erro ao adicionar animal:", error);
             // Em caso de erro, força sync para reverter
@@ -453,18 +463,18 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
 
     const updateAnimal = useCallback(async (animalId: string, updatedData: Partial<Omit<Animal, 'id'>>) => {
         if (!userId || !db) return;
-        
+
         // Atualização otimista
         dispatch({ type: 'LOCAL_UPDATE_ANIMAL', payload: { animalId, updatedData } });
-        
+
         try {
             const batch = db.batch();
             const animalRef = db.collection('animals').doc(animalId);
             const sanitizedData = removeUndefined(updatedData);
             const dataWithTimestamp = convertDatesToTimestamps(sanitizedData);
-            
+
             batch.update(animalRef, dataWithTimestamp);
-            
+
             // ============================================
             // 🔧 PROPAGAR PESOS ESPECIAIS PARA PROGÊNIE DA MÃE
             // ============================================
@@ -473,19 +483,19 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
                 if (animal?.maeNome) {
                     // Busca a mãe pelo brinco
                     const maeBrinco = animal.maeNome.toLowerCase().trim();
-                    const mae = state.animals.find(a => 
-                        a.brinco.toLowerCase().trim() === maeBrinco && 
+                    const mae = state.animals.find(a =>
+                        a.brinco.toLowerCase().trim() === maeBrinco &&
                         a.sexo === Sexo.Femea
                     );
-                    
+
                     if (mae) {
                         // Procura por pesos especiais (Nascimento, Desmame, Sobreano)
                         const pesagens = updatedData.historicoPesagens;
-                        
+
                         let birthWeight: number | undefined;
                         let weaningWeight: number | undefined;
                         let yearlingWeight: number | undefined;
-                        
+
                         pesagens.forEach(p => {
                             if (p.type === WeighingType.Birth) {
                                 birthWeight = p.weightKg;
@@ -495,14 +505,14 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
                                 yearlingWeight = p.weightKg;
                             }
                         });
-                        
+
                         // Se tem algum peso especial, atualiza a progênie da mãe
                         if (birthWeight !== undefined || weaningWeight !== undefined || yearlingWeight !== undefined) {
                             const maeProgenie = mae.historicoProgenie || [];
                             const existingRecord = maeProgenie.find(r => r.offspringBrinco.toLowerCase() === animal.brinco.toLowerCase());
-                            
+
                             let updatedProgenie: typeof maeProgenie;
-                            
+
                             if (existingRecord) {
                                 // Atualiza registro existente
                                 updatedProgenie = maeProgenie.map(r => {
@@ -527,29 +537,29 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
                                 };
                                 updatedProgenie = [...maeProgenie, newRecord];
                             }
-                            
+
                             // Atualiza a mãe no batch
                             const maeRef = db.collection('animals').doc(mae.id);
                             const cleanedProgenie = removeUndefined(updatedProgenie);
                             batch.update(maeRef, { historicoProgenie: cleanedProgenie });
-                            
+
                             // Atualização otimista da mãe
-                            dispatch({ 
-                                type: 'LOCAL_UPDATE_ANIMAL', 
-                                payload: { 
-                                    animalId: mae.id, 
-                                    updatedData: { historicoProgenie: updatedProgenie } 
-                                } 
+                            dispatch({
+                                type: 'LOCAL_UPDATE_ANIMAL',
+                                payload: {
+                                    animalId: mae.id,
+                                    updatedData: { historicoProgenie: updatedProgenie }
+                                }
                             });
                         }
                     }
                 }
             }
-            
+
             await batch.commit();
-            
+
             // Atualiza cache
-            const updatedAnimals = state.animals.map(a => 
+            const updatedAnimals = state.animals.map(a =>
                 a.id === animalId ? { ...a, ...updatedData } : a
             );
             await updateLocalCache('animals', updatedAnimals);
@@ -562,13 +572,13 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
 
     const deleteAnimal = useCallback(async (animalId: string): Promise<void> => {
         if (!userId || !db) throw new Error("Não autenticado");
-        
+
         // Atualização otimista
         dispatch({ type: 'LOCAL_DELETE_ANIMAL', payload: { animalId } });
-        
+
         try {
             await db.collection('animals').doc(animalId).delete();
-            
+
             // Atualiza cache
             const updatedAnimals = state.animals.filter(a => a.id !== animalId);
             await updateLocalCache('animals', updatedAnimals);
@@ -584,36 +594,36 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
     // ============================================
     const addOrUpdateCalendarEvent = useCallback(async (event: Omit<CalendarEvent, 'id'> & { id?: string }) => {
         if (!userId || !db) return;
-        
+
         const { id, ...eventData } = event;
         // Remove campos undefined (Firebase não aceita undefined)
         const cleanedEventData = removeUndefined(eventData);
         const dataWithTimestamp = convertDatesToTimestamps(cleanedEventData);
-        
+
         try {
             if (id) {
                 // ATUALIZAÇÃO
                 const updatedEvent: CalendarEvent = { id, ...eventData } as CalendarEvent;
-                
+
                 // Atualização otimista IMEDIATA
                 dispatch({ type: 'LOCAL_UPDATE_CALENDAR_EVENT', payload: updatedEvent });
-                
+
                 await db.collection('calendar').doc(id).update(dataWithTimestamp);
-                
+
                 // Atualiza cache
                 const updatedEvents = state.calendarEvents.map(e => e.id === id ? updatedEvent : e);
                 await updateLocalCache('calendarEvents', updatedEvents);
             } else {
                 // CRIAÇÃO
                 const newDocRef = await db.collection('calendar').add({ ...dataWithTimestamp, userId });
-                const newEvent: CalendarEvent = { 
-                    id: newDocRef.id, 
-                    ...eventData 
+                const newEvent: CalendarEvent = {
+                    id: newDocRef.id,
+                    ...eventData
                 } as CalendarEvent;
-                
+
                 // Atualização otimista IMEDIATA
                 dispatch({ type: 'LOCAL_ADD_CALENDAR_EVENT', payload: newEvent });
-                
+
                 // Atualiza cache
                 await updateLocalCache('calendarEvents', [...state.calendarEvents, newEvent]);
             }
@@ -626,13 +636,13 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
 
     const deleteCalendarEvent = useCallback(async (eventId: string) => {
         if (!userId || !db) return;
-        
+
         // Atualização otimista IMEDIATA
         dispatch({ type: 'LOCAL_DELETE_CALENDAR_EVENT', payload: { eventId } });
-        
+
         try {
             await db.collection('calendar').doc(eventId).delete();
-            
+
             // Atualiza cache
             const updatedEvents = state.calendarEvents.filter(e => e.id !== eventId);
             await updateLocalCache('calendarEvents', updatedEvents);
@@ -648,22 +658,22 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
     // ============================================
     const addTask = useCallback(async (task: Omit<Task, 'id' | 'isCompleted'>) => {
         if (!userId || !db) return;
-        
+
         // Remove campos undefined (Firebase não aceita undefined)
         const cleanedTask = removeUndefined({ ...task, isCompleted: false, userId });
         const dataWithTimestamp = convertDatesToTimestamps(cleanedTask);
-        
+
         try {
             const newDocRef = await db.collection('tasks').add(dataWithTimestamp);
-            const newTask: Task = { 
-                id: newDocRef.id, 
-                ...task, 
-                isCompleted: false 
+            const newTask: Task = {
+                id: newDocRef.id,
+                ...task,
+                isCompleted: false
             };
-            
+
             // Atualização otimista IMEDIATA
             dispatch({ type: 'LOCAL_ADD_TASK', payload: newTask });
-            
+
             // Atualiza cache
             await updateLocalCache('tasks', [...state.tasks, newTask]);
         } catch (error) {
@@ -675,20 +685,20 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
 
     const toggleTaskCompletion = useCallback(async (task: Task) => {
         if (!userId || !db) return;
-        
+
         const newCompletedStatus = !task.isCompleted;
-        
+
         // Atualização otimista IMEDIATA
-        dispatch({ 
-            type: 'LOCAL_UPDATE_TASK', 
-            payload: { taskId: task.id, updatedData: { isCompleted: newCompletedStatus } } 
+        dispatch({
+            type: 'LOCAL_UPDATE_TASK',
+            payload: { taskId: task.id, updatedData: { isCompleted: newCompletedStatus } }
         });
-        
+
         try {
             await db.collection('tasks').doc(task.id).update({ isCompleted: newCompletedStatus });
-            
+
             // Atualiza cache
-            const updatedTasks = state.tasks.map(t => 
+            const updatedTasks = state.tasks.map(t =>
                 t.id === task.id ? { ...t, isCompleted: newCompletedStatus } : t
             );
             await updateLocalCache('tasks', updatedTasks);
@@ -701,13 +711,13 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
 
     const deleteTask = useCallback(async (taskId: string) => {
         if (!userId || !db) return;
-        
+
         // Atualização otimista IMEDIATA
         dispatch({ type: 'LOCAL_DELETE_TASK', payload: { taskId } });
-        
+
         try {
             await db.collection('tasks').doc(taskId).delete();
-            
+
             // Atualiza cache
             const updatedTasks = state.tasks.filter(t => t.id !== taskId);
             await updateLocalCache('tasks', updatedTasks);
@@ -723,35 +733,35 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
     // ============================================
     const addOrUpdateManagementArea = useCallback(async (area: Omit<ManagementArea, 'id'> & { id?: string }) => {
         if (!userId || !db) return;
-        
+
         const { id, ...areaData } = area;
         // Remove campos undefined (Firebase não aceita undefined)
         const cleanedAreaData = removeUndefined(areaData);
-        
+
         try {
             if (id) {
                 // ATUALIZAÇÃO
                 const updatedArea: ManagementArea = { id, ...areaData } as ManagementArea;
-                
+
                 // Atualização otimista IMEDIATA
                 dispatch({ type: 'LOCAL_UPDATE_AREA', payload: updatedArea });
-                
+
                 await db.collection('areas').doc(id).update(cleanedAreaData);
-                
+
                 // Atualiza cache
                 const updatedAreas = state.managementAreas.map(a => a.id === id ? updatedArea : a);
                 await updateLocalCache('managementAreas', updatedAreas);
             } else {
                 // CRIAÇÃO
                 const newDocRef = await db.collection('areas').add({ ...cleanedAreaData, userId });
-                const newArea: ManagementArea = { 
-                    id: newDocRef.id, 
-                    ...areaData 
+                const newArea: ManagementArea = {
+                    id: newDocRef.id,
+                    ...areaData
                 } as ManagementArea;
-                
+
                 // Atualização otimista IMEDIATA
                 dispatch({ type: 'LOCAL_ADD_AREA', payload: newArea });
-                
+
                 // Atualiza cache
                 await updateLocalCache('managementAreas', [...state.managementAreas, newArea]);
             }
@@ -764,22 +774,22 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
 
     const deleteManagementArea = useCallback(async (areaId: string) => {
         if (!userId || !db) return;
-        
+
         // Atualização otimista IMEDIATA
         dispatch({ type: 'LOCAL_DELETE_AREA', payload: { areaId } });
-        
+
         // Também atualiza os animais que estavam nessa área
         const animalsInArea = state.animals.filter(a => a.managementAreaId === areaId);
         animalsInArea.forEach(animal => {
-            dispatch({ 
-                type: 'LOCAL_UPDATE_ANIMAL', 
-                payload: { animalId: animal.id, updatedData: { managementAreaId: undefined } } 
+            dispatch({
+                type: 'LOCAL_UPDATE_ANIMAL',
+                payload: { animalId: animal.id, updatedData: { managementAreaId: undefined } }
             });
         });
-        
+
         try {
             const batch = db.batch();
-            
+
             // Remove área dos animais
             const animalsInAreaQuery = db.collection('animals')
                 .where('userId', '==', userId)
@@ -788,17 +798,17 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
             snapshot.docs.forEach(doc => {
                 batch.update(doc.ref, { managementAreaId: FieldValue.delete() });
             });
-            
+
             // Deleta a área
             batch.delete(db.collection('areas').doc(areaId));
-            
+
             await batch.commit();
-            
+
             // Atualiza caches
             const updatedAreas = state.managementAreas.filter(a => a.id !== areaId);
             await updateLocalCache('managementAreas', updatedAreas);
-            
-            const updatedAnimals = state.animals.map(a => 
+
+            const updatedAnimals = state.animals.map(a =>
                 a.managementAreaId === areaId ? { ...a, managementAreaId: undefined } : a
             );
             await updateLocalCache('animals', updatedAnimals);
@@ -809,85 +819,147 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
         }
     }, [userId, state.animals, state.managementAreas, updateLocalCache, forceSync]);
 
-    const assignAnimalsToArea = useCallback(async (areaId: string, animalIdsToAssign: string[]) => {
+    const assignAnimalsToArea = useCallback(async (areaId: string, animalIds: string[]) => {
         if (!userId || !db) return;
-        
-        const toAssignSet = new Set(animalIdsToAssign);
-        
-        // Atualização otimista IMEDIATA
-        state.animals.forEach(animal => {
-            const wasInArea = animal.managementAreaId === areaId;
-            const shouldBeInArea = toAssignSet.has(animal.id);
-            
-            if (wasInArea && !shouldBeInArea) {
-                // Remover da área
-                dispatch({ 
-                    type: 'LOCAL_UPDATE_ANIMAL', 
-                    payload: { animalId: animal.id, updatedData: { managementAreaId: undefined } } 
-                });
-            } else if (!wasInArea && shouldBeInArea) {
-                // Adicionar à área
-                dispatch({ 
-                    type: 'LOCAL_UPDATE_ANIMAL', 
-                    payload: { animalId: animal.id, updatedData: { managementAreaId: areaId } } 
-                });
-            }
+
+        // Atualização otimista
+        animalIds.forEach(animalId => {
+            dispatch({
+                type: 'LOCAL_UPDATE_ANIMAL',
+                payload: { animalId, updatedData: { managementAreaId: areaId } }
+            });
         });
-        
+
         try {
             const batch = db.batch();
-            
-            const animalsInAreaQuery = db.collection('animals')
-                .where('userId', '==', userId)
-                .where('managementAreaId', '==', areaId);
-            const currentAnimalsSnapshot = await animalsInAreaQuery.get();
-            const currentlyInAreaSet = new Set<string>(currentAnimalsSnapshot.docs.map(doc => doc.id));
 
-            for (const animalId of toAssignSet) {
-                if (!currentlyInAreaSet.has(animalId)) {
-                    batch.update(db.collection('animals').doc(animalId), { managementAreaId: areaId });
-                }
-            }
-
-            for (const animalId of currentlyInAreaSet) {
-                if (!toAssignSet.has(animalId)) {
-                    batch.update(db.collection('animals').doc(animalId), { managementAreaId: FieldValue.delete() });
-                }
-            }
-            
-            await batch.commit();
-            
-            // Atualiza cache de animais
-            const updatedAnimals = state.animals.map(animal => {
-                if (toAssignSet.has(animal.id)) {
-                    return { ...animal, managementAreaId: areaId };
-                } else if (animal.managementAreaId === areaId) {
-                    return { ...animal, managementAreaId: undefined };
-                }
-                return animal;
+            animalIds.forEach(animalId => {
+                const animalRef = db.collection('animals').doc(animalId);
+                batch.update(animalRef, { managementAreaId: areaId });
             });
+
+            await batch.commit();
+
+            // Atualiza cache
+            const updatedAnimals = state.animals.map(a =>
+                animalIds.includes(a.id) ? { ...a, managementAreaId: areaId } : a
+            );
             await updateLocalCache('animals', updatedAnimals);
         } catch (error) {
-            console.error("Erro ao atribuir animais:", error);
+            console.error("Erro ao atribuir animais à área:", error);
             await forceSync();
             throw error;
         }
     }, [userId, state.animals, updateLocalCache, forceSync]);
 
+    // ============================================
+    // LOTES (BATCHES) - NOVO E INTEGRADO
+    // ============================================
+    const createBatch = useCallback(async (batchData: Omit<ManagementBatch, 'id'>) => {
+        if (!userId || !db) return;
+
+        const cleanedBatch = removeUndefined({ ...batchData, userId });
+        const dataWithTimestamp = convertDatesToTimestamps(cleanedBatch);
+
+        try {
+            const newDocRef = await db.collection('batches').add(dataWithTimestamp);
+            const newBatch: ManagementBatch = {
+                id: newDocRef.id,
+                ...batchData
+            } as ManagementBatch;
+
+            // Atualização otimista
+            dispatch({ type: 'LOCAL_ADD_BATCH', payload: newBatch });
+
+            // Atualiza cache
+            await updateLocalCache('batches', [...state.batches, newBatch]);
+
+            return newBatch;
+        } catch (error) {
+            console.error("Erro ao criar lote:", error);
+            await forceSync();
+            throw error;
+        }
+    }, [userId, state.batches, updateLocalCache, forceSync]);
+
+    const updateBatch = useCallback(async (batchId: string, updatedData: Partial<ManagementBatch>) => {
+        if (!userId || !db) return;
+
+        // Atualização otimista
+        dispatch({ type: 'LOCAL_UPDATE_BATCH', payload: { batchId, updatedData } });
+
+        try {
+            const batchRef = db.collection('batches').doc(batchId);
+            const cleanedData = removeUndefined(updatedData);
+            const dataWithTimestamp = convertDatesToTimestamps(cleanedData);
+
+            await batchRef.update(dataWithTimestamp);
+
+            // Atualiza cache
+            const updatedBatches = state.batches.map(b =>
+                b.id === batchId ? { ...b, ...updatedData } : b
+            );
+            await updateLocalCache('batches', updatedBatches);
+        } catch (error) {
+            console.error("Erro ao atualizar lote:", error);
+            await forceSync();
+            throw error;
+        }
+    }, [userId, state.batches, updateLocalCache, forceSync]);
+
+    const deleteBatch = useCallback(async (batchId: string) => {
+        if (!userId || !db) return;
+
+        // Atualização otimista
+        dispatch({ type: 'LOCAL_DELETE_BATCH', payload: { batchId } });
+
+        try {
+            await db.collection('batches').doc(batchId).delete();
+
+            // Atualiza cache
+            const updatedBatches = state.batches.filter(b => b.id !== batchId);
+            await updateLocalCache('batches', updatedBatches);
+        } catch (error) {
+            console.error("Erro ao deletar lote:", error);
+            await forceSync();
+            throw error;
+        }
+    }, [userId, state.batches, updateLocalCache, forceSync]);
+
+    const completeBatch = useCallback(async (batchId: string) => {
+        if (!userId || !db) return;
+
+        const completedData = {
+            status: 'completed' as const,
+            completedAt: new Date(),
+        };
+
+        await updateBatch(batchId, completedData);
+    }, [userId, db, updateBatch]);
+
     return {
         state,
         db,
         forceSync,
+        // Animals
         addAnimal,
         updateAnimal,
         deleteAnimal,
+        // Calendar
         addOrUpdateCalendarEvent,
         deleteCalendarEvent,
+        // Tasks
         addTask,
         toggleTaskCompletion,
         deleteTask,
+        // Areas
         addOrUpdateManagementArea,
         deleteManagementArea,
-        assignAnimalsToArea
+        assignAnimalsToArea,
+        // Batches
+        createBatch,
+        updateBatch,
+        deleteBatch,
+        completeBatch,
     };
 };

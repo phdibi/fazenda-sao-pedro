@@ -1,21 +1,17 @@
 import React, { useState, useMemo, useEffect, lazy, Suspense } from 'react';
 import Header from './components/Header';
 import { offlineQueue } from './utils/offlineSync';
-import { useFirestoreOptimized } from './hooks/useFirestoreOptimized';
 import { Animal, AppUser, WeighingType, WeightEntry, MedicationAdministration } from './types';
 import Spinner from './components/common/Spinner';
 import MobileNavBar from './components/MobileNavBar';
-import { useAdvancedFilters } from './hooks/useAdvancedFilters';
-import { useDashboardConfig } from './hooks/useDashboardConfig';
-import { useUserProfile } from './hooks/useUserProfile';
-import { db, storage } from './services/firebase';
+import { storage } from './services/firebase';
 import DashboardSettings from './components/DashboardSettings';
 import RoleSelector from './components/RoleSelector';
 import CapatazView from './components/CapatazView';
-import { useBatchManagement } from './hooks/useBatchManagement';
 import QuickWeightModal from './components/QuickWeightModal';
 import QuickMedicationModal from './components/QuickMedicationModal';
 import AppRouter from './components/AppRouter';
+import { FarmProvider, useFarmData } from './contexts/FarmContext';
 
 // Modais globais (permanecem aqui)
 const AnimalDetailModal = lazy(() => import('./components/AnimalDetailModal'));
@@ -30,10 +26,14 @@ interface AppProps {
 
 const AUTO_SYNC_INTERVAL_MS = 5 * 60 * 1000;
 
-const App = ({ user, firebaseReady }: AppProps) => {
+const InnerApp = ({ user, firebaseReady }: AppProps) => {
+    // Consumindo Contexto Global
+    const { firestore, userProfile, dashboardConfig } = useFarmData();
+
+    // Destruturando dados do Firestore
     const {
         state,
-        db: firestore,
+        db: dbInstance,
         forceSync,
         addAnimal,
         updateAnimal,
@@ -43,15 +43,15 @@ const App = ({ user, firebaseReady }: AppProps) => {
         addTask,
         toggleTaskCompletion,
         deleteTask,
-        addOrUpdateManagementArea,
-        deleteManagementArea,
-        assignAnimalsToArea,
-    } = useFirestoreOptimized(user);
+    } = firestore;
 
-    // Hook de perfil de usuário
-    const { role, changeRole, canAccess, isCapataz, getUserProfile } = useUserProfile(user);
+    // Destruturando Perfil de Usuário
+    const { role, changeRole, canAccess, isCapataz, getUserProfile } = userProfile;
+
+    // Destruturando Config do Dashboard
+    const { config, toggleWidget, setWidgetSize, resetToDefault } = dashboardConfig;
+
     const [showRoleSelector, setShowRoleSelector] = useState(false);
-
     const [currentView, setCurrentView] = useState<'dashboard' | 'reports' | 'calendar' | 'tasks' | 'management' | 'batches'>('dashboard');
     const [selectedAnimalId, setSelectedAnimalId] = useState<string | null>(null);
     const [isAddAnimalModalOpen, setIsAddAnimalModalOpen] = useState(false);
@@ -63,66 +63,25 @@ const App = ({ user, firebaseReady }: AppProps) => {
     const [quickWeightAnimal, setQuickWeightAnimal] = useState<Animal | null>(null);
     const [quickMedicationAnimal, setQuickMedicationAnimal] = useState<Animal | null>(null);
 
-    const {
-        batches,
-        createBatch,
-        updateBatch,
-        deleteBatch,
-        completeBatch,
-    } = useBatchManagement(user?.uid);
-
     const selectedAnimal = useMemo(() => state.animals.find(a => a.id === selectedAnimalId) || null, [state.animals, selectedAnimalId]);
 
-    const {
-        filters,
-        filteredAnimals,
-        stats,
-        setSearchTerm,
-        setSelectedMedication,
-        setSelectedReason,
-        setSelectedStatus,
-        setSelectedSexo,
-        setSelectedRaca,
-        setSelectedAreaId,
-        setWeightRange,
-        setAgeRange,
-        setSearchFields,
-        setSortConfig,
-        clearAllFilters,
-        activeFiltersCount,
-        allMedications,
-        allReasons,
-    } = useAdvancedFilters({
-        animals: state.animals,
-        areas: state.managementAreas
-    });
-
-    const {
-        config,
-        enabledWidgets,
-        toggleWidget,
-        setWidgetSize,
-        resetToDefault
-    } = useDashboardConfig();
-
-    const hasDatabase = Boolean(firestore);
+    const hasDatabase = Boolean(dbInstance);
+    // storage vem do import estático, mas verificamos se está disponível
     const hasStorage = Boolean(storage);
     const costlyActionsEnabled = firebaseReady && hasDatabase && hasStorage;
 
     useEffect(() => {
-        if (!firestore) return;
+        if (!dbInstance) return;
 
         const handleSync = async () => {
             console.log('🔄 Internet voltou! Sincronizando dados offline...');
-            await offlineQueue.processQueue(firestore);
-            // OTIMIZAÇÃO: Não força sync completo - cache local já está atualizado
-            // As operações offline já foram aplicadas no estado local
+            await offlineQueue.processQueue(dbInstance);
             alert('✅ Dados sincronizados com sucesso!');
         };
 
         window.addEventListener('sync-offline-data', handleSync);
         return () => window.removeEventListener('sync-offline-data', handleSync);
-    }, [firestore]);
+    }, [firestore, dbInstance]);
 
     const handleSelectAnimal = (animal: Animal) => {
         setSelectedAnimalId(animal.id);
@@ -267,7 +226,7 @@ const App = ({ user, firebaseReady }: AppProps) => {
     };
 
     useEffect(() => {
-        if (!firestore) return;
+        if (!dbInstance) return;
 
         const intervalId = window.setInterval(() => {
             if (navigator.onLine) {
@@ -276,7 +235,7 @@ const App = ({ user, firebaseReady }: AppProps) => {
         }, AUTO_SYNC_INTERVAL_MS);
 
         return () => window.clearInterval(intervalId);
-    }, [forceSync, firestore]);
+    }, [forceSync, dbInstance]);
 
     const isAppLoading = state.loading.animals || state.loading.calendar || state.loading.tasks || state.loading.areas;
 
@@ -294,12 +253,12 @@ const App = ({ user, firebaseReady }: AppProps) => {
 
     // Se for Capataz, renderiza view restrita
     if (isCapataz) {
-        const userProfile = getUserProfile();
-        if (userProfile) {
+        const userProfileData = getUserProfile();
+        if (userProfileData) {
             return (
                 <>
                     <CapatazView
-                        user={userProfile}
+                        user={userProfileData}
                         tasks={state.tasks}
                         calendarEvents={state.calendarEvents}
                         onAddTask={addTask}
@@ -352,53 +311,12 @@ const App = ({ user, firebaseReady }: AppProps) => {
 
                 <AppRouter
                     currentView={currentView}
-                    user={user}
                     costlyActionsEnabled={costlyActionsEnabled}
-                    animals={state.animals}
-                    filteredAnimals={filteredAnimals}
-                    stats={stats}
-                    calendarEvents={state.calendarEvents}
-                    tasks={state.tasks}
-                    areas={state.managementAreas}
-                    batches={batches}
-                    filters={filters}
-                    setSearchTerm={setSearchTerm}
-                    setSearchFields={setSearchFields}
-                    setSelectedMedication={setSelectedMedication}
-                    setSelectedReason={setSelectedReason}
-                    setSelectedStatus={setSelectedStatus}
-                    setSelectedSexo={setSelectedSexo}
-                    setSelectedRaca={setSelectedRaca}
-                    setSelectedAreaId={setSelectedAreaId}
-                    setWeightRange={setWeightRange}
-                    setAgeRange={setAgeRange}
-                    setSortConfig={setSortConfig}
-                    clearAllFilters={clearAllFilters}
-                    activeFiltersCount={activeFiltersCount}
-                    allMedications={allMedications}
-                    allReasons={allReasons}
-                    config={config}
-                    enabledWidgets={enabledWidgets}
-                    toggleWidget={toggleWidget}
-                    setWidgetSize={setWidgetSize}
-                    resetToDefault={resetToDefault}
                     setShowDashboardSettings={setShowDashboardSettings}
                     onSelectAnimal={handleSelectAnimal}
                     onQuickWeight={(animal) => setQuickWeightAnimal(animal)}
                     onQuickMedication={(animal) => setQuickMedicationAnimal(animal)}
                     onLongPress={(animal) => setSelectedAnimalId(animal.id)}
-                    addTask={addTask}
-                    toggleTaskCompletion={toggleTaskCompletion}
-                    deleteTask={deleteTask}
-                    addOrUpdateCalendarEvent={addOrUpdateCalendarEvent}
-                    deleteCalendarEvent={deleteCalendarEvent}
-                    addOrUpdateManagementArea={addOrUpdateManagementArea}
-                    deleteManagementArea={deleteManagementArea}
-                    assignAnimalsToArea={assignAnimalsToArea}
-                    createBatch={createBatch}
-                    updateBatch={updateBatch}
-                    deleteBatch={deleteBatch}
-                    completeBatch={completeBatch}
                     setShowScaleImportModal={setShowScaleImportModal}
                     focusNFePanel={focusNFePanel}
                     setFocusNFePanel={setFocusNFePanel}
@@ -474,5 +392,11 @@ const App = ({ user, firebaseReady }: AppProps) => {
         </div>
     );
 };
+
+const App = (props: AppProps) => (
+    <FarmProvider user={props.user}>
+        <InnerApp {...props} />
+    </FarmProvider>
+);
 
 export default App;
