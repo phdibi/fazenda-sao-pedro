@@ -7,8 +7,17 @@
 // CACHE E SINCRONIZAÇÃO
 // ============================================
 export const CACHE_VERSION = 'v2';
-export const CACHE_EXPIRY_MS = 30 * 60 * 1000; // 30 minutos
-export const AUTO_SYNC_INTERVAL_MS = 5 * 60 * 1000; // 5 minutos
+export const CACHE_EXPIRY_MS = 60 * 60 * 1000; // 1 hora
+export const AUTO_SYNC_INTERVAL_MS = 15 * 60 * 1000; // 15 minutos
+
+// ============================================
+// FIREBASE LIMITS
+// ============================================
+export const QUERY_LIMITS = {
+  INITIAL_LOAD: 100,      // Limite no carregamento inicial
+  PAGINATION_SIZE: 25,    // Itens por página
+  MAX_BATCH_WRITE: 500,   // Máximo do Firestore
+};
 
 // ============================================
 // UI E INTERAÇÃO
