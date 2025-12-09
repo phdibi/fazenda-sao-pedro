@@ -1,6 +1,12 @@
-import React, { useState, useRef, useCallback } from 'react';
-import { Animal, AnimalStatus } from '../types';
+import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react';
+import { Animal, AnimalStatus, GMDMetrics } from '../types';
 import { calcularGMDAnimal, formatarGMD, classificarGMD } from '../utils/gmdCalculations';
+import { 
+  SWIPE_THRESHOLD, 
+  LONG_PRESS_DURATION_MS, 
+  INTERSECTION_OBSERVER,
+  RECENT_WEIGHING_DAYS
+} from '../constants/app';
 
 interface AnimalCardProps {
   animal: Animal;
@@ -9,23 +15,49 @@ interface AnimalCardProps {
   onQuickMedication?: (animal: Animal) => void;
   onLongPress?: (animal: Animal, position: { x: number; y: number }) => void;
   showGMD?: boolean;
+  // 🔧 OTIMIZAÇÃO #3: GMD pré-calculado (opcional)
+  cachedGMD?: GMDMetrics | null;
 }
 
-// 🔧 OTIMIZAÇÃO: Componente de imagem com lazy loading e fallback
+// ============================================
+// 🔧 OTIMIZAÇÃO #4: LazyImage com Intersection Observer
+// Carrega imagem apenas quando entra no viewport
+// ============================================
 const LazyImage: React.FC<{ 
   src: string; 
   thumbnailSrc?: string;
   alt: string;
 }> = ({ src, thumbnailSrc, alt }) => {
+  const [shouldLoad, setShouldLoad] = useState(false);
   const [isLoaded, setIsLoaded] = useState(false);
   const [hasError, setHasError] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
   
   // Usa thumbnail se disponível, senão usa imagem principal
   const displaySrc = thumbnailSrc || src;
+
+  // 🔧 Intersection Observer para lazy loading inteligente
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setShouldLoad(true);
+          observer.disconnect();
+        }
+      },
+      INTERSECTION_OBSERVER
+    );
+
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, []);
   
   if (hasError) {
     return (
-      <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-base-700 to-base-800">
+      <div ref={containerRef} className="w-full h-full flex items-center justify-center bg-gradient-to-br from-base-700 to-base-800">
         <svg className="w-10 h-10 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
         </svg>
@@ -34,20 +66,24 @@ const LazyImage: React.FC<{
   }
   
   return (
-    <>
+    <div ref={containerRef} className="w-full h-full relative">
+      {/* Skeleton enquanto não carrega */}
       {!isLoaded && (
         <div className="absolute inset-0 bg-base-700 animate-pulse" />
       )}
-      <img
-        className={`w-full h-full object-cover transition-opacity duration-300 ${isLoaded ? 'opacity-100' : 'opacity-0'}`}
-        src={displaySrc}
-        alt={alt}
-        loading="lazy"
-        decoding="async"
-        onLoad={() => setIsLoaded(true)}
-        onError={() => setHasError(true)}
-      />
-    </>
+      
+      {/* Só renderiza a tag img quando deve carregar */}
+      {shouldLoad && (
+        <img
+          className={`w-full h-full object-cover transition-opacity duration-300 ${isLoaded ? 'opacity-100' : 'opacity-0'}`}
+          src={displaySrc}
+          alt={alt}
+          decoding="async"
+          onLoad={() => setIsLoaded(true)}
+          onError={() => setHasError(true)}
+        />
+      )}
+    </div>
   );
 };
 
@@ -76,7 +112,8 @@ const AnimalCard: React.FC<AnimalCardProps> = ({
   onQuickWeight,
   onQuickMedication,
   onLongPress,
-  showGMD = true 
+  showGMD = true,
+  cachedGMD // 🔧 OTIMIZAÇÃO #3: Usa GMD pré-calculado se disponível
 }) => {
   const [swipeOffset, setSwipeOffset] = useState(0);
   const [isSwiping, setIsSwiping] = useState(false);
@@ -88,21 +125,24 @@ const AnimalCard: React.FC<AnimalCardProps> = ({
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const cardRef = useRef<HTMLDivElement>(null);
 
-  const SWIPE_THRESHOLD = 80;
-  const LONG_PRESS_DURATION = 600;
-
-  const gmd = showGMD ? calcularGMDAnimal(animal) : null;
+  // 🔧 OTIMIZAÇÃO #3: Usa GMD em cache ou calcula (memoizado)
+  const gmd = useMemo(() => {
+    if (!showGMD) return null;
+    if (cachedGMD !== undefined) return cachedGMD;
+    return calcularGMDAnimal(animal);
+  }, [showGMD, cachedGMD, animal.id, animal.historicoPesagens?.length]);
+  
   const gmdClass = gmd?.gmdTotal ? classificarGMD(gmd.gmdTotal) : null;
 
   const config = statusConfig[animal.status] || statusConfig[AnimalStatus.Ativo];
   const mainPhoto = animal.fotos?.[0];
   const displayName = animal.nome || `Brinco ${animal.brinco}`;
 
-  // Indicador de manejo recente (pesagem nos últimos 30 dias)
+  // Indicador de manejo recente (pesagem nos últimos N dias)
   const hasRecentWeighing = animal.historicoPesagens?.some(p => {
     const date = new Date(p.date);
-    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-    return date >= thirtyDaysAgo;
+    const recentThreshold = new Date(Date.now() - RECENT_WEIGHING_DAYS * 24 * 60 * 60 * 1000);
+    return date >= recentThreshold;
   });
 
   const clearTimer = () => {
@@ -130,7 +170,7 @@ const AnimalCard: React.FC<AnimalCardProps> = ({
         setLongPressTriggered(true);
         setActionExecuted(true);
         setSwipeOffset(0);
-      }, LONG_PRESS_DURATION);
+      }, LONG_PRESS_DURATION_MS);
     }
   }, [animal, onLongPress]);
 

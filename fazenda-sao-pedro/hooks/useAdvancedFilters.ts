@@ -1,6 +1,7 @@
 import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import {
   Animal,
+  AnimalWithCachedGMD,
   ManagementArea,
   AdvancedFilters,
   DEFAULT_ADVANCED_FILTERS,
@@ -12,13 +13,9 @@ import {
   AnimalStatus,
   Sexo
 } from '../types';
-import { debounce } from '../utils/helpers';
+import { debounce, DebouncedFunction } from '../utils/helpers';
 import { calcularGMDAnimal } from '../utils/gmdCalculations';
-
-// ============================================
-// 🔧 OTIMIZAÇÃO: DEBOUNCE DELAY CONFIGURÁVEL
-// ============================================
-const DEBOUNCE_DELAY_MS = 300; // Delay para evitar re-renders excessivos
+import { DEBOUNCE_DELAY_MS, GMD_THRESHOLDS } from '../constants/app';
 
 interface UseAdvancedFiltersProps {
   animals: Animal[];
@@ -27,7 +24,7 @@ interface UseAdvancedFiltersProps {
 
 interface UseAdvancedFiltersReturn {
   filters: AdvancedFilters;
-  filteredAnimals: Animal[];
+  filteredAnimals: AnimalWithCachedGMD[]; // 🔧 OTIMIZAÇÃO #3: Inclui GMD em cache
   stats: FilteredStats;
   setSearchTerm: (term: string) => void;
   setSelectedMedication: (med: string) => void;
@@ -66,31 +63,43 @@ export const useAdvancedFilters = ({
   const [debouncedAgeRange, setDebouncedAgeRange] = useState<AgeRange>({ minMonths: null, maxMonths: null });
   const [isFiltering, setIsFiltering] = useState(false);
 
-  const debouncedSetSearch = useMemo(
-    () => debounce((value: string) => {
+  // 🔧 FIX MEMORY LEAK: Usar useRef para manter referência estável das funções debounced
+  // e permitir cleanup no unmount
+  const debouncedSetSearchRef = useRef<DebouncedFunction<(value: string) => void>>(
+    debounce((value: string) => {
       setDebouncedSearch(value);
       setIsFiltering(false);
-    }, DEBOUNCE_DELAY_MS),
-    []
+    }, DEBOUNCE_DELAY_MS)
   );
 
-  // 🔧 OTIMIZAÇÃO: Debounce para filtros de peso (evita re-render a cada tecla)
-  const debouncedSetWeightRange = useMemo(
-    () => debounce((range: WeightRange) => {
+  // 🔧 FIX MEMORY LEAK: Debounce para filtros de peso
+  const debouncedSetWeightRangeRef = useRef<DebouncedFunction<(range: WeightRange) => void>>(
+    debounce((range: WeightRange) => {
       setDebouncedWeightRange(range);
       setIsFiltering(false);
-    }, DEBOUNCE_DELAY_MS),
-    []
+    }, DEBOUNCE_DELAY_MS)
   );
 
-  // 🔧 OTIMIZAÇÃO: Debounce para filtros de idade
-  const debouncedSetAgeRange = useMemo(
-    () => debounce((range: AgeRange) => {
+  // 🔧 FIX MEMORY LEAK: Debounce para filtros de idade
+  const debouncedSetAgeRangeRef = useRef<DebouncedFunction<(range: AgeRange) => void>>(
+    debounce((range: AgeRange) => {
       setDebouncedAgeRange(range);
       setIsFiltering(false);
-    }, DEBOUNCE_DELAY_MS),
-    []
+    }, DEBOUNCE_DELAY_MS)
   );
+
+  // 🔧 FIX MEMORY LEAK: Cleanup de todas as funções debounced no unmount
+  useEffect(() => {
+    const searchDebounce = debouncedSetSearchRef.current;
+    const weightDebounce = debouncedSetWeightRangeRef.current;
+    const ageDebounce = debouncedSetAgeRangeRef.current;
+    
+    return () => {
+      searchDebounce.cancel();
+      weightDebounce.cancel();
+      ageDebounce.cancel();
+    };
+  }, []);
 
   const allMedications = useMemo(() => {
     const meds = new Set<string>();
@@ -108,8 +117,19 @@ export const useAdvancedFilters = ({
     return Array.from(reasons).sort();
   }, [animals]);
 
+  // ============================================
+  // 🔧 OTIMIZAÇÃO #3: Memoizar GMD por animal
+  // Calcula GMD uma vez quando animals muda, não em cada filtro
+  // ============================================
+  const animalsWithCachedGMD = useMemo(() => {
+    return animals.map(animal => ({
+      ...animal,
+      _cachedGMD: calcularGMDAnimal(animal)
+    }));
+  }, [animals]);
+
   const filteredAnimals = useMemo(() => {
-    let result = animals.filter(animal => {
+    let result = animalsWithCachedGMD.filter(animal => {
       // Busca avançada com operadores booleanos
       if (debouncedSearch) {
         const searchLower = debouncedSearch.toLowerCase().trim();
@@ -250,7 +270,7 @@ export const useAdvancedFilters = ({
     });
 
     return result;
-  }, [animals, debouncedSearch, debouncedWeightRange, debouncedAgeRange, filters.selectedMedication, filters.selectedReason, filters.selectedStatus, filters.selectedSexo, filters.selectedRaca, filters.selectedAreaId, filters.searchFields, filters.sortConfig]);
+  }, [animalsWithCachedGMD, debouncedSearch, debouncedWeightRange, debouncedAgeRange, filters.selectedMedication, filters.selectedReason, filters.selectedStatus, filters.selectedSexo, filters.selectedRaca, filters.selectedAreaId, filters.searchFields, filters.sortConfig]);
 
   const stats = useMemo((): FilteredStats => {
     const activeAnimals = filteredAnimals.filter(a => a.status === AnimalStatus.Ativo);
@@ -305,22 +325,22 @@ export const useAdvancedFilters = ({
     const mostUsedMedication = Object.entries(medicationCounts)
       .sort(([,a], [,b]) => b - a)[0]?.[0] || 'Nenhum';
 
-    // Calcular GMD Stats
+    // 🔧 OTIMIZAÇÃO #3: Usar GMD em cache ao invés de recalcular
     let totalGMD = 0;
     let animalsWithGMD = 0;
     let topPerformers = 0;
     let underperformers = 0;
 
     activeAnimals.forEach(a => {
-      const gmdMetrics = calcularGMDAnimal(a);
-      const gmd = gmdMetrics.gmdTotal;
+      // Usa _cachedGMD se disponível (já calculado no animalsWithCachedGMD)
+      const gmd = (a as any)._cachedGMD?.gmdTotal ?? null;
 
       if (gmd && gmd > 0) {
         totalGMD += gmd;
         animalsWithGMD++;
 
-        if (gmd >= 1.0) topPerformers++;
-        if (gmd < 0.5) underperformers++;
+        if (gmd >= GMD_THRESHOLDS.top) topPerformers++;
+        if (gmd < GMD_THRESHOLDS.under) underperformers++;
       }
     });
 
@@ -368,8 +388,8 @@ export const useAdvancedFilters = ({
   const setSearchTerm = useCallback((term: string) => {
     setFilters(prev => ({ ...prev, searchTerm: term }));
     setIsFiltering(true); // 🔧 Indica que está processando
-    debouncedSetSearch(term);
-  }, [debouncedSetSearch]);
+    debouncedSetSearchRef.current(term);
+  }, []);
 
   const setSelectedMedication = useCallback((med: string) => {
     setFilters(prev => ({ ...prev, selectedMedication: med }));
@@ -398,14 +418,14 @@ export const useAdvancedFilters = ({
   const setWeightRange = useCallback((range: WeightRange) => {
     setFilters(prev => ({ ...prev, weightRange: range }));
     setIsFiltering(true); // 🔧 Indica que está processando
-    debouncedSetWeightRange(range);
-  }, [debouncedSetWeightRange]);
+    debouncedSetWeightRangeRef.current(range);
+  }, []);
 
   const setAgeRange = useCallback((range: AgeRange) => {
     setFilters(prev => ({ ...prev, ageRange: range }));
     setIsFiltering(true); // 🔧 Indica que está processando
-    debouncedSetAgeRange(range);
-  }, [debouncedSetAgeRange]);
+    debouncedSetAgeRangeRef.current(range);
+  }, []);
 
   const setSearchFields = useCallback((fields: SearchField[]) => {
     setFilters(prev => ({ ...prev, searchFields: fields }));

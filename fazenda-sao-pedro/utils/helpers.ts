@@ -3,28 +3,51 @@
  */
 
 /**
+ * Função debounced com método cancel
+ */
+export interface DebouncedFunction<T extends (...args: any[]) => any> {
+  (...args: Parameters<T>): void;
+  cancel: () => void;
+}
+
+/**
  * Debounce: Executa a função apenas após N milissegundos de inatividade
  * Útil para otimizar buscas, filtros e inputs em tempo real
  * 
  * @param func - Função a ser executada
  * @param wait - Tempo de espera em milissegundos
- * @returns Função debounced
+ * @returns Função debounced com método cancel()
  * 
  * @example
  * const handleSearch = debounce((value: string) => {
  *   console.log('Buscando:', value);
  * }, 300);
+ * 
+ * // Cleanup no unmount:
+ * useEffect(() => () => handleSearch.cancel(), []);
  */
 export function debounce<T extends (...args: any[]) => any>(
   func: T,
   wait: number
-): (...args: Parameters<T>) => void {
-  let timeout: NodeJS.Timeout;
+): DebouncedFunction<T> {
+  let timeout: ReturnType<typeof setTimeout> | null = null;
 
-  return (...args: Parameters<T>) => {
-    clearTimeout(timeout);
-    timeout = setTimeout(() => func(...args), wait);
+  const debounced = (...args: Parameters<T>) => {
+    if (timeout) clearTimeout(timeout);
+    timeout = setTimeout(() => {
+      timeout = null;
+      func(...args);
+    }, wait);
   };
+
+  debounced.cancel = () => {
+    if (timeout) {
+      clearTimeout(timeout);
+      timeout = null;
+    }
+  };
+
+  return debounced;
 }
 
 /**

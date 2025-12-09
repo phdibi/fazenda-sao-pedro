@@ -96,6 +96,16 @@ export interface Animal {
   managementAreaId?: string;
 }
 
+// 🔧 OTIMIZAÇÃO #3: Tipo para animal com GMD pré-calculado
+export interface GMDMetrics {
+  gmdTotal: number | null;
+  gmdRecente: number | null;
+}
+
+export interface AnimalWithCachedGMD extends Animal {
+  _cachedGMD: GMDMetrics;
+}
+
 export enum CalendarEventType {
   Evento = 'Evento',
   Observacao = 'Observação',
@@ -567,4 +577,100 @@ export interface RaceBenchmark {
   avgGMD: number;
   avgAge: number;
   topPerformers: PerformanceComparison[];
+}
+
+// ============================================
+// 🔧 MELHORIA #3: TIPAGEM ESTRITA PARA FIRESTORE
+// ============================================
+
+/**
+ * Nomes das coleções do Firestore
+ * Uso: Garante type-safety em operações de banco
+ */
+export type FirestoreCollectionName = 'animals' | 'calendar' | 'tasks' | 'areas';
+
+/**
+ * Mapeamento de collection name para tipo de dados
+ */
+export interface FirestoreCollectionMap {
+  animals: Animal;
+  calendar: CalendarEvent;
+  tasks: Task;
+  areas: ManagementArea;
+}
+
+/**
+ * Nomes das coleções no estado local (podem diferir do Firestore)
+ */
+export type LocalStateCollectionName = 'animals' | 'calendarEvents' | 'tasks' | 'managementAreas';
+
+/**
+ * Mapeamento de estado local para tipo de dados
+ */
+export interface LocalStateCollectionMap {
+  animals: Animal;
+  calendarEvents: CalendarEvent;
+  tasks: Task;
+  managementAreas: ManagementArea;
+}
+
+/**
+ * Chaves de loading do estado
+ */
+export type LoadingKey = 'animals' | 'calendar' | 'tasks' | 'areas';
+
+/**
+ * Estado de loading tipado
+ */
+export type LoadingState = Record<LoadingKey, boolean>;
+
+/**
+ * Resultado de operação Firestore
+ */
+export interface FirestoreOperationResult<T> {
+  success: boolean;
+  data?: T;
+  error?: string;
+}
+
+/**
+ * Códigos de erro do Firestore conhecidos
+ */
+export type FirestoreErrorCode = 
+  | 'permission-denied'
+  | 'unavailable'
+  | 'not-found'
+  | 'already-exists'
+  | 'resource-exhausted'
+  | 'cancelled'
+  | 'unknown';
+
+/**
+ * Erro tipado do Firestore
+ */
+export interface FirestoreError {
+  code: FirestoreErrorCode;
+  message: string;
+  details?: unknown;
+}
+
+/**
+ * Verifica se um erro é do Firestore
+ */
+export function isFirestoreError(error: unknown): error is FirestoreError {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    'message' in error
+  );
+}
+
+/**
+ * Props base para componentes que dependem de Firestore
+ */
+export interface WithFirestoreProps {
+  isLoading?: boolean;
+  error?: string | null;
+  onRetry?: () => void;
 }

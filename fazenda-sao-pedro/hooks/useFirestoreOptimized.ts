@@ -1,96 +1,18 @@
 import { useState, useEffect, useCallback, useReducer, useRef } from 'react';
 import { db, Timestamp, FieldValue } from '../services/firebase';
-import { Animal, CalendarEvent, Task, ManagementArea, Sexo, WeighingType, AppUser } from '../types';
-
-// ============================================
-// 🔧 CACHE LOCAL COM INDEXEDDB
-// ============================================
-
-const CACHE_VERSION = 'v2';
-const CACHE_EXPIRY_MS = 30 * 60 * 1000; // 30 minutos - economia de ~50% leituras Firestore
-
-interface CacheEntry<T> {
-    data: T[];
-    timestamp: number;
-    version: string;
-}
-
-class LocalCache {
-    private dbName = 'fazenda-cache';
-    private db: IDBDatabase | null = null;
-
-    async init(): Promise<void> {
-        return new Promise((resolve, reject) => {
-            const request = indexedDB.open(this.dbName, 1);
-            
-            request.onerror = () => reject(request.error);
-            request.onsuccess = () => {
-                this.db = request.result;
-                resolve();
-            };
-            
-            request.onupgradeneeded = (event) => {
-                const db = (event.target as IDBOpenDBRequest).result;
-                if (!db.objectStoreNames.contains('cache')) {
-                    db.createObjectStore('cache', { keyPath: 'key' });
-                }
-            };
-        });
-    }
-
-    async get<T>(key: string): Promise<CacheEntry<T> | null> {
-        if (!this.db) await this.init();
-        
-        return new Promise((resolve) => {
-            const transaction = this.db!.transaction(['cache'], 'readonly');
-            const store = transaction.objectStore('cache');
-            const request = store.get(key);
-            
-            request.onsuccess = () => {
-                const result = request.result;
-                if (result && result.version === CACHE_VERSION) {
-                    resolve(result);
-                } else {
-                    resolve(null);
-                }
-            };
-            request.onerror = () => resolve(null);
-        });
-    }
-
-    async set<T>(key: string, data: T[]): Promise<void> {
-        if (!this.db) await this.init();
-        
-        return new Promise((resolve) => {
-            const transaction = this.db!.transaction(['cache'], 'readwrite');
-            const store = transaction.objectStore('cache');
-            store.put({
-                key,
-                data,
-                timestamp: Date.now(),
-                version: CACHE_VERSION
-            });
-            transaction.oncomplete = () => resolve();
-        });
-    }
-
-    async clear(): Promise<void> {
-        if (!this.db) return;
-        
-        return new Promise((resolve) => {
-            const transaction = this.db!.transaction(['cache'], 'readwrite');
-            const store = transaction.objectStore('cache');
-            store.clear();
-            transaction.oncomplete = () => resolve();
-        });
-    }
-
-    isFresh(timestamp: number): boolean {
-        return Date.now() - timestamp < CACHE_EXPIRY_MS;
-    }
-}
-
-const localCache = new LocalCache();
+import { localCache } from '../services/localCache';
+import { 
+    Animal, 
+    CalendarEvent, 
+    Task, 
+    ManagementArea, 
+    Sexo, 
+    WeighingType, 
+    AppUser,
+    FirestoreCollectionName,
+    LocalStateCollectionName,
+    LoadingKey
+} from '../types';
 
 // ============================================
 // STATE MANAGEMENT
