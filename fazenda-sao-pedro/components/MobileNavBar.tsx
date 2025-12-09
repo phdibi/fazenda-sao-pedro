@@ -1,5 +1,5 @@
 import React from 'react';
-import { CalendarDaysIcon, ClipboardDocumentCheckIcon, MapPinIcon, PlusIcon, ScaleIcon } from './common/Icons';
+import { CalendarDaysIcon, ClipboardDocumentCheckIcon, DocumentChartBarIcon, MapPinIcon, PlusIcon, ScaleIcon } from './common/Icons';
 
 type ViewType = 'dashboard' | 'reports' | 'calendar' | 'tasks' | 'management' | 'batches';
 
@@ -7,6 +7,7 @@ interface MobileNavBarProps {
     currentView: ViewType;
     setCurrentView: (view: ViewType) => void;
     onAddAnimalClick?: () => void;
+    onOpenNFe?: () => void;
 }
 
 interface NavButtonProps {
@@ -55,7 +56,7 @@ const HomeIcon = ({ className }: { className?: string }) => (
     </svg>
 );
 
-const MobileNavBar = ({ currentView, setCurrentView, onAddAnimalClick }: MobileNavBarProps) => {
+const MobileNavBar = ({ currentView, setCurrentView, onAddAnimalClick, onOpenNFe }: MobileNavBarProps) => {
     return (
         <div className="fixed bottom-0 left-0 right-0 z-50 md:hidden">
             {/* Background com blur */}
@@ -85,6 +86,17 @@ const MobileNavBar = ({ currentView, setCurrentView, onAddAnimalClick }: MobileN
                         <ClipboardDocumentCheckIcon className="w-5 h-5" />
                     </NavButton>
 
+                    <NavButton
+                        view="reports"
+                        label="Relatórios"
+                        isActive={currentView === 'reports'}
+                        onClick={(view) => {
+                            setCurrentView(view);
+                            onOpenNFe?.();
+                        }}
+                    >
+                        <DocumentChartBarIcon className="w-5 h-5" />
+                    </NavButton>
                 </div>
 
                 {/* Botão de adicionar animal - à direita */}
