@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect, lazy, Suspense } from 'react';
 import Header from './components/Header';
 import { offlineQueue } from './utils/offlineSync';
 import { useFirestoreOptimized } from './hooks/useFirestoreOptimized';
-import { Animal, AppUser, UserRole, WeighingType, WeightEntry, MedicationAdministration } from './types';
+import { Animal, AppUser, WeighingType, WeightEntry, MedicationAdministration } from './types';
 import Spinner from './components/common/Spinner';
 import MobileNavBar from './components/MobileNavBar';
 import { useAdvancedFilters } from './hooks/useAdvancedFilters';
@@ -15,21 +15,13 @@ import CapatazView from './components/CapatazView';
 import { useBatchManagement } from './hooks/useBatchManagement';
 import QuickWeightModal from './components/QuickWeightModal';
 import QuickMedicationModal from './components/QuickMedicationModal';
+import AppRouter from './components/AppRouter';
 
-// OTIMIZAÇÃO: Lazy load de componentes pesados
-const Dashboard = lazy(() => import('./components/Dashboard'));
+// Modais globais (permanecem aqui)
 const AnimalDetailModal = lazy(() => import('./components/AnimalDetailModal'));
 const AddAnimalModal = lazy(() => import('./components/AddAnimalModal'));
-const FilterBar = lazy(() => import('./components/FilterBar'));
-const Chatbot = lazy(() => import('./components/Chatbot'));
-const StatsDashboard = lazy(() => import('./components/StatsDashboard'));
-const TasksView = lazy(() => import('./components/TasksView'));
-const ExportButtons = lazy(() => import('./components/ExportButtons'));
-const CalendarView = lazy(() => import('./components/CalendarView'));
-const ReportsView = lazy(() => import('./components/ReportsView'));
-const ManagementView = lazy(() => import('./components/ManagementView'));
-const BatchManagement = lazy(() => import('./components/BatchManagement'));
 const ScaleImportModal = lazy(() => import('./components/ScaleImportModal'));
+const Chatbot = lazy(() => import('./components/Chatbot'));
 
 interface AppProps {
     user: AppUser;
@@ -41,7 +33,7 @@ const AUTO_SYNC_INTERVAL_MS = 5 * 60 * 1000;
 const App = ({ user, firebaseReady }: AppProps) => {
     const {
         state,
-        db,
+        db: firestore,
         forceSync,
         addAnimal,
         updateAnimal,
@@ -66,7 +58,7 @@ const App = ({ user, firebaseReady }: AppProps) => {
     const [showDashboardSettings, setShowDashboardSettings] = useState(false);
     const [showScaleImportModal, setShowScaleImportModal] = useState(false);
     const [focusNFePanel, setFocusNFePanel] = useState(false);
-    
+
     // Estados para ações rápidas (swipe)
     const [quickWeightAnimal, setQuickWeightAnimal] = useState<Animal | null>(null);
     const [quickMedicationAnimal, setQuickMedicationAnimal] = useState<Animal | null>(null);
@@ -100,9 +92,9 @@ const App = ({ user, firebaseReady }: AppProps) => {
         activeFiltersCount,
         allMedications,
         allReasons,
-    } = useAdvancedFilters({ 
-        animals: state.animals, 
-        areas: state.managementAreas 
+    } = useAdvancedFilters({
+        animals: state.animals,
+        areas: state.managementAreas
     });
 
     const {
@@ -113,16 +105,16 @@ const App = ({ user, firebaseReady }: AppProps) => {
         resetToDefault
     } = useDashboardConfig();
 
-    const hasDatabase = Boolean(db);
+    const hasDatabase = Boolean(firestore);
     const hasStorage = Boolean(storage);
     const costlyActionsEnabled = firebaseReady && hasDatabase && hasStorage;
 
     useEffect(() => {
-        if (!db) return;
+        if (!firestore) return;
 
         const handleSync = async () => {
             console.log('🔄 Internet voltou! Sincronizando dados offline...');
-            await offlineQueue.processQueue(db);
+            await offlineQueue.processQueue(firestore);
             // OTIMIZAÇÃO: Não força sync completo - cache local já está atualizado
             // As operações offline já foram aplicadas no estado local
             alert('✅ Dados sincronizados com sucesso!');
@@ -130,7 +122,7 @@ const App = ({ user, firebaseReady }: AppProps) => {
 
         window.addEventListener('sync-offline-data', handleSync);
         return () => window.removeEventListener('sync-offline-data', handleSync);
-    }, [db]);
+    }, [firestore]);
 
     const handleSelectAnimal = (animal: Animal) => {
         setSelectedAnimalId(animal.id);
@@ -160,7 +152,7 @@ const App = ({ user, firebaseReady }: AppProps) => {
                     collection: 'animals',
                     data: {
                         ...animalData,
-                        userId: user.uid  
+                        userId: user.uid
                     }
                 });
                 setIsAddAnimalModalOpen(false);
@@ -192,11 +184,6 @@ const App = ({ user, firebaseReady }: AppProps) => {
 
     const handleOpenAddAnimalModal = () => {
         setIsAddAnimalModalOpen(true);
-    };
-
-    const handleOpenNFePanel = () => {
-        setCurrentView('reports');
-        setFocusNFePanel(true);
     };
 
     // Handler para salvar peso rápido (swipe direita)
@@ -280,7 +267,7 @@ const App = ({ user, firebaseReady }: AppProps) => {
     };
 
     useEffect(() => {
-        if (!db) return;
+        if (!firestore) return;
 
         const intervalId = window.setInterval(() => {
             if (navigator.onLine) {
@@ -289,10 +276,10 @@ const App = ({ user, firebaseReady }: AppProps) => {
         }, AUTO_SYNC_INTERVAL_MS);
 
         return () => window.clearInterval(intervalId);
-    }, [forceSync, db]);
+    }, [forceSync, firestore]);
 
     const isAppLoading = state.loading.animals || state.loading.calendar || state.loading.tasks || state.loading.areas;
-    
+
     if (isAppLoading) {
         return (
             <div className="min-h-screen bg-base-900 flex flex-col justify-center items-center text-white">
@@ -363,180 +350,59 @@ const App = ({ user, firebaseReady }: AppProps) => {
                     </div>
                 )}
 
-                {currentView === 'dashboard' && (
-                    <Suspense fallback={<div className="flex justify-center p-8"><Spinner /></div>}>
-                        <div className="flex flex-col sm:flex-row justify-between sm:items-center mb-4 md:mb-6 gap-3">
-                            <h1 className="text-2xl md:text-3xl font-bold text-white">Painel do Rebanho</h1>
-                            <div className="hidden sm:flex items-center gap-3">
-                                <button
-                                    onClick={() => setShowScaleImportModal(true)}
-                                    className="flex items-center gap-2 px-4 py-2 rounded-md bg-base-700 hover:bg-base-600 text-sm text-white border border-base-600"
-                                >
-                                    <span role="img" aria-label="balança">⚖️</span>
-                                    Importar Balança
-                                </button>
-                                {costlyActionsEnabled ? (
-                                    <ExportButtons
-                                        animals={filteredAnimals}
-                                        stats={stats}
-                                        areas={state.managementAreas}
-                                    />
-                                ) : (
-                                    <div className="text-xs text-yellow-300 border border-yellow-700 rounded px-3 py-2 bg-yellow-900/20">
-                                        Configure o Firebase para habilitar exportação.
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                        
-                        <div className="flex justify-between items-center mb-4">
-                            <h2 className="text-lg font-semibold text-white">Estatísticas</h2>
-                            <button
-                                onClick={() => setShowDashboardSettings(true)}
-                                className="text-sm text-brand-primary-light hover:text-brand-primary"
-                            >
-                                ⚙️ Configurar
-                            </button>
-                        </div>
-                        <StatsDashboard
-                            stats={stats}
-                            enabledWidgets={enabledWidgets}
-                            areas={state.managementAreas}
-                            compactMode={config.compactMode}
-                            calendarEvents={state.calendarEvents}
-                            tasks={state.tasks}
-                            animals={filteredAnimals}
-                        />
-                        
-                        <FilterBar
-                            searchTerm={filters.searchTerm}
-                            setSearchTerm={setSearchTerm}
-                            searchFields={filters.searchFields}
-                            setSearchFields={setSearchFields}
-                            selectedMedication={filters.selectedMedication}
-                            setSelectedMedication={setSelectedMedication}
-                            selectedReason={filters.selectedReason}
-                            setSelectedReason={setSelectedReason}
-                            allMedications={allMedications}
-                            allReasons={allReasons}
-                            selectedStatus={filters.selectedStatus}
-                            setSelectedStatus={setSelectedStatus}
-                            selectedSexo={filters.selectedSexo}
-                            setSelectedSexo={setSelectedSexo}
-                            selectedRaca={filters.selectedRaca}
-                            setSelectedRaca={setSelectedRaca}
-                            selectedAreaId={filters.selectedAreaId}
-                            setSelectedAreaId={setSelectedAreaId}
-                            areas={state.managementAreas}
-                            weightRange={filters.weightRange}
-                            setWeightRange={setWeightRange}
-                            ageRange={filters.ageRange}
-                            setAgeRange={setAgeRange}
-                            sortConfig={filters.sortConfig}
-                            setSortConfig={setSortConfig}
-                            onClear={clearAllFilters}
-                            activeFiltersCount={activeFiltersCount}
-                        />
-                        
-                        <Dashboard 
-                                            animals={filteredAnimals} 
-                                            onSelectAnimal={handleSelectAnimal}
-                                            onQuickWeight={(animal) => {
-                                                setQuickWeightAnimal(animal);
-                                            }}
-                                            onQuickMedication={(animal) => {
-                                                setQuickMedicationAnimal(animal);
-                                            }}
-                                            onLongPress={(animal) => {
-                                                setSelectedAnimalId(animal.id);
-                                            }}
-                                        />
-
-                        <div className="sm:hidden mt-6">
-                            <div className="grid grid-cols-3 gap-2">
-                                <button
-                                    onClick={() => setShowScaleImportModal(true)}
-                                    className="flex items-center justify-center gap-2 px-3 py-3 rounded-lg bg-base-700 hover:bg-base-600 text-xs font-semibold text-white border border-base-600"
-                                >
-                                    <span role="img" aria-label="balança">⚖️</span>
-                                    <span className="leading-tight text-left">Importar
-                                        <br />Balança
-                                    </span>
-                                </button>
-                                {costlyActionsEnabled ? (
-                                    <div className="col-span-2">
-                                        <ExportButtons
-                                            animals={filteredAnimals}
-                                            stats={stats}
-                                            areas={state.managementAreas}
-                                            variant="compact"
-                                        />
-                                    </div>
-                                ) : (
-                                    <div className="col-span-2 text-xs text-yellow-300 border border-yellow-700 rounded px-3 py-2 bg-yellow-900/20 flex items-center justify-center text-center">
-                                        Configure o Firebase para habilitar exportação.
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                    </Suspense>
-                )}
-
-                {currentView === 'reports' && (
-                    <Suspense fallback={<div className="flex justify-center p-8"><Spinner size="lg" /></div>}>
-                        <ReportsView
-                            animals={state.animals}
-                            focusNFe={focusNFePanel}
-                            onNFeHandled={() => setFocusNFePanel(false)}
-                        />
-                    </Suspense>
-                )}
-
-                {currentView === 'calendar' && (
-                    <Suspense fallback={<div className="flex justify-center p-8"><Spinner size="lg" /></div>}>
-                        <CalendarView 
-                            events={state.calendarEvents} 
-                            onSave={addOrUpdateCalendarEvent} 
-                            onDelete={deleteCalendarEvent} 
-                        />
-                    </Suspense>
-                )}
-
-                {currentView === 'tasks' && (
-                    <Suspense fallback={<div className="flex justify-center p-8"><Spinner /></div>}>
-                        <TasksView 
-                            tasks={state.tasks} 
-                            onAddTask={addTask} 
-                            onToggleTask={toggleTaskCompletion}
-                            onDeleteTask={deleteTask} 
-                        />
-                    </Suspense>
-                )}
-
-                {currentView === 'management' && (
-                    <Suspense fallback={<div className="flex justify-center p-8"><Spinner size="lg" /></div>}>
-                        <ManagementView
-                            animals={state.animals}
-                            areas={state.managementAreas}
-                            onSaveArea={addOrUpdateManagementArea}
-                            onDeleteArea={deleteManagementArea}
-                            onAssignAnimals={assignAnimalsToArea}
-                        />
-                    </Suspense>
-                )}
-
-                {currentView === 'batches' && (
-                    <Suspense fallback={<div className="flex justify-center p-8"><Spinner size="lg" /></div>}>
-                        <BatchManagement
-                            batches={batches}
-                            animals={state.animals}
-                            onCreateBatch={createBatch}
-                            onUpdateBatch={updateBatch}
-                            onDeleteBatch={deleteBatch}
-                            onCompleteBatch={completeBatch}
-                        />
-                    </Suspense>
-                )}
+                <AppRouter
+                    currentView={currentView}
+                    user={user}
+                    costlyActionsEnabled={costlyActionsEnabled}
+                    animals={state.animals}
+                    filteredAnimals={filteredAnimals}
+                    stats={stats}
+                    calendarEvents={state.calendarEvents}
+                    tasks={state.tasks}
+                    areas={state.managementAreas}
+                    batches={batches}
+                    filters={filters}
+                    setSearchTerm={setSearchTerm}
+                    setSearchFields={setSearchFields}
+                    setSelectedMedication={setSelectedMedication}
+                    setSelectedReason={setSelectedReason}
+                    setSelectedStatus={setSelectedStatus}
+                    setSelectedSexo={setSelectedSexo}
+                    setSelectedRaca={setSelectedRaca}
+                    setSelectedAreaId={setSelectedAreaId}
+                    setWeightRange={setWeightRange}
+                    setAgeRange={setAgeRange}
+                    setSortConfig={setSortConfig}
+                    clearAllFilters={clearAllFilters}
+                    activeFiltersCount={activeFiltersCount}
+                    allMedications={allMedications}
+                    allReasons={allReasons}
+                    config={config}
+                    enabledWidgets={enabledWidgets}
+                    toggleWidget={toggleWidget}
+                    setWidgetSize={setWidgetSize}
+                    resetToDefault={resetToDefault}
+                    setShowDashboardSettings={setShowDashboardSettings}
+                    onSelectAnimal={handleSelectAnimal}
+                    onQuickWeight={(animal) => setQuickWeightAnimal(animal)}
+                    onQuickMedication={(animal) => setQuickMedicationAnimal(animal)}
+                    onLongPress={(animal) => setSelectedAnimalId(animal.id)}
+                    addTask={addTask}
+                    toggleTaskCompletion={toggleTaskCompletion}
+                    deleteTask={deleteTask}
+                    addOrUpdateCalendarEvent={addOrUpdateCalendarEvent}
+                    deleteCalendarEvent={deleteCalendarEvent}
+                    addOrUpdateManagementArea={addOrUpdateManagementArea}
+                    deleteManagementArea={deleteManagementArea}
+                    assignAnimalsToArea={assignAnimalsToArea}
+                    createBatch={createBatch}
+                    updateBatch={updateBatch}
+                    deleteBatch={deleteBatch}
+                    completeBatch={completeBatch}
+                    setShowScaleImportModal={setShowScaleImportModal}
+                    focusNFePanel={focusNFePanel}
+                    setFocusNFePanel={setFocusNFePanel}
+                />
             </main>
 
             <Suspense fallback={null}>
@@ -582,7 +448,7 @@ const App = ({ user, firebaseReady }: AppProps) => {
                 animal={quickMedicationAnimal}
                 onSave={handleQuickMedicationSave}
             />
-            
+
             <MobileNavBar
                 currentView={currentView}
                 setCurrentView={setCurrentView}
