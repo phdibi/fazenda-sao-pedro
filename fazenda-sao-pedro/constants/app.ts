@@ -19,6 +19,8 @@ export const QUERY_LIMITS = {
   MAX_BATCH_WRITE: 500,   // Máximo do Firestore
 };
 
+export const ARCHIVED_COLLECTION_NAME = 'animals_archived';
+
 // ============================================
 // UI E INTERAÇÃO
 // ============================================

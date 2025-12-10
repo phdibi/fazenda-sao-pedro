@@ -38,6 +38,16 @@ service cloud.firestore {
     }
     
     // ============================================
+    // ANIMAIS ARQUIVADOS
+    // ============================================
+    match /animals_archived/{animalId} {
+      allow read: if isOwner(resource.data.userId);
+      allow create: if isAuthenticated() 
+                    && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if isOwner(resource.data.userId);
+    }
+    
+    // ============================================
     // CALENDÁRIO
     // ============================================
     match /calendar/{eventId} {

@@ -38,6 +38,7 @@ const InnerApp = ({ user, firebaseReady }: AppProps) => {
         addAnimal,
         updateAnimal,
         deleteAnimal,
+        archiveAnimal,
         addOrUpdateCalendarEvent,
         deleteCalendarEvent,
         addTask,
@@ -93,6 +94,17 @@ const InnerApp = ({ user, firebaseReady }: AppProps) => {
         } catch (error) {
             alert(`Ocorreu um erro ao excluir o animal.`);
             console.error("Deletion failed:", error);
+        }
+    };
+
+    const handleArchiveAnimal = async (animalId: string) => {
+        try {
+            await archiveAnimal(animalId);
+            handleCloseModal();
+            alert('Animal arquivado com sucesso!');
+        } catch (error) {
+            alert(`Erro ao arquivar animal.`);
+            console.error("Archive failed:", error);
         }
     };
 
@@ -330,6 +342,7 @@ const InnerApp = ({ user, firebaseReady }: AppProps) => {
                     onClose={handleCloseModal}
                     onUpdateAnimal={handleUpdateAnimal}
                     onDeleteAnimal={handleDeleteAnimal}
+                    onArchiveAnimal={handleArchiveAnimal}
                     animals={state.animals}
                     user={user}
                     storageReady={costlyActionsEnabled}

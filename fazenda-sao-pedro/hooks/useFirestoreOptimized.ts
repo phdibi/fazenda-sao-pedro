@@ -14,7 +14,7 @@ import {
     LocalStateCollectionName,
     LoadingKey
 } from '../types';
-import { QUERY_LIMITS } from '../constants/app';
+import { QUERY_LIMITS, ARCHIVED_COLLECTION_NAME } from '../constants/app';
 
 // ============================================
 // STATE MANAGEMENT
@@ -603,6 +603,58 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
         }
     }, [userId, state.animals, updateLocalCache, forceSync]);
 
+    const archiveAnimal = useCallback(async (animalId: string): Promise<void> => {
+        if (!userId || !db) throw new Error("Não autenticado");
+
+        // Busca o animal para ter certeza que temos os dados completos antes de mover
+        const animalToArchive = state.animals.find((a: Animal) => a.id === animalId);
+        if (!animalToArchive) throw new Error("Animal não encontrado para arquivamento");
+
+        // Atualização otimista: remove da lista ativa imediatamente
+        dispatch({ type: 'LOCAL_DELETE_ANIMAL', payload: { animalId } });
+
+        try {
+            const batch = db.batch();
+
+            // 1. Cria referência na coleção de arquivo
+            const archiveRef = db.collection(ARCHIVED_COLLECTION_NAME).doc(animalId);
+
+            // 2. Prepara dados para arquivo (adiciona metadata extra se necessário)
+            const archiveData = {
+                ...animalToArchive,
+                archivedAt: Timestamp.now(),
+                archiveReason: 'Sold',
+                originalCollection: 'animals'
+            };
+
+            // Remove campos undefined antes de salvar
+            const cleanedArchiveData = removeUndefined(archiveData);
+            const dataWithTimestamp = convertDatesToTimestamps(cleanedArchiveData);
+
+            // 3. Adiciona ao arquivo
+            batch.set(archiveRef, dataWithTimestamp);
+
+            // 4. Deleta da coleção principal
+            const originalRef = db.collection('animals').doc(animalId);
+            batch.delete(originalRef);
+
+            // 5. Executa
+            await batch.commit();
+
+            // Atualiza cache local da coleção principal (garante estado consistente)
+            const updatedAnimals = state.animals.filter((a: Animal) => a.id !== animalId);
+            await updateLocalCache('animals', updatedAnimals);
+
+            console.log(`Animal ${animalId} arquivado com sucesso.`);
+
+        } catch (error) {
+            console.error("Erro ao arquivar animal:", error);
+            // Reverte em caso de erro (recupera do servidor)
+            await forceSync();
+            throw error;
+        }
+    }, [userId, state.animals, updateLocalCache, forceSync]);
+
     // ============================================
     // CALENDAR EVENTS - COM ATUALIZAÇÃO OTIMISTA
     // ============================================
@@ -958,6 +1010,7 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
         addAnimal,
         updateAnimal,
         deleteAnimal,
+        archiveAnimal,
         // Calendar
         addOrUpdateCalendarEvent,
         deleteCalendarEvent,
