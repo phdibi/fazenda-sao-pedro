@@ -3,8 +3,8 @@ import { Animal, Sexo } from '../types';
 import { ShareIcon, UserIcon } from './common/Icons';
 
 interface GenealogyTreeProps {
-  animal: Animal;
-  allAnimals: Animal[];
+    animal: Animal;
+    allAnimals: Animal[];
 }
 
 interface NodeProps {
@@ -16,23 +16,23 @@ interface NodeProps {
 }
 
 const Node = ({ animal, name, gender, level, isOffspring }: NodeProps) => {
-    const bgColor = level === 0 
-        ? 'bg-brand-primary' 
-        : level === 1 
-            ? 'bg-base-700' 
-            : isOffspring 
-                ? 'bg-green-900/50' 
+    const bgColor = level === 0
+        ? 'bg-brand-primary'
+        : level === 1
+            ? 'bg-base-700'
+            : isOffspring
+                ? 'bg-green-900/50'
                 : 'bg-base-800/50';
     const textColor = level === 0 ? 'text-white' : 'text-gray-300';
     const genderColor = gender === 'M' ? 'border-blue-400' : 'border-pink-400';
 
     return (
-      <div className={`flex-1 min-w-[120px] p-2 rounded-lg text-center ${bgColor} border-b-2 ${genderColor} shadow-md`}>
-        <UserIcon className="w-5 h-5 mx-auto text-gray-400 mb-1" />
-        <p className={`font-bold text-sm ${textColor}`}>{animal?.nome || name || 'Desconhecido'}</p>
-        {animal?.brinco && <p className="text-xs text-gray-400">Brinco: {animal.brinco}</p>}
-        {isOffspring && <p className="text-xs text-green-400 mt-1">Filho(a)</p>}
-      </div>
+        <div className={`flex-1 min-w-[120px] p-2 rounded-lg text-center ${bgColor} border-b-2 ${genderColor} shadow-md`}>
+            <UserIcon className="w-5 h-5 mx-auto text-gray-400 mb-1" />
+            <p className={`font-bold text-sm ${textColor}`}>{animal?.nome || name || 'Desconhecido'}</p>
+            {animal?.brinco && <p className="text-xs text-gray-400">Brinco: {animal.brinco}</p>}
+            {isOffspring && <p className="text-xs text-green-400 mt-1">Filho(a)</p>}
+        </div>
     );
 };
 
@@ -51,124 +51,144 @@ const Connector = ({ level, direction = 'up' }: ConnectorProps) => (
 
 
 const GenealogyTree = ({ animal, allAnimals }: GenealogyTreeProps) => {
-  // Busca um animal pelo nome ou brinco
-  const findParent = (name?: string): Animal | undefined => {
-    if (!name) return undefined;
-    return allAnimals.find(a => 
-        a.nome?.toLowerCase() === name.toLowerCase() || 
-        a.brinco?.toLowerCase() === name.toLowerCase()
-    );
-  };
+    // Busca um animal pelo nome ou brinco
+    const findParent = (name?: string): Animal | undefined => {
+        if (!name) return undefined;
+        return allAnimals.find(a =>
+            a.nome?.toLowerCase() === name.toLowerCase() ||
+            a.brinco?.toLowerCase() === name.toLowerCase()
+        );
+    };
 
-  // ============================================
-  // 🔧 NOVO: Busca os filhos do animal
-  // ============================================
-  const findOffspring = (): Animal[] => {
-    // Busca animais que têm este animal como mãe ou pai
-    return allAnimals.filter(a => {
-        if (a.id === animal.id) return false; // Não inclui o próprio animal
-        
-        const animalBrinco = animal.brinco.toLowerCase().trim();
-        const animalNome = animal.nome?.toLowerCase().trim();
-        
-        // Verifica se é mãe
-        if (a.maeNome) {
-            const maeBrinco = a.maeNome.toLowerCase().trim();
-            if (maeBrinco === animalBrinco || (animalNome && maeBrinco === animalNome)) {
-                return true;
+    // ============================================
+    // 🔧 NOVO: Busca os filhos do animal (Ativos + Histórico)
+    // ============================================
+    const findOffspring = (): (Animal | { id: string, nome: string, sexo: string, brinco: string })[] => {
+        // 1. Busca filhos ativos na lista geral
+        const activeOffspring = allAnimals.filter(a => {
+            if (a.id === animal.id) return false;
+
+            const animalBrinco = animal.brinco.toLowerCase().trim();
+            const animalNome = animal.nome?.toLowerCase().trim();
+
+            if (a.maeNome) {
+                const maeBrinco = a.maeNome.toLowerCase().trim();
+                if (maeBrinco === animalBrinco || (animalNome && maeBrinco === animalNome)) return true;
             }
-        }
-        
-        // Verifica se é pai
-        if (a.paiNome) {
-            const paiBrinco = a.paiNome.toLowerCase().trim();
-            if (paiBrinco === animalBrinco || (animalNome && paiBrinco === animalNome)) {
-                return true;
+
+            if (a.paiNome) {
+                const paiBrinco = a.paiNome.toLowerCase().trim();
+                if (paiBrinco === animalBrinco || (animalNome && paiBrinco === animalNome)) return true;
             }
+
+            return false;
+        });
+
+        // 2. Se for fêmea, busca registros de progênie no histórico (mesmo que deletados)
+        if (animal.sexo === Sexo.Femea && animal.historicoProgenie) {
+            const historicalOffspring = animal.historicoProgenie.map(record => {
+                // Verifica se este registro já está nos ativos (para não duplicar)
+                const existsActive = activeOffspring.find(a =>
+                    a.brinco.toLowerCase() === record.offspringBrinco.toLowerCase()
+                );
+
+                if (existsActive) return null;
+
+                // Se não existe ativo, cria um "Ghost Node" (Visualização apenas)
+                return {
+                    id: record.id,
+                    brinco: record.offspringBrinco,
+                    nome: record.offspringBrinco, // Usa brinco como nome se não tiver
+                    sexo: '?', // Sexo desconhecido para históricos deletados
+                    isGhost: true // Marcador para estilização visual diferente, se quiser
+                };
+            }).filter(Boolean) as any[]; // Remove nulls
+
+            return [...activeOffspring, ...historicalOffspring];
         }
-        
-        return false;
-    });
-  };
 
-  const pai = findParent(animal.paiNome);
-  const mae = findParent(animal.maeNome);
+        return activeOffspring;
+    };
 
-  const avoPaterno = pai ? findParent(pai.paiNome) : undefined;
-  const avoPaterna = pai ? findParent(pai.maeNome) : undefined;
+    const pai = findParent(animal.paiNome);
+    const mae = findParent(animal.maeNome);
 
-  const avoMaterno = mae ? findParent(mae.paiNome) : undefined;
-  const avoMaterna = mae ? findParent(mae.maeNome) : undefined;
+    const avoPaterno = pai ? findParent(pai.paiNome) : undefined;
+    const avoPaterna = pai ? findParent(pai.maeNome) : undefined;
 
-  // 🔧 NOVO: Busca os filhos
-  const filhos = findOffspring();
+    const avoMaterno = mae ? findParent(mae.paiNome) : undefined;
+    const avoMaterna = mae ? findParent(mae.maeNome) : undefined;
 
-  return (
-    <div className="mt-6 p-4 bg-base-900 rounded-lg">
-      <h3 className="text-lg font-semibold text-white mb-6 text-center">Árvore Genealógica</h3>
-      <div className="flex flex-col items-center gap-4">
-        
-        {/* Level 2: Grandparents */}
-        {(avoPaterno || avoPaterna || avoMaterno || avoMaterna) && (
-            <>
-                <div className="w-full flex flex-wrap justify-center gap-2 md:gap-4">
-                    <div className="flex-1 flex justify-center gap-2 md:gap-4">
-                        {avoPaterno && <Node animal={avoPaterno} gender="M" level={2} />}
-                        {avoPaterna && <Node animal={avoPaterna} gender="F" level={2} />}
-                    </div>
-                    <div className="flex-1 flex justify-center gap-2 md:gap-4">
-                        {avoMaterno && <Node animal={avoMaterno} gender="M" level={2} />}
-                        {avoMaterna && <Node animal={avoMaterna} gender="F" level={2} />}
-                    </div>
+    // 🔧 NOVO: Busca os filhos
+    const filhos = findOffspring();
+
+    return (
+        <div className="mt-6 p-4 bg-base-900 rounded-lg">
+            <h3 className="text-lg font-semibold text-white mb-6 text-center">Árvore Genealógica</h3>
+            <div className="flex flex-col items-center gap-4">
+
+                {/* Level 2: Grandparents */}
+                {(avoPaterno || avoPaterna || avoMaterno || avoMaterna) && (
+                    <>
+                        <div className="w-full flex flex-wrap justify-center gap-2 md:gap-4">
+                            <div className="flex-1 flex justify-center gap-2 md:gap-4">
+                                {avoPaterno && <Node animal={avoPaterno} gender="M" level={2} />}
+                                {avoPaterna && <Node animal={avoPaterna} gender="F" level={2} />}
+                            </div>
+                            <div className="flex-1 flex justify-center gap-2 md:gap-4">
+                                {avoMaterno && <Node animal={avoMaterno} gender="M" level={2} />}
+                                {avoMaterna && <Node animal={avoMaterna} gender="F" level={2} />}
+                            </div>
+                        </div>
+                        <div className="w-full flex justify-center">
+                            <Connector level={2} />
+                            <Connector level={2} />
+                        </div>
+                    </>
+                )}
+
+                {/* Level 1: Parents */}
+                {(pai || mae || animal.paiNome || animal.maeNome) && (
+                    <>
+                        <div className="w-full flex flex-wrap justify-center gap-4 md:gap-8">
+                            {pai ? <Node animal={pai} name={pai.nome} gender="M" level={1} /> : (animal.paiNome && <Node name={animal.paiNome} gender="M" level={1} />)}
+                            {mae ? <Node animal={mae} name={mae.nome} gender="F" level={1} /> : (animal.maeNome && <Node name={animal.maeNome} gender="F" level={1} />)}
+                        </div>
+                        <Connector level={1} />
+                    </>
+                )}
+
+                {/* Level 0: Current Animal */}
+                <div className="w-1/2 md:w-1/4">
+                    <Node animal={animal} name={animal.nome} gender={animal.sexo === Sexo.Macho ? 'M' : 'F'} level={0} />
                 </div>
-                <div className="w-full flex justify-center">
-                     <Connector level={2} />
-                     <Connector level={2} />
-                </div>
-            </>
-        )}
-        
-        {/* Level 1: Parents */}
-        {(pai || mae || animal.paiNome || animal.maeNome) && (
-            <>
-                <div className="w-full flex flex-wrap justify-center gap-4 md:gap-8">
-                    {pai ? <Node animal={pai} name={pai.nome} gender="M" level={1} /> : (animal.paiNome && <Node name={animal.paiNome} gender="M" level={1} />)}
-                    {mae ? <Node animal={mae} name={mae.nome} gender="F" level={1} /> : (animal.maeNome && <Node name={animal.maeNome} gender="F" level={1} />)}
-                </div>
-                <Connector level={1} />
-            </>
-        )}
-        
-        {/* Level 0: Current Animal */}
-        <div className="w-1/2 md:w-1/4">
-            <Node animal={animal} name={animal.nome} gender={animal.sexo === Sexo.Macho ? 'M' : 'F'} level={0} />
+
+                {/* ============================================ */}
+                {/* 🔧 NOVO: Level -1: Offspring (Filhos) */}
+                {/* ============================================ */}
+                {filhos.length > 0 && (
+                    <>
+                        <Connector level={1} direction="down" />
+                        <div className="w-full">
+                            <p className="text-center text-sm text-gray-400 mb-2">Filhos ({filhos.length})</p>
+                            <div className="flex flex-wrap justify-center gap-2 md:gap-4">
+                                {filhos.map(filho => (
+                                    <Node
+                                        key={filho.id}
+                                        animal={filho as Animal}
+                                        name={(filho as any).nome || (filho as any).brinco} // Fallback para ghost nodes
+                                        gender={((filho as any).sexo === Sexo.Macho || (filho as any).sexo === 'M') ? 'M' : ((filho as any).sexo === Sexo.Femea || (filho as any).sexo === 'F') ? 'F' : 'M'} // Default ou adaptado
+                                        level={2}
+                                        isOffspring={true}
+                                    />
+                                ))}
+                            </div>
+                        </div>
+                    </>
+                )}
+            </div>
         </div>
-        
-        {/* ============================================ */}
-        {/* 🔧 NOVO: Level -1: Offspring (Filhos) */}
-        {/* ============================================ */}
-        {filhos.length > 0 && (
-            <>
-                <Connector level={1} direction="down" />
-                <div className="w-full">
-                    <p className="text-center text-sm text-gray-400 mb-2">Filhos ({filhos.length})</p>
-                    <div className="flex flex-wrap justify-center gap-2 md:gap-4">
-                        {filhos.map(filho => (
-                            <Node 
-                                key={filho.id} 
-                                animal={filho} 
-                                gender={filho.sexo === Sexo.Macho ? 'M' : 'F'} 
-                                level={2} 
-                                isOffspring={true}
-                            />
-                        ))}
-                    </div>
-                </div>
-            </>
-        )}
-      </div>
-    </div>
-  );
+    );
 };
 
 export default GenealogyTree;

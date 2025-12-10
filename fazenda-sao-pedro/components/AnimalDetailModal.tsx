@@ -13,7 +13,7 @@ interface AnimalDetailModalProps {
     onClose: () => void;
     onUpdateAnimal: (animalId: string, updatedData: Partial<Omit<Animal, 'id'>>) => void;
     onDeleteAnimal: (animalId: string) => Promise<void>;
-    onArchiveAnimal: (animalId: string) => Promise<void>;
+
     animals: Animal[];
     user: AppUser;
     storageReady: boolean;
@@ -777,14 +777,9 @@ const AnimalDetailModal = ({
                 <div className="flex justify-between items-center gap-2 p-4 mt-6 mb-24 border-t border-base-700">
                     <div>
                         {!isEditing && (
-                            <>
-                                <button onClick={handleRequestDelete} className="bg-red-800 hover:bg-red-700 text-white font-bold py-2 px-4 rounded transition-colors flex items-center gap-2">
-                                    <TrashIcon className="w-5 h-5" /> Excluir Animal
-                                </button>
-                                <button onClick={handleRequestArchive} className="ml-2 bg-gray-700 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded transition-colors flex items-center gap-2">
-                                    📁 Arquivar
-                                </button>
-                            </>
+                            <button onClick={handleRequestDelete} className="bg-red-800 hover:bg-red-700 text-white font-bold py-2 px-4 rounded transition-colors flex items-center gap-2">
+                                <TrashIcon className="w-5 h-5" /> Excluir Animal
+                            </button>
                         )}
                     </div>
                     <div className="flex gap-2">
@@ -812,24 +807,7 @@ const AnimalDetailModal = ({
                 </div>
             </Modal>
 
-            {/* Archive Confirmation Modal */}
-            <Modal isOpen={isArchiveModalOpen} onClose={() => setIsArchiveModalOpen(false)} title="Confirmar Arquivamento">
-                <div className="text-white">
-                    <p className="text-lg">Deseja arquivar o animal <strong className="text-brand-primary-light">{animal?.brinco}</strong>?</p>
-                    <p className="mt-2 text-sm text-gray-300">
-                        O animal será movido para uma coleção de arquivo e <strong>removido da lista principal</strong>.
-                    </p>
-                    <p className="mt-2 text-sm text-gray-300">
-                        ✅ Genealogia e histórico de progênie serão mantidos.<br />
-                        ✅ O animal não aparecerá mais nas buscas ativas.<br />
-                        ✅ Recomendado para animais vendidos ou mortos.
-                    </p>
-                    <div className="mt-6 flex justify-end gap-2">
-                        <button onClick={() => setIsArchiveModalOpen(false)} className="bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 px-4 rounded">Cancelar</button>
-                        <button onClick={handleConfirmArchive} className="bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 px-4 rounded">Confirmar Arquivamento</button>
-                    </div>
-                </div>
-            </Modal>
+
 
             {/* Delete Confirmation Modal */}
             <Modal isOpen={isDeleteModalOpen} onClose={() => setIsDeleteModalOpen(false)} title="Confirmar Exclusão">
