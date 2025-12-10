@@ -1,9 +1,9 @@
 import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import { Animal, AnimalStatus, GMDMetrics } from '../types';
 import { calcularGMDAnimal, formatarGMD, classificarGMD } from '../utils/gmdCalculations';
-import { 
-  SWIPE_THRESHOLD, 
-  LONG_PRESS_DURATION_MS, 
+import {
+  SWIPE_THRESHOLD,
+  LONG_PRESS_DURATION_MS,
   INTERSECTION_OBSERVER,
   RECENT_WEIGHING_DAYS
 } from '../constants/app';
@@ -23,8 +23,8 @@ interface AnimalCardProps {
 // 🔧 OTIMIZAÇÃO #4: LazyImage com Intersection Observer
 // Carrega imagem apenas quando entra no viewport
 // ============================================
-const LazyImage: React.FC<{ 
-  src: string; 
+const LazyImage: React.FC<{
+  src: string;
   thumbnailSrc?: string;
   alt: string;
 }> = ({ src, thumbnailSrc, alt }) => {
@@ -32,7 +32,7 @@ const LazyImage: React.FC<{
   const [isLoaded, setIsLoaded] = useState(false);
   const [hasError, setHasError] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
-  
+
   // Usa thumbnail se disponível, senão usa imagem principal
   const displaySrc = thumbnailSrc || src;
 
@@ -54,7 +54,7 @@ const LazyImage: React.FC<{
     observer.observe(container);
     return () => observer.disconnect();
   }, []);
-  
+
   if (hasError) {
     return (
       <div ref={containerRef} className="w-full h-full flex items-center justify-center bg-gradient-to-br from-base-700 to-base-800">
@@ -64,14 +64,14 @@ const LazyImage: React.FC<{
       </div>
     );
   }
-  
+
   return (
     <div ref={containerRef} className="w-full h-full relative">
       {/* Skeleton enquanto não carrega */}
       {!isLoaded && (
         <div className="absolute inset-0 bg-base-700 animate-pulse" />
       )}
-      
+
       {/* Só renderiza a tag img quando deve carregar */}
       {shouldLoad && (
         <img
@@ -89,26 +89,26 @@ const LazyImage: React.FC<{
 
 // Configuração de cores por status
 const statusConfig: Record<string, { bg: string; border: string; text: string }> = {
-  [AnimalStatus.Ativo]: { 
-    bg: 'bg-emerald-500/10', 
-    border: 'border-l-emerald-500', 
-    text: 'text-emerald-400' 
+  [AnimalStatus.Ativo]: {
+    bg: 'bg-emerald-500/10',
+    border: 'border-l-emerald-500',
+    text: 'text-emerald-400'
   },
-  [AnimalStatus.Vendido]: { 
-    bg: 'bg-amber-500/10', 
-    border: 'border-l-amber-500', 
-    text: 'text-amber-400' 
+  [AnimalStatus.Vendido]: {
+    bg: 'bg-amber-500/10',
+    border: 'border-l-amber-500',
+    text: 'text-amber-400'
   },
-  [AnimalStatus.Obito]: { 
-    bg: 'bg-red-500/10', 
-    border: 'border-l-red-500', 
-    text: 'text-red-400' 
+  [AnimalStatus.Obito]: {
+    bg: 'bg-red-500/10',
+    border: 'border-l-red-500',
+    text: 'text-red-400'
   },
 };
 
-const AnimalCard: React.FC<AnimalCardProps> = ({ 
-  animal, 
-  onClick, 
+const AnimalCard: React.FC<AnimalCardProps> = ({
+  animal,
+  onClick,
   onQuickWeight,
   onQuickMedication,
   onLongPress,
@@ -119,7 +119,7 @@ const AnimalCard: React.FC<AnimalCardProps> = ({
   const [isSwiping, setIsSwiping] = useState(false);
   const [longPressTriggered, setLongPressTriggered] = useState(false);
   const [actionExecuted, setActionExecuted] = useState(false);
-  
+
   const touchStartX = useRef(0);
   const touchStartY = useRef(0);
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -131,7 +131,7 @@ const AnimalCard: React.FC<AnimalCardProps> = ({
     if (cachedGMD !== undefined) return cachedGMD;
     return calcularGMDAnimal(animal);
   }, [showGMD, cachedGMD, animal.id, animal.historicoPesagens?.length]);
-  
+
   const gmdClass = gmd?.gmdTotal ? classificarGMD(gmd.gmdTotal) : null;
 
   const config = statusConfig[animal.status] || statusConfig[AnimalStatus.Ativo];
@@ -232,7 +232,7 @@ const AnimalCard: React.FC<AnimalCardProps> = ({
         onLongPress(animal, { x: e.clientX, y: e.clientY });
         setLongPressTriggered(true);
         setActionExecuted(true);
-      }, LONG_PRESS_DURATION);
+      }, LONG_PRESS_DURATION_MS);
     }
   }, [animal, onLongPress]);
 
@@ -253,9 +253,9 @@ const AnimalCard: React.FC<AnimalCardProps> = ({
     <div className="animal-card relative overflow-hidden rounded-xl">
       {/* Fundo azul - Peso */}
       {onQuickWeight && (
-        <div 
+        <div
           className="absolute inset-0 bg-gradient-to-r from-blue-600 to-blue-500 flex items-center justify-start pl-3 rounded-xl"
-          style={{ 
+          style={{
             opacity: showWeightAction ? Math.min(1, Math.abs(swipeOffset) / 100) : 0,
             transition: isSwiping ? 'none' : 'opacity 0.2s'
           }}
@@ -269,9 +269,9 @@ const AnimalCard: React.FC<AnimalCardProps> = ({
 
       {/* Fundo vermelho - Medicação */}
       {onQuickMedication && (
-        <div 
+        <div
           className="absolute inset-0 bg-gradient-to-l from-red-600 to-red-500 flex items-center justify-end pr-3 rounded-xl"
-          style={{ 
+          style={{
             opacity: showMedicationAction ? Math.min(1, Math.abs(swipeOffset) / 100) : 0,
             transition: isSwiping ? 'none' : 'opacity 0.2s'
           }}
@@ -294,7 +294,7 @@ const AnimalCard: React.FC<AnimalCardProps> = ({
         onMouseDown={handleMouseDown}
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
-        style={{ 
+        style={{
           transform: `translateX(${swipeOffset}px)`,
           transition: isSwiping ? 'none' : 'transform 0.2s ease-out'
         }}
@@ -368,8 +368,8 @@ const AnimalCard: React.FC<AnimalCardProps> = ({
   );
 };
 
-export default React.memo(AnimalCard, (prev, next) => 
-  prev.animal === next.animal && 
-  prev.onClick === next.onClick && 
+export default React.memo(AnimalCard, (prev, next) =>
+  prev.animal === next.animal &&
+  prev.onClick === next.onClick &&
   prev.showGMD === next.showGMD
 );

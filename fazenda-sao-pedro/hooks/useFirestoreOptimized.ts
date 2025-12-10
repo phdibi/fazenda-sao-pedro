@@ -1,19 +1,7 @@
 import { useState, useEffect, useCallback, useReducer, useRef } from 'react';
 import { db, Timestamp, FieldValue } from '../services/firebase';
 import { localCache } from '../services/localCache';
-import {
-    Animal,
-    CalendarEvent,
-    Task,
-    ManagementArea,
-    ManagementBatch, // New Import
-    Sexo,
-    WeighingType,
-    AppUser,
-    FirestoreCollectionName,
-    LocalStateCollectionName,
-    LoadingKey
-} from '../types';
+import { Animal, FirestoreCollectionName, ManagementBatch, UserRole, WeighingType, AnimalStatus, Sexo, CalendarEvent, AppUser, ManagementArea, MedicationAdministration, PregnancyRecord, PregnancyType, AbortionRecord, Task, LoadingKey, LocalStateCollectionName } from '../types';
 import { QUERY_LIMITS, ARCHIVED_COLLECTION_NAME } from '../constants/app';
 
 // ============================================
@@ -434,23 +422,36 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
 
             if (animalData.maeNome) {
                 const motherBrinco = animalData.maeNome.toLowerCase().trim();
-                const motherQuery = await db.collection('animals')
-                    .where('userId', '==', userId)
-                    .where('brinco', '==', motherBrinco)
-                    .where('sexo', '==', Sexo.Femea)
-                    .limit(1).get();
 
-                if (!motherQuery.empty) {
-                    const motherRef = motherQuery.docs[0].ref;
+                // Tenta encontrar a mãe no estado local primeiro (mais rápido e já carregado)
+                const motherLocal = state.animals.find(a =>
+                    a.brinco.toLowerCase().trim() === motherBrinco &&
+                    a.sexo === Sexo.Femea
+                );
+
+                if (motherLocal) {
+                    const motherRef = db.collection('animals').doc(motherLocal.id);
                     const newOffspringRecord: any = {
                         id: `prog_${newAnimalRef.id}`,
                         offspringBrinco: animalData.brinco,
                     };
+
                     if (animalData.pesoKg > 0) {
                         newOffspringRecord.birthWeightKg = animalData.pesoKg;
                     }
+
                     batch.update(motherRef, {
                         historicoProgenie: FieldValue.arrayUnion(newOffspringRecord)
+                    });
+
+                    // Atualização otimista da mãe também!
+                    const updatedMotherProgenie = [...(motherLocal.historicoProgenie || []), newOffspringRecord];
+                    dispatch({
+                        type: 'LOCAL_UPDATE_ANIMAL',
+                        payload: {
+                            animalId: motherLocal.id,
+                            updatedData: { historicoProgenie: updatedMotherProgenie }
+                        }
                     });
                 }
             }
@@ -622,6 +623,7 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
             // 2. Prepara dados para arquivo (adiciona metadata extra se necessário)
             const archiveData = {
                 ...animalToArchive,
+                status: AnimalStatus.Vendido, // Força status vendido ao arquivar
                 archivedAt: Timestamp.now(),
                 archiveReason: 'Sold',
                 originalCollection: 'animals'
