@@ -195,9 +195,9 @@ const Header = ({
                                 <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-emerald-400 rounded-full ring-2 ring-base-800" />
                             </div>
 
-                            {/* Info - Desktop */}
-                            <div className="hidden sm:block max-w-[120px]">
-                                <p className="text-sm font-medium text-white truncate">{user.displayName}</p>
+                            {/* Info - Desktop & Mobile Role */}
+                            <div className="max-w-[120px]">
+                                <p className="hidden sm:block text-sm font-medium text-white truncate">{user.displayName}</p>
                                 {onRoleClick ? (
                                     <button
                                         onClick={onRoleClick}
@@ -207,7 +207,7 @@ const Header = ({
                                         <span>{roleInfo.label}</span>
                                     </button>
                                 ) : (
-                                    <p className="text-xs text-gray-500">Sync: {formatLastSync()}</p>
+                                    <p className="hidden sm:block text-xs text-gray-500">Sync: {formatLastSync()}</p>
                                 )}
                             </div>
 
