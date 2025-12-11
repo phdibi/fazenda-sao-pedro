@@ -197,3 +197,116 @@ export const localCache = new LocalCache();
 
 // Exporta classe para testes
 export { LocalCache };
+
+// ============================================
+// CACHE COM ÍNDICE - Para buscas rápidas
+// ============================================
+
+/**
+ * Cache estendido com suporte a índices
+ * Permite buscas O(1) por campos específicos
+ */
+class IndexedCache<T extends { id: string }> {
+    private cache: LocalCache;
+    private indices: Map<string, Map<string, string>> = new Map();
+    private baseKey: string;
+
+    constructor(baseKey: string, cache: LocalCache = localCache) {
+        this.baseKey = baseKey;
+        this.cache = cache;
+    }
+
+    /**
+     * Define dados e cria índices
+     */
+    async set(data: T[], indexFields: (keyof T)[] = []): Promise<void> {
+        await this.cache.set(this.baseKey, data);
+
+        // Cria índices para campos especificados
+        for (const field of indexFields) {
+            const index = new Map<string, string>();
+            data.forEach(item => {
+                const value = item[field];
+                if (value !== undefined && value !== null) {
+                    const key = String(value).toLowerCase().trim();
+                    index.set(key, item.id);
+                }
+            });
+            this.indices.set(String(field), index);
+        }
+    }
+
+    /**
+     * Busca por ID
+     */
+    async getById(id: string): Promise<T | null> {
+        const cached = await this.cache.get<T>(this.baseKey);
+        if (!cached) return null;
+        return cached.data.find(item => item.id === id) || null;
+    }
+
+    /**
+     * Busca por campo indexado (O(1))
+     */
+    async getByField(field: keyof T, value: string): Promise<T | null> {
+        const index = this.indices.get(String(field));
+        if (!index) {
+            // Fallback para busca linear se não houver índice
+            const cached = await this.cache.get<T>(this.baseKey);
+            if (!cached) return null;
+            return cached.data.find(item => 
+                String(item[field]).toLowerCase().trim() === value.toLowerCase().trim()
+            ) || null;
+        }
+
+        const id = index.get(value.toLowerCase().trim());
+        if (!id) return null;
+
+        return this.getById(id);
+    }
+
+    /**
+     * Busca múltiplos por campo
+     */
+    async getManyByField(field: keyof T, values: string[]): Promise<T[]> {
+        const results: T[] = [];
+        for (const value of values) {
+            const item = await this.getByField(field, value);
+            if (item) results.push(item);
+        }
+        return results;
+    }
+
+    /**
+     * Retorna todos os dados
+     */
+    async getAll(): Promise<T[]> {
+        const cached = await this.cache.get<T>(this.baseKey);
+        return cached?.data || [];
+    }
+
+    /**
+     * Limpa cache e índices
+     */
+    async clear(): Promise<void> {
+        await this.cache.delete(this.baseKey);
+        this.indices.clear();
+    }
+
+    /**
+     * Verifica se o cache está fresco
+     */
+    async isFresh(): Promise<boolean> {
+        const cached = await this.cache.get<T>(this.baseKey);
+        if (!cached) return false;
+        return this.cache.isFresh(cached.timestamp);
+    }
+}
+
+/**
+ * Factory para criar caches indexados
+ */
+export const createIndexedCache = <T extends { id: string }>(baseKey: string) => 
+    new IndexedCache<T>(baseKey);
+
+export { IndexedCache };

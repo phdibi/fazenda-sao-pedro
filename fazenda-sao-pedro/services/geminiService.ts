@@ -1,5 +1,6 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { Animal, MedicationAdministration, Raca, Sexo, ComprehensiveReport, MonthlyMedicationUsage, MedicationUsageDetail, DamPerformanceData } from "../types";
+import { geminiRateLimiter, RateLimitError, isRateLimitError } from "./rateLimiter";
 
 // --- LAZY, FAULT-TOLERANT INITIALIZATION ---
 // O cliente de IA é inicializado apenas quando necessário pela primeira vez. Isso evita que o aplicativo
@@ -26,6 +27,19 @@ const getAiClient = (): GoogleGenAI => {
 };
 
 const geminiModel = 'gemini-2.5-flash';
+
+// --- Função auxiliar para chamadas com rate limiting ---
+const callWithRateLimit = async <T>(fn: () => Promise<T>): Promise<T> => {
+    try {
+        await geminiRateLimiter.acquire();
+        return await fn();
+    } catch (error) {
+        if (isRateLimitError(error)) {
+            throw error; // Propaga erro de rate limit
+        }
+        throw error;
+    }
+};
 
 // --- Schemas for structured data extraction ---
 const medicationSchema = {
@@ -60,62 +74,69 @@ const mockApiCall = <T,>(data: T, delay = 1500): Promise<T> =>
 // --- REAL GEMINI FUNCTIONS ---
 
 export const structureMedicalDataFromText = async (text: string): Promise<Partial<MedicationAdministration>> => {
-  try {
-    const aiClient = getAiClient(); // Initialize on first use
-    console.log("Calling Gemini to structure medical text:", text);
-    const response = await aiClient.models.generateContent({
-      model: geminiModel,
-      contents: `Extraia as informações de medicação do seguinte texto: "${text}"`,
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: medicationSchema,
-      },
-    });
+  return callWithRateLimit(async () => {
+    try {
+      const aiClient = getAiClient();
+      console.log("Calling Gemini to structure medical text:", text);
+      const response = await aiClient.models.generateContent({
+        model: geminiModel,
+        contents: `Extraia as informações de medicação do seguinte texto: "${text}"`,
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: medicationSchema,
+        },
+      });
 
-    const jsonString = response.text.trim();
-    return JSON.parse(jsonString) as Partial<MedicationAdministration>;
+      const jsonString = response.text.trim();
+      return JSON.parse(jsonString) as Partial<MedicationAdministration>;
 
-  } catch (error) {
-    console.error("Error structuring medical data with Gemini:", error);
-     // Propaga uma mensagem de erro mais amigável
-    if (error instanceof Error && error.message.includes("Não foi possível conectar")) {
+    } catch (error) {
+      console.error("Error structuring medical data with Gemini:", error);
+      if (isRateLimitError(error)) {
         throw error;
+      }
+      if (error instanceof Error && error.message.includes("Não foi possível conectar")) {
+        throw error;
+      }
+      throw new Error("A IA não conseguiu processar o comando de medicação.");
     }
-    throw new Error("A IA não conseguiu processar o comando de medicação.");
-  }
+  });
 };
 
 export const structureAnimalDataFromText = async (text: string): Promise<Partial<Omit<Animal, 'id' | 'fotos' | 'historicoSanitario' | 'historicoPesagens'>>> => {
-  try {
-    const aiClient = getAiClient(); // Initialize on first use
-    console.log("Calling Gemini to structure animal registration text:", text);
-    const response = await aiClient.models.generateContent({
-      model: geminiModel,
-      contents: `Extraia as informações de registro do animal do seguinte texto: "${text}"`,
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: animalSchema,
-      },
-    });
+  return callWithRateLimit(async () => {
+    try {
+      const aiClient = getAiClient();
+      console.log("Calling Gemini to structure animal registration text:", text);
+      const response = await aiClient.models.generateContent({
+        model: geminiModel,
+        contents: `Extraia as informações de registro do animal do seguinte texto: "${text}"`,
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: animalSchema,
+        },
+      });
 
-    const jsonString = response.text.trim();
-    let parsedData = JSON.parse(jsonString);
+      const jsonString = response.text.trim();
+      let parsedData = JSON.parse(jsonString);
 
-    if (parsedData.dataNascimento && typeof parsedData.dataNascimento === 'string') {
-      // Add T00:00:00 to ensure the date is parsed in local time, not UTC
-      parsedData.dataNascimento = new Date(parsedData.dataNascimento + 'T00:00:00');
-    }
+      if (parsedData.dataNascimento && typeof parsedData.dataNascimento === 'string') {
+        parsedData.dataNascimento = new Date(parsedData.dataNascimento + 'T00:00:00');
+      }
 
-    return parsedData as Partial<Omit<Animal, 'id' | 'fotos' | 'historicoSanitario' | 'historicoPesagens'>>;
+      return parsedData as Partial<Omit<Animal, 'id' | 'fotos' | 'historicoSanitario' | 'historicoPesagens'>>;
 
-  } catch (error) {
-    console.error("Error structuring animal data with Gemini:", error);
-    // Propaga uma mensagem de erro mais amigável
-    if (error instanceof Error && error.message.includes("Não foi possível conectar")) {
+    } catch (error) {
+      console.error("Error structuring animal data with Gemini:", error);
+      if (isRateLimitError(error)) {
         throw error;
+      }
+      if (error instanceof Error && error.message.includes("Não foi possível conectar")) {
+        throw error;
+      }
+      throw new Error("A IA não conseguiu processar o comando de registro de animal.");
     }
-    throw new Error("A IA não conseguiu processar o comando de registro de animal.");
-  }
+  });
 };
 
 

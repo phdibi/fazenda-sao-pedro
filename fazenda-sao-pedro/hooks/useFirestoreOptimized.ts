@@ -3,6 +3,8 @@ import { db, Timestamp, FieldValue } from '../services/firebase';
 import { localCache } from '../services/localCache';
 import { Animal, FirestoreCollectionName, ManagementBatch, UserRole, WeighingType, AnimalStatus, Sexo, CalendarEvent, AppUser, ManagementArea, MedicationAdministration, PregnancyRecord, PregnancyType, AbortionRecord, Task, LoadingKey, LocalStateCollectionName } from '../types';
 import { QUERY_LIMITS, ARCHIVED_COLLECTION_NAME } from '../constants/app';
+import { convertTimestampsToDates, convertDatesToTimestamps } from '../utils/dateHelpers';
+import { removeUndefined } from '../utils/objectHelpers';
 
 // ============================================
 // STATE MANAGEMENT
@@ -60,52 +62,6 @@ const initialState: FirestoreState = {
     loading: { animals: true, calendar: true, tasks: true, areas: true, batches: true },
     error: null,
     lastSync: null
-};
-
-// Helpers para conversão de timestamps
-const convertTimestampsToDates = (data: any): any => {
-    if (!data) return data;
-    if (Array.isArray(data)) return data.map(item => convertTimestampsToDates(item));
-    if (data instanceof Timestamp) return data.toDate();
-    if (typeof data === 'object' && data !== null) {
-        const converted = { ...data };
-        for (const key in converted) {
-            converted[key] = convertTimestampsToDates(converted[key]);
-        }
-        return converted;
-    }
-    return data;
-};
-
-const convertDatesToTimestamps = (data: any): any => {
-    if (!data) return data;
-    if (Array.isArray(data)) return data.map(item => convertDatesToTimestamps(item));
-    if (data instanceof Date) return Timestamp.fromDate(data);
-    if (typeof data === 'object' && data !== null) {
-        const converted = { ...data };
-        for (const key in converted) {
-            converted[key] = convertDatesToTimestamps(converted[key]);
-        }
-        return converted;
-    }
-    return data;
-};
-
-const removeUndefined = (obj: any): any => {
-    if (obj === null || typeof obj !== 'object') return obj;
-    if (Array.isArray(obj)) {
-        return obj.map(item => removeUndefined(item)).filter(item => item !== undefined);
-    }
-    const newObj: any = {};
-    for (const key in obj) {
-        if (Object.prototype.hasOwnProperty.call(obj, key)) {
-            const value = obj[key];
-            if (value !== undefined) {
-                newObj[key] = removeUndefined(value);
-            }
-        }
-    }
-    return newObj;
 };
 
 const firestoreReducer = (state: FirestoreState, action: FirestoreAction): FirestoreState => {
@@ -199,6 +155,29 @@ const firestoreReducer = (state: FirestoreState, action: FirestoreAction): Fires
             return {
                 ...state,
                 managementAreas: state.managementAreas.filter(area => area.id !== action.payload.areaId)
+            };
+
+        // ============================================
+        // BATCHES - ATUALIZAÇÃO OTIMISTA
+        // ============================================
+        case 'LOCAL_ADD_BATCH':
+            return {
+                ...state,
+                batches: [...state.batches, action.payload]
+            };
+        case 'LOCAL_UPDATE_BATCH':
+            return {
+                ...state,
+                batches: state.batches.map(batch =>
+                    batch.id === action.payload.batchId
+                        ? { ...batch, ...action.payload.updatedData }
+                        : batch
+                ),
+            };
+        case 'LOCAL_DELETE_BATCH':
+            return {
+                ...state,
+                batches: state.batches.filter(batch => batch.id !== action.payload.batchId)
             };
 
         default:

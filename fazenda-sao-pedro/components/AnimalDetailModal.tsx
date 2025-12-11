@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { Animal, MedicationAdministration, WeightEntry, Raca, Sexo, AnimalStatus, PregnancyRecord, PregnancyType, OffspringWeightRecord, WeighingType, AbortionRecord, AppUser } from '../types';
+import { Animal, MedicationAdministration, WeightEntry, Raca, Sexo, AnimalStatus, PregnancyRecord, PregnancyType, OffspringWeightRecord, WeighingType, AbortionRecord, AppUser, EditableAnimalState, MedicationFormState, OffspringFormState, WeightFormState } from '../types';
 import Modal from './common/Modal';
 import ImageAnalyzerOptimized from './ImageAnalyzerOptimized';
 import AudioToAction from './AudioToAction';
 import { TrashIcon } from './common/Icons';
 import GenealogyTree from './GenealogyTree';
 import Spinner from './common/Spinner';
+import { formatDate, dateToInputValue } from '../utils/dateHelpers';
 
 interface AnimalDetailModalProps {
     animal: Animal | null;
@@ -13,39 +14,12 @@ interface AnimalDetailModalProps {
     onClose: () => void;
     onUpdateAnimal: (animalId: string, updatedData: Partial<Omit<Animal, 'id'>>) => void;
     onDeleteAnimal: (animalId: string) => Promise<void>;
-
+    onArchiveAnimal?: (animalId: string) => Promise<void>;
     animals: Animal[];
     user: AppUser;
     storageReady: boolean;
 }
 
-const formatDate = (date: Date) => {
-    const d = new Date(date);
-    if (isNaN(d.getTime())) {
-        return 'Data inválida';
-    }
-    return d.toLocaleDateString('pt-BR');
-};
-const dateToInputValue = (date: Date) => {
-    const d = new Date(date);
-    if (isNaN(d.getTime())) {
-        return '';
-    }
-    return d.toISOString().split('T')[0];
-};
-
-type TabName = 'general' | 'health' | 'weight' | 'genealogy' | 'reproduction' | 'progenie';
-
-// State types for forms to handle string inputs for number fields
-type EditableAnimalState = Omit<Animal, 'pesoKg'> & { pesoKg: string };
-type MedicationFormState = Omit<MedicationAdministration, 'id' | 'dose'> & { dose: string };
-type OffspringFormState = {
-    id?: string;
-    offspringBrinco: string;
-    birthWeightKg: string;
-    weaningWeightKg: string;
-    yearlingWeightKg: string;
-};
 
 interface TabButtonProps {
     tabName: TabName;

@@ -674,3 +674,73 @@ export interface WithFirestoreProps {
   error?: string | null;
   onRetry?: () => void;
 }
+
+// ============================================
+// 🆕 TIPOS PARA FORMULÁRIOS (centralizados)
+// ============================================
+
+/**
+ * Estado editável de Animal (pesoKg como string para inputs)
+ */
+export type EditableAnimalState = Omit<Animal, 'pesoKg'> & { pesoKg: string };
+
+/**
+ * Estado de formulário de medicação
+ */
+export type MedicationFormState = Omit<MedicationAdministration, 'id' | 'dose'> & { dose: string };
+
+/**
+ * Estado de formulário de progênie
+ */
+export interface OffspringFormState {
+  id?: string;
+  offspringBrinco: string;
+  birthWeightKg: string;
+  weaningWeightKg: string;
+  yearlingWeightKg: string;
+}
+
+/**
+ * Estado de formulário de peso
+ */
+export interface WeightFormState {
+  weight: string;
+  type: WeighingType;
+}
+
+// ============================================
+// 🆕 TIPOS PARA RATE LIMITING
+// ============================================
+
+export interface RateLimitConfig {
+  calls: number;
+  windowMs: number;
+}
+
+export interface RateLimitStats {
+  used: number;
+  remaining: number;
+  total: number;
+  resetInMs: number;
+}
+
+// ============================================
+// 🆕 TIPOS PARA CACHE
+// ============================================
+
+export interface CacheConfig {
+  version: string;
+  expiryMs: number;
+}
+
+export interface CacheEntry<T> {
+  data: T[];
+  timestamp: number;
+  version: string;
+}
+
+export interface CacheStats {
+  hitCount: number;
+  missCount: number;
+  hitRate: number;
+}
