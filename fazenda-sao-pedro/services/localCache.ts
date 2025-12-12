@@ -190,6 +190,98 @@ class LocalCache {
   getAgeMinutes(timestamp: number): number {
     return Math.floor((Date.now() - timestamp) / (60 * 1000));
   }
+
+  /**
+   * 🔧 OTIMIZAÇÃO: Limpa entradas antigas do cache
+   * Previne crescimento indefinido do IndexedDB
+   * @param maxAgeMs Idade máxima em milissegundos (padrão: 7 dias)
+   */
+  async cleanOldEntries(maxAgeMs: number = 7 * 24 * 60 * 60 * 1000): Promise<number> {
+    await this.init();
+
+    if (!this.db) return 0;
+
+    return new Promise((resolve) => {
+      try {
+        const transaction = this.db!.transaction([this.storeName], 'readwrite');
+        const store = transaction.objectStore(this.storeName);
+        const request = store.openCursor();
+        
+        let deletedCount = 0;
+        const now = Date.now();
+
+        request.onsuccess = (event) => {
+          const cursor = (event.target as IDBRequest<IDBCursorWithValue>).result;
+          
+          if (cursor) {
+            const entry = cursor.value;
+            const age = now - (entry.timestamp || 0);
+            
+            // Remove se for muito antigo ou versão diferente
+            if (age > maxAgeMs || entry.version !== CACHE_VERSION) {
+              cursor.delete();
+              deletedCount++;
+              console.log(`[LocalCache] Removida entrada antiga: ${entry.key}`);
+            }
+            
+            cursor.continue();
+          } else {
+            // Fim do cursor
+            if (deletedCount > 0) {
+              console.log(`[LocalCache] Limpeza concluída: ${deletedCount} entradas removidas`);
+            }
+            resolve(deletedCount);
+          }
+        };
+
+        request.onerror = () => {
+          console.warn('[LocalCache] Erro durante limpeza:', request.error);
+          resolve(0);
+        };
+      } catch (error) {
+        console.warn('[LocalCache] Erro na limpeza:', error);
+        resolve(0);
+      }
+    });
+  }
+
+  /**
+   * Retorna estatísticas do cache
+   */
+  async getStats(): Promise<{ entryCount: number; totalSize: number; oldestEntry: number }> {
+    await this.init();
+
+    if (!this.db) return { entryCount: 0, totalSize: 0, oldestEntry: 0 };
+
+    return new Promise((resolve) => {
+      try {
+        const transaction = this.db!.transaction([this.storeName], 'readonly');
+        const store = transaction.objectStore(this.storeName);
+        const request = store.openCursor();
+        
+        let entryCount = 0;
+        let totalSize = 0;
+        let oldestEntry = Date.now();
+
+        request.onsuccess = (event) => {
+          const cursor = (event.target as IDBRequest<IDBCursorWithValue>).result;
+          
+          if (cursor) {
+            entryCount++;
+            totalSize += JSON.stringify(cursor.value).length;
+            oldestEntry = Math.min(oldestEntry, cursor.value.timestamp || Date.now());
+            cursor.continue();
+          } else {
+            resolve({ entryCount, totalSize, oldestEntry });
+          }
+        };
+
+        request.onerror = () => resolve({ entryCount: 0, totalSize: 0, oldestEntry: 0 });
+      } catch (error) {
+        resolve({ entryCount: 0, totalSize: 0, oldestEntry: 0 });
+      }
+    });
+  }
 }
 
 // Exporta instância singleton

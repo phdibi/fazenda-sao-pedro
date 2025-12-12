@@ -194,6 +194,13 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
     const userId = user?.uid;
     const syncInProgressRef = useRef(false);
     const lastSyncTimeRef = useRef<number>(0);
+    
+    // 🔧 OTIMIZAÇÃO: Ref para acessar estado atual sem causar re-renders nos callbacks
+    // Isso evita que callbacks sejam recriados quando o estado muda
+    const stateRef = useRef(state);
+    useEffect(() => {
+        stateRef.current = state;
+    }, [state]);
 
     // ============================================
     // FUNÇÃO: Carregar dados com cache
@@ -402,8 +409,9 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
             if (animalData.maeNome) {
                 const motherBrinco = animalData.maeNome.toLowerCase().trim();
 
-                // Tenta encontrar a mãe no estado local primeiro (mais rápido e já carregado)
-                const motherLocal = state.animals.find(a =>
+                // 🔧 OTIMIZAÇÃO: Usa stateRef para evitar dependência de state.animals
+                const currentAnimals = stateRef.current.animals;
+                const motherLocal = currentAnimals.find(a =>
                     a.brinco.toLowerCase().trim() === motherBrinco &&
                     a.sexo === Sexo.Femea
                 );
@@ -444,8 +452,8 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
 
             await batch.commit();
 
-            // Atualiza cache
-            await updateLocalCache('animals', [...state.animals, newAnimal]);
+            // Atualiza cache usando stateRef
+            await updateLocalCache('animals', [...stateRef.current.animals, newAnimal]);
 
         } catch (error) {
             console.error("Erro ao adicionar animal:", error);
@@ -453,7 +461,7 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
             await forceSync();
             throw error;
         }
-    }, [userId, state.animals, updateLocalCache, forceSync]);
+    }, [userId, updateLocalCache, forceSync]);
 
     const updateAnimal = useCallback(async (animalId: string, updatedData: Partial<Omit<Animal, 'id'>>) => {
         if (!userId || !db) return;
@@ -473,11 +481,13 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
             // 🔧 PROPAGAR PESOS ESPECIAIS PARA PROGÊNIE DA MÃE
             // ============================================
             if (updatedData.historicoPesagens) {
-                const animal = state.animals.find((a: Animal) => a.id === animalId);
+                // 🔧 OTIMIZAÇÃO: Usa stateRef para evitar dependência de state.animals
+                const currentAnimals = stateRef.current.animals;
+                const animal = currentAnimals.find((a: Animal) => a.id === animalId);
                 if (animal?.maeNome) {
                     // Busca a mãe pelo brinco
                     const maeBrinco = animal.maeNome.toLowerCase().trim();
-                    const mae = state.animals.find((a: Animal) =>
+                    const mae = currentAnimals.find((a: Animal) =>
                         a.brinco.toLowerCase().trim() === maeBrinco &&
                         a.sexo === Sexo.Femea
                     );
@@ -552,8 +562,8 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
 
             await batch.commit();
 
-            // Atualiza cache
-            const updatedAnimals = state.animals.map((a: Animal) =>
+            // 🔧 OTIMIZAÇÃO: Usa stateRef para cache
+            const updatedAnimals = stateRef.current.animals.map((a: Animal) =>
                 a.id === animalId ? { ...a, ...updatedData } : a
             );
             await updateLocalCache('animals', updatedAnimals);
@@ -562,7 +572,7 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
             await forceSync();
             throw error;
         }
-    }, [userId, state.animals, updateLocalCache, forceSync]);
+    }, [userId, updateLocalCache, forceSync]);
 
     const deleteAnimal = useCallback(async (animalId: string): Promise<void> => {
         if (!userId || !db) throw new Error("Não autenticado");
@@ -573,15 +583,15 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
         try {
             await db.collection('animals').doc(animalId).delete();
 
-            // Atualiza cache
-            const updatedAnimals = state.animals.filter((a: Animal) => a.id !== animalId);
+            // 🔧 OTIMIZAÇÃO: Usa stateRef para cache
+            const updatedAnimals = stateRef.current.animals.filter((a: Animal) => a.id !== animalId);
             await updateLocalCache('animals', updatedAnimals);
         } catch (error) {
             console.error("Erro ao deletar animal:", error);
             await forceSync();
             throw error;
         }
-    }, [userId, state.animals, updateLocalCache, forceSync]);
+    }, [userId, updateLocalCache, forceSync]);
 
 
 
@@ -606,8 +616,8 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
 
                 await db.collection('calendar').doc(id).update(dataWithTimestamp);
 
-                // Atualiza cache
-                const updatedEvents = state.calendarEvents.map((e: CalendarEvent) => e.id === id ? updatedEvent : e);
+                // 🔧 OTIMIZAÇÃO: Usa stateRef para cache
+                const updatedEvents = stateRef.current.calendarEvents.map((e: CalendarEvent) => e.id === id ? updatedEvent : e);
                 await updateLocalCache('calendarEvents', updatedEvents);
             } else {
                 // CRIAÇÃO
@@ -620,15 +630,15 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
                 // Atualização otimista IMEDIATA
                 dispatch({ type: 'LOCAL_ADD_CALENDAR_EVENT', payload: newEvent });
 
-                // Atualiza cache
-                await updateLocalCache('calendarEvents', [...state.calendarEvents, newEvent]);
+                // 🔧 OTIMIZAÇÃO: Usa stateRef para cache
+                await updateLocalCache('calendarEvents', [...stateRef.current.calendarEvents, newEvent]);
             }
         } catch (error) {
             console.error("Erro ao salvar evento:", error);
             await forceSync();
             throw error;
         }
-    }, [userId, state.calendarEvents, updateLocalCache, forceSync]);
+    }, [userId, updateLocalCache, forceSync]);
 
     const deleteCalendarEvent = useCallback(async (eventId: string) => {
         if (!userId || !db) return;
@@ -639,15 +649,15 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
         try {
             await db.collection('calendar').doc(eventId).delete();
 
-            // Atualiza cache
-            const updatedEvents = state.calendarEvents.filter((e: CalendarEvent) => e.id !== eventId);
+            // 🔧 OTIMIZAÇÃO: Usa stateRef para cache
+            const updatedEvents = stateRef.current.calendarEvents.filter((e: CalendarEvent) => e.id !== eventId);
             await updateLocalCache('calendarEvents', updatedEvents);
         } catch (error) {
             console.error("Erro ao deletar evento:", error);
             await forceSync();
             throw error;
         }
-    }, [userId, state.calendarEvents, updateLocalCache, forceSync]);
+    }, [userId, updateLocalCache, forceSync]);
 
     // ============================================
     // TASKS - COM ATUALIZAÇÃO OTIMISTA
@@ -670,14 +680,14 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
             // Atualização otimista IMEDIATA
             dispatch({ type: 'LOCAL_ADD_TASK', payload: newTask });
 
-            // Atualiza cache
-            await updateLocalCache('tasks', [...state.tasks, newTask]);
+            // 🔧 OTIMIZAÇÃO: Usa stateRef para cache
+            await updateLocalCache('tasks', [...stateRef.current.tasks, newTask]);
         } catch (error) {
             console.error("Erro ao adicionar tarefa:", error);
             await forceSync();
             throw error;
         }
-    }, [userId, state.tasks, updateLocalCache, forceSync]);
+    }, [userId, updateLocalCache, forceSync]);
 
     const toggleTaskCompletion = useCallback(async (task: Task) => {
         if (!userId || !db) return;
@@ -693,8 +703,8 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
         try {
             await db.collection('tasks').doc(task.id).update({ isCompleted: newCompletedStatus });
 
-            // Atualiza cache
-            const updatedTasks = state.tasks.map((t: Task) =>
+            // 🔧 OTIMIZAÇÃO: Usa stateRef para cache
+            const updatedTasks = stateRef.current.tasks.map((t: Task) =>
                 t.id === task.id ? { ...t, isCompleted: newCompletedStatus } : t
             );
             await updateLocalCache('tasks', updatedTasks);
@@ -703,7 +713,7 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
             await forceSync();
             throw error;
         }
-    }, [userId, state.tasks, updateLocalCache, forceSync]);
+    }, [userId, updateLocalCache, forceSync]);
 
     const deleteTask = useCallback(async (taskId: string) => {
         if (!userId || !db) return;
@@ -714,15 +724,15 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
         try {
             await db.collection('tasks').doc(taskId).delete();
 
-            // Atualiza cache
-            const updatedTasks = state.tasks.filter((t: Task) => t.id !== taskId);
+            // 🔧 OTIMIZAÇÃO: Usa stateRef para cache
+            const updatedTasks = stateRef.current.tasks.filter((t: Task) => t.id !== taskId);
             await updateLocalCache('tasks', updatedTasks);
         } catch (error) {
             console.error("Erro ao deletar tarefa:", error);
             await forceSync();
             throw error;
         }
-    }, [userId, state.tasks, updateLocalCache, forceSync]);
+    }, [userId, updateLocalCache, forceSync]);
 
     // ============================================
     // MANAGEMENT AREAS - COM ATUALIZAÇÃO OTIMISTA
@@ -744,8 +754,8 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
 
                 await db.collection('areas').doc(id).update(cleanedAreaData);
 
-                // Atualiza cache
-                const updatedAreas = state.managementAreas.map((a: ManagementArea) => a.id === id ? updatedArea : a);
+                // 🔧 OTIMIZAÇÃO: Usa stateRef para cache
+                const updatedAreas = stateRef.current.managementAreas.map((a: ManagementArea) => a.id === id ? updatedArea : a);
                 await updateLocalCache('managementAreas', updatedAreas);
             } else {
                 // CRIAÇÃO
@@ -758,24 +768,28 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
                 // Atualização otimista IMEDIATA
                 dispatch({ type: 'LOCAL_ADD_AREA', payload: newArea });
 
-                // Atualiza cache
-                await updateLocalCache('managementAreas', [...state.managementAreas, newArea]);
+                // 🔧 OTIMIZAÇÃO: Usa stateRef para cache
+                await updateLocalCache('managementAreas', [...stateRef.current.managementAreas, newArea]);
             }
         } catch (error) {
             console.error("Erro ao salvar área:", error);
             await forceSync();
             throw error;
         }
-    }, [userId, state.managementAreas, updateLocalCache, forceSync]);
+    }, [userId, updateLocalCache, forceSync]);
 
     const deleteManagementArea = useCallback(async (areaId: string) => {
         if (!userId || !db) return;
+
+        // 🔧 OTIMIZAÇÃO: Usa stateRef para evitar dependência
+        const currentAnimals = stateRef.current.animals;
+        const currentAreas = stateRef.current.managementAreas;
 
         // Atualização otimista IMEDIATA
         dispatch({ type: 'LOCAL_DELETE_AREA', payload: { areaId } });
 
         // Também atualiza os animais que estavam nessa área
-        const animalsInArea = state.animals.filter((a: Animal) => a.managementAreaId === areaId);
+        const animalsInArea = currentAnimals.filter((a: Animal) => a.managementAreaId === areaId);
         animalsInArea.forEach((animal: Animal) => {
             dispatch({
                 type: 'LOCAL_UPDATE_ANIMAL',
@@ -786,10 +800,8 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
         try {
             const batch = db.batch();
 
-            // Remove área dos animais
             // Remove área dos animais (OTIMIZADO: Usa estado local para achar IDs em vez de query)
-            const animalsInAreaLocal = state.animals.filter((a: Animal) => a.managementAreaId === areaId);
-            animalsInAreaLocal.forEach((animal: Animal) => {
+            animalsInArea.forEach((animal: Animal) => {
                 const ref = db.collection('animals').doc(animal.id);
                 batch.update(ref, { managementAreaId: FieldValue.delete() });
             });
@@ -799,11 +811,11 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
 
             await batch.commit();
 
-            // Atualiza caches
-            const updatedAreas = state.managementAreas.filter((a: ManagementArea) => a.id !== areaId);
+            // 🔧 OTIMIZAÇÃO: Usa stateRef para caches
+            const updatedAreas = currentAreas.filter((a: ManagementArea) => a.id !== areaId);
             await updateLocalCache('managementAreas', updatedAreas);
 
-            const updatedAnimals = state.animals.map((a: Animal) =>
+            const updatedAnimals = currentAnimals.map((a: Animal) =>
                 a.managementAreaId === areaId ? { ...a, managementAreaId: undefined } : a
             );
             await updateLocalCache('animals', updatedAnimals);
@@ -812,7 +824,7 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
             await forceSync();
             throw error;
         }
-    }, [userId, state.animals, state.managementAreas, updateLocalCache, forceSync]);
+    }, [userId, updateLocalCache, forceSync]);
 
     const assignAnimalsToArea = useCallback(async (areaId: string, animalIds: string[]) => {
         if (!userId || !db) return;
@@ -835,8 +847,8 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
 
             await batch.commit();
 
-            // Atualiza cache
-            const updatedAnimals = state.animals.map((a: Animal) =>
+            // 🔧 OTIMIZAÇÃO: Usa stateRef para cache
+            const updatedAnimals = stateRef.current.animals.map((a: Animal) =>
                 animalIds.includes(a.id) ? { ...a, managementAreaId: areaId } : a
             );
             await updateLocalCache('animals', updatedAnimals);
@@ -845,7 +857,7 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
             await forceSync();
             throw error;
         }
-    }, [userId, state.animals, updateLocalCache, forceSync]);
+    }, [userId, updateLocalCache, forceSync]);
 
     // ============================================
     // LOTES (BATCHES) - NOVO E INTEGRADO
@@ -866,8 +878,8 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
             // Atualização otimista
             dispatch({ type: 'LOCAL_ADD_BATCH', payload: newBatch });
 
-            // Atualiza cache
-            await updateLocalCache('batches', [...state.batches, newBatch]);
+            // 🔧 OTIMIZAÇÃO: Usa stateRef para cache
+            await updateLocalCache('batches', [...stateRef.current.batches, newBatch]);
 
             return newBatch;
         } catch (error) {
@@ -875,7 +887,7 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
             await forceSync();
             throw error;
         }
-    }, [userId, state.batches, updateLocalCache, forceSync]);
+    }, [userId, updateLocalCache, forceSync]);
 
     const updateBatch = useCallback(async (batchId: string, updatedData: Partial<ManagementBatch>) => {
         if (!userId || !db) return;
@@ -890,8 +902,8 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
 
             await batchRef.update(dataWithTimestamp);
 
-            // Atualiza cache
-            const updatedBatches = state.batches.map((b: ManagementBatch) =>
+            // 🔧 OTIMIZAÇÃO: Usa stateRef para cache
+            const updatedBatches = stateRef.current.batches.map((b: ManagementBatch) =>
                 b.id === batchId ? { ...b, ...updatedData } : b
             );
             await updateLocalCache('batches', updatedBatches);
@@ -900,7 +912,7 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
             await forceSync();
             throw error;
         }
-    }, [userId, state.batches, updateLocalCache, forceSync]);
+    }, [userId, updateLocalCache, forceSync]);
 
     const deleteBatch = useCallback(async (batchId: string) => {
         if (!userId || !db) return;
@@ -911,15 +923,15 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
         try {
             await db.collection('batches').doc(batchId).delete();
 
-            // Atualiza cache
-            const updatedBatches = state.batches.filter((b: ManagementBatch) => b.id !== batchId);
+            // 🔧 OTIMIZAÇÃO: Usa stateRef para cache
+            const updatedBatches = stateRef.current.batches.filter((b: ManagementBatch) => b.id !== batchId);
             await updateLocalCache('batches', updatedBatches);
         } catch (error) {
             console.error("Erro ao deletar lote:", error);
             await forceSync();
             throw error;
         }
-    }, [userId, state.batches, updateLocalCache, forceSync]);
+    }, [userId, updateLocalCache, forceSync]);
 
     const completeBatch = useCallback(async (batchId: string) => {
         if (!userId || !db) return;

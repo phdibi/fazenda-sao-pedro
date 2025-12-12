@@ -45,7 +45,13 @@ export const compressImage = async (
             return;
         }
 
+        // 🔧 OTIMIZAÇÃO: Cria objectUrl uma vez e rastreia para cleanup
+        const objectUrl = URL.createObjectURL(file);
+
         img.onload = () => {
+            // 🔧 OTIMIZAÇÃO: Libera memória imediatamente após carregar
+            URL.revokeObjectURL(objectUrl);
+            
             // Calcula dimensões mantendo proporção
             let { width, height } = img;
             
@@ -79,10 +85,14 @@ export const compressImage = async (
             );
         };
 
-        img.onerror = () => reject(new Error('Falha ao carregar imagem'));
+        img.onerror = () => {
+            // 🔧 OTIMIZAÇÃO: Libera memória em caso de erro
+            URL.revokeObjectURL(objectUrl);
+            reject(new Error('Falha ao carregar imagem'));
+        };
         
         // Carrega imagem do arquivo
-        img.src = URL.createObjectURL(file);
+        img.src = objectUrl;
     });
 };
 

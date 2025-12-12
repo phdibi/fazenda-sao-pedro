@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
   AnimalStatus,
   Sexo,
@@ -12,6 +12,7 @@ import {
   SearchField
 } from '../types';
 import { ChevronDownIcon } from './common/Icons';
+import { useDebouncedValue } from '../hooks/useMemoizedData';
 
 // Ícones
 const SearchIcon = ({ className }: { className?: string }) => (
@@ -225,6 +226,24 @@ const FilterBar = ({
   activeFiltersCount,
   isFiltering = false,
 }: FilterBarProps) => {
+  // 🔧 OTIMIZAÇÃO: Estado local para input com debounce
+  const [localSearchTerm, setLocalSearchTerm] = useState(searchTerm);
+  const debouncedSearchTerm = useDebouncedValue(localSearchTerm, 300);
+  
+  // Sincroniza debounced value com o pai
+  useEffect(() => {
+    if (debouncedSearchTerm !== searchTerm) {
+      setSearchTerm(debouncedSearchTerm);
+    }
+  }, [debouncedSearchTerm, setSearchTerm]);
+  
+  // Sincroniza com mudanças externas (ex: limpar filtros)
+  useEffect(() => {
+    if (searchTerm !== localSearchTerm && searchTerm === '') {
+      setLocalSearchTerm('');
+    }
+  }, [searchTerm]);
+
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [openFilter, setOpenFilter] = useState<null | 'status' | 'sexo' | 'raca' | 'area' | 'sort'>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -356,8 +375,8 @@ const FilterBar = ({
           <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
           <input
             type="text"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
+            value={localSearchTerm}
+            onChange={(e) => setLocalSearchTerm(e.target.value)}
             placeholder="Buscar animal..."
             className="w-full bg-base-800 border border-base-700 rounded-xl py-2.5 pl-10 pr-4 text-sm
                        focus:ring-2 focus:ring-brand-primary/50 focus:border-brand-primary
@@ -368,9 +387,9 @@ const FilterBar = ({
               <div className="w-4 h-4 border-2 border-brand-primary border-t-transparent rounded-full animate-spin" />
             </div>
           )}
-          {searchTerm && !isFiltering && (
+          {localSearchTerm && !isFiltering && (
             <button
-              onClick={() => setSearchTerm('')}
+              onClick={() => setLocalSearchTerm('')}
               className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white"
             >
               <XIcon className="w-4 h-4" />

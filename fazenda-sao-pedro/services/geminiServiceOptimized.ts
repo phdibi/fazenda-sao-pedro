@@ -1,5 +1,10 @@
-import { GoogleGenAI, Type } from "@google/genai";
+// 🔧 OTIMIZAÇÃO: Lazy import do Gemini SDK
+// O SDK só será carregado quando realmente necessário, economizando ~200KB no bundle inicial
 import { Animal, MedicationAdministration, Raca, Sexo, ComprehensiveReport } from "../types";
+
+// Tipos do Gemini (apenas para tipagem, não carrega o SDK)
+type GoogleGenAI = any;
+type TypeSchema = any;
 
 // ============================================
 // 🔧 OTIMIZAÇÃO: CACHE DE RESPOSTAS DA IA
@@ -106,11 +111,22 @@ const checkRateLimit = (): void => {
 };
 
 // ============================================
-// 🔧 OTIMIZAÇÃO: LAZY INITIALIZATION
+// 🔧 OTIMIZAÇÃO: LAZY INITIALIZATION COM DYNAMIC IMPORT
 // ============================================
 let ai: GoogleGenAI | null = null;
+let TypeModule: any = null;
 
-const getAiClient = (): GoogleGenAI => {
+// Carrega o SDK do Gemini de forma assíncrona (apenas quando necessário)
+const loadGeminiSDK = async () => {
+    if (!TypeModule) {
+        const module = await import("@google/genai");
+        TypeModule = module.Type;
+        return module.GoogleGenAI;
+    }
+    return null;
+};
+
+const getAiClient = async (): Promise<GoogleGenAI> => {
     if (ai) return ai;
     
     try {
@@ -118,7 +134,10 @@ const getAiClient = (): GoogleGenAI => {
         if (!apiKey) {
             throw new Error("VITE_GEMINI_API_KEY não encontrada");
         }
-        ai = new GoogleGenAI({ apiKey });
+        
+        // 🔧 OTIMIZAÇÃO: Dynamic import - carrega SDK apenas quando necessário
+        const GoogleGenAIClass = await loadGeminiSDK() || (await import("@google/genai")).GoogleGenAI;
+        ai = new GoogleGenAIClass({ apiKey });
         return ai;
     } catch (e) {
         console.error("Falha ao inicializar Gemini:", e);
@@ -128,30 +147,30 @@ const getAiClient = (): GoogleGenAI => {
 
 const geminiModel = 'gemini-2.5-flash';
 
-// Schemas
-const medicationSchema = {
-    type: Type.OBJECT,
+// Schemas - serão inicializados com Type quando o SDK for carregado
+const getMedicationSchema = () => ({
+    type: TypeModule?.OBJECT || 'OBJECT',
     properties: {
-        medicamento: { type: Type.STRING },
-        dose: { type: Type.NUMBER },
-        unidade: { type: Type.STRING, enum: ['ml', 'mg', 'dose'] },
-        motivo: { type: Type.STRING }
+        medicamento: { type: TypeModule?.STRING || 'STRING' },
+        dose: { type: TypeModule?.NUMBER || 'NUMBER' },
+        unidade: { type: TypeModule?.STRING || 'STRING', enum: ['ml', 'mg', 'dose'] },
+        motivo: { type: TypeModule?.STRING || 'STRING' }
     },
-};
+});
 
-const animalSchema = {
-    type: Type.OBJECT,
+const getAnimalSchema = () => ({
+    type: TypeModule?.OBJECT || 'OBJECT',
     properties: {
-        brinco: { type: Type.STRING },
-        nome: { type: Type.STRING },
-        raca: { type: Type.STRING, enum: Object.values(Raca) },
-        sexo: { type: Type.STRING, enum: Object.values(Sexo) },
-        dataNascimento: { type: Type.STRING },
-        pesoKg: { type: Type.NUMBER },
-        maeNome: { type: Type.STRING },
-        paiNome: { type: Type.STRING }
+        brinco: { type: TypeModule?.STRING || 'STRING' },
+        nome: { type: TypeModule?.STRING || 'STRING' },
+        raca: { type: TypeModule?.STRING || 'STRING', enum: Object.values(Raca) },
+        sexo: { type: TypeModule?.STRING || 'STRING', enum: Object.values(Sexo) },
+        dataNascimento: { type: TypeModule?.STRING || 'STRING' },
+        pesoKg: { type: TypeModule?.NUMBER || 'NUMBER' },
+        maeNome: { type: TypeModule?.STRING || 'STRING' },
+        paiNome: { type: TypeModule?.STRING || 'STRING' }
     },
-};
+});
 
 // ============================================
 // 🔧 OTIMIZAÇÃO: DEBOUNCE PARA CHAMADAS
@@ -193,7 +212,8 @@ export const structureMedicalDataFromText = async (
     return debouncedCall(`med:${text}`, async () => {
         checkRateLimit(); // Rate limit antes da chamada
         try {
-            const aiClient = getAiClient();
+            // 🔧 OTIMIZAÇÃO: Agora getAiClient é assíncrono (lazy load)
+            const aiClient = await getAiClient();
             console.log("🤖 [GEMINI] Processando dados médicos...");
             
             const response = await aiClient.models.generateContent({
@@ -201,7 +221,7 @@ export const structureMedicalDataFromText = async (
                 contents: `Extraia as informações de medicação do seguinte texto: "${text}"`,
                 config: {
                     responseMimeType: "application/json",
-                    responseSchema: medicationSchema,
+                    responseSchema: getMedicationSchema(),
                 },
             });
 
@@ -224,7 +244,8 @@ export const structureAnimalDataFromText = async (
     return debouncedCall(`animal:${text}`, async () => {
         checkRateLimit(); // Rate limit antes da chamada
         try {
-            const aiClient = getAiClient();
+            // 🔧 OTIMIZAÇÃO: Agora getAiClient é assíncrono (lazy load)
+            const aiClient = await getAiClient();
             console.log("🤖 [GEMINI] Processando registro de animal...");
             
             const response = await aiClient.models.generateContent({
@@ -232,7 +253,7 @@ export const structureAnimalDataFromText = async (
                 contents: `Extraia as informações de registro do animal do seguinte texto: "${text}"`,
                 config: {
                     responseMimeType: "application/json",
-                    responseSchema: animalSchema,
+                    responseSchema: getAnimalSchema(),
                 },
             });
 

@@ -108,3 +108,69 @@ export const GRID_COLUMNS = {
   xl: 6,
   '2xl': 7,
 } as const;
+
+// ============================================
+// TOAST NOTIFICATIONS
+// ============================================
+export const TOAST = {
+  maxVisible: 5,
+  durationDefault: 4000,
+  durationError: 6000,
+  durationSuccess: 3000,
+} as const;
+
+// ============================================
+// IMAGENS
+// ============================================
+export const IMAGE_COMPRESSION = {
+  maxWidth: 1200,
+  maxHeight: 1200,
+  quality: 0.8,
+  format: 'image/webp',
+  thumbnailSize: 200,
+  thumbnailQuality: 0.6,
+} as const;
+
+// ============================================
+// PESOS & PREDIÇÃO
+// ============================================
+export const WEIGHT_VALIDATION = {
+  minKg: 20,
+  maxKg: 1500,
+  avgDailyGain: 0.8,
+  defaultPredictionDays: 30,
+} as const;
+
+// ============================================
+// MENSAGENS PADRÃO
+// ============================================
+export const MESSAGES = {
+  LOADING: 'Carregando...',
+  SAVING: 'Salvando...',
+  ERROR_GENERIC: 'Ocorreu um erro. Tente novamente.',
+  ERROR_NETWORK: 'Erro de conexão. Verifique sua internet.',
+  ERROR_AUTH: 'Sessão expirada. Faça login novamente.',
+  SUCCESS_SAVE: 'Salvo com sucesso!',
+  SUCCESS_DELETE: 'Excluído com sucesso!',
+  CONFIRM_DELETE: 'Tem certeza que deseja excluir?',
+  RATE_LIMIT: 'Limite de requisições atingido. Aguarde um momento.',
+} as const;
+
+// ============================================
+// ANIMAÇÃO & UI
+// ============================================
+export const ANIMATION = {
+  transitionDuration: 200,
+  enterDuration: 300,
+  exitDuration: 200,
+  loadingDelay: 200,
+} as const;
+
+// ============================================
+// FEATURES FLAGS
+// ============================================
+export const DEBUG = {
+  enabled: import.meta.env.DEV,
+  perfLogging: import.meta.env.DEV,
+  simulatedLatency: 0,
+} as const;
