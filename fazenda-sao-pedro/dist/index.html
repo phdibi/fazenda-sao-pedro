@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#5b483f">
+    <link rel="apple-touch-icon" href="/icon-192.png">
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Fazenda+</title>
+    <meta name="description" content="Gerencie seu rebanho com inteligência - Sistema completo de gestão pecuária">
+    <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+        'brand-primary': '#381b18',           // Marrom escuro
+        'brand-primary-light': '#ab9185ff',     // Marrom claro
+        'brand-accent': '#d4a373',            // Bege
+        'brand-accent-dark': '#220d0b',       // Marrom muito escuro
+            'base': {
+              950: '#0a0a0a',
+              900: '#1a1a1a',
+              800: '#2d2d2d',
+              700: '#404040',
+              600: '#525252',
+              500: '#737373',
+              400: '#a3a3a3',
+              300: '#d4d4d4',
+              200: '#e5e5e5',
+              100: '#f5f5f5',
+              50: '#fafafa',
+            },
+            'accent-green': '#4ade80',
+            'accent-yellow': '#facc15',
+            'accent-red': '#f87171',
+            'accent-blue': '#60a5fa',
+          },
+        },
+      },
+    };
+  </script>
+    
+    <!-- ================================================================== -->
+    <!-- 🚨 AÇÃO NECESSÁRIA: ATUALIZE SUA CONFIGURAÇÃO DO FIREBASE 🚨        -->
+    <!-- ================================================================== -->
+    <!-- O objeto `__FIREBASE_CONFIG__` abaixo contém valores de exemplo.   -->
+    <!-- Você PRECISA substituí-los pelos valores do SEU projeto Firebase. -->
+    <!--                                                                   -->
+    <!-- ONDE ENCONTRAR:                                                   -->
+    <!-- 1. Acesse seu Console do Firebase: https://console.firebase.google.com/ -->
+    <!-- 2. Selecione seu projeto.                                         -->
+    <!-- 3. Clique no ícone de engrenagem (⚙️) -> "Configurações do Projeto". -->
+    <!-- 4. Na aba "Geral", role para baixo até "Seus apps".               -->
+    <!-- 5. Selecione seu app da web e escolha a opção "Config".           -->
+    <!-- 6. Copie o objeto de configuração inteiro e cole aqui,            -->
+    <!--    substituindo o objeto de exemplo.                              -->
+    <!--                                                                   -->
+    <!-- 💡 DICA PARA O ERRO DE UPLOAD TRAVADO:                              -->
+    <!-- Este erro acontece quando o valor de 'storageBucket' está errado. -->
+    <!-- Confirme que ele corresponde EXATAMENTE ao do seu projeto.        -->
+    <!--                                                                   -->
+    <!-- ✅ CORRETO:   'seu-projeto-12345.appspot.com'                      -->
+    <!-- ❌ ERRADO:    'gs://seu-projeto-12345.appspot.com' (sem o gs://)    -->
+    <!-- ================================================================== -->
+    <script>
+      // Esta configuração PRECISA ser atribuída a window.__FIREBASE_CONFIG__
+      // para que os outros arquivos do aplicativo possam encontrá-la.
+      window.__FIREBASE_CONFIG__ = {
+        apiKey: "AIzaSyC7oqm8NkbRqh2yGdgfkI-orGtqadcJuaw", // ATENÇÃO: Substitua pela sua chave real.
+        authDomain: "fazenda-sao-pedro-home.firebaseapp.com",
+        projectId: "fazenda-sao-pedro-home",
+        storageBucket: "fazenda-sao-pedro-home.firebasestorage.app", // CORRIGIDO: O bucket de exemplo estava errado.
+        messagingSenderId: "24202795399",
+        appId: "1:24202795399:web:4321f14c896a38cb3adb22",
+        measurementId: "G-6KKVTF0DV3"
+      };
+    </script>
+    <!-- ================================================================== -->
+    
+  <!-- Load Firebase via traditional script tags to ensure it's globally available -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-storage-compat.js"></script>
+
+
+<style>
+    @media print {
+      body * {
+        visibility: hidden;
+      }
+      .print-area, .print-area * {
+        visibility: visible;
+      }
+      .print-area {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 100%;
+        padding: 2rem;
+        color: #000 !important; /* Ensure text is black for printing */
+      }
+      .print-hide {
+        display: none !important;
+      }
+       /* Ensure background colors print */
+      .print-bg-visible {
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+        background-color: #fff !important; /* Force white background for report cards */
+        border: 1px solid #ccc;
+      }
+      h1, h2, h3, h4 {
+        color: #000 !important;
+      }
+      p, span, div, li {
+        color: #333 !important;
+      }
+    }
+  </style>
+  <script type="importmap">
+{
+  "imports": {
+    "react/": "https://aistudiocdn.com/react@18.2.0/",
+    "react": "https://aistudiocdn.com/react@18.2.0",
+    "react-dom/": "https://aistudiocdn.com/react-dom@18.2.0/",
+    "react-dom": "https://aistudiocdn.com/react-dom@18.2.0",
+    "@google/genai": "https://aistudiocdn.com/@google/genai@1.29.0"
+  }
+}
+</script>
+  <script type="module" crossorigin src="/assets/index-OnCL7RT-.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/vendor-CMJYdXG8.js">
+  <link rel="stylesheet" crossorigin href="/assets/index-JMiAYMBz.css">
+</head>
+  <body class="bg-base-900 text-base-100">
+    <div id="root"></div>
+      <script>
+  // Registra o Service Worker
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('/sw.js')
+        .then((registration) => {
+          console.log('✅ Service Worker registrado:', registration.scope);
+        })
+        .catch((error) => {
+          console.log('❌ Falha ao registrar Service Worker:', error);
+        });
+    });
+  }
+</script>
+</body>
+</html>
