@@ -12,6 +12,7 @@ import QuickWeightModal from './components/QuickWeightModal';
 import QuickMedicationModal from './components/QuickMedicationModal';
 import AppRouter from './components/AppRouter';
 import { FarmProvider, useFarmData } from './contexts/FarmContext';
+import { AUTO_SYNC_INTERVAL_MS } from './constants/app';
 
 // Modais globais (permanecem aqui)
 const AnimalDetailModal = lazy(() => import('./components/AnimalDetailModal'));
@@ -24,8 +25,6 @@ interface AppProps {
     firebaseReady: boolean;
 }
 
-const AUTO_SYNC_INTERVAL_MS = 5 * 60 * 1000;
-
 const InnerApp = ({ user, firebaseReady }: AppProps) => {
     // Consumindo Contexto Global
     const { firestore, userProfile, dashboardConfig } = useFarmData();
@@ -35,6 +34,7 @@ const InnerApp = ({ user, firebaseReady }: AppProps) => {
         state,
         db: dbInstance,
         forceSync,
+        syncDelta, // 🔧 OTIMIZAÇÃO: Sync delta para economia de leituras
         addAnimal,
         updateAnimal,
         deleteAnimal,
@@ -225,17 +225,25 @@ const InnerApp = ({ user, firebaseReady }: AppProps) => {
         }
     };
 
+    // 🔧 OTIMIZAÇÃO: Auto-sync com delta (economiza leituras do Firestore)
+    // Com listeners em tempo real, este sync serve apenas como fallback de segurança
     useEffect(() => {
         if (!dbInstance) return;
 
-        const intervalId = window.setInterval(() => {
+        const intervalId = window.setInterval(async () => {
             if (navigator.onLine) {
-                forceSync();
+                // Tenta sync delta primeiro (mais eficiente)
+                const deltaResult = await syncDelta();
+                if (deltaResult === false) {
+                    // Se não tem lastSync, faz sync completo
+                    console.log('🔄 [AUTO-SYNC] Executando sync completo como fallback...');
+                    forceSync();
+                }
             }
         }, AUTO_SYNC_INTERVAL_MS);
 
         return () => window.clearInterval(intervalId);
-    }, [forceSync, dbInstance]);
+    }, [forceSync, syncDelta, dbInstance]);
 
     const isAppLoading = state.loading.animals || state.loading.calendar || state.loading.tasks || state.loading.areas;
 
