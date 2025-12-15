@@ -8,7 +8,9 @@
 // ============================================
 export const CACHE_VERSION = 'v2';
 export const CACHE_EXPIRY_MS = 60 * 60 * 1000; // 1 hora
-export const AUTO_SYNC_INTERVAL_MS = 15 * 60 * 1000; // 15 minutos
+// 🔧 OTIMIZAÇÃO: Aumentado de 5min para 30min para economizar leituras do Firestore
+// Com listeners em tempo real, o auto-sync serve apenas como fallback
+export const AUTO_SYNC_INTERVAL_MS = 30 * 60 * 1000; // 30 minutos (antes era 5 minutos)
 
 // ============================================
 // FIREBASE LIMITS

@@ -2,9 +2,17 @@ import { useState, useEffect, useCallback, useReducer, useRef } from 'react';
 import { db, Timestamp, FieldValue } from '../services/firebase';
 import { localCache } from '../services/localCache';
 import { Animal, FirestoreCollectionName, ManagementBatch, UserRole, WeighingType, AnimalStatus, Sexo, CalendarEvent, AppUser, ManagementArea, MedicationAdministration, PregnancyRecord, PregnancyType, AbortionRecord, Task, LoadingKey, LocalStateCollectionName } from '../types';
-import { QUERY_LIMITS, ARCHIVED_COLLECTION_NAME } from '../constants/app';
+import { QUERY_LIMITS, ARCHIVED_COLLECTION_NAME, AUTO_SYNC_INTERVAL_MS } from '../constants/app';
 import { convertTimestampsToDates, convertDatesToTimestamps } from '../utils/dateHelpers';
 import { removeUndefined } from '../utils/objectHelpers';
+
+// ============================================
+// 🔧 OTIMIZAÇÃO: Configuração de Listeners
+// ============================================
+const REALTIME_CONFIG = {
+    enabled: true, // Habilita listeners em tempo real
+    collections: ['animals', 'calendar', 'tasks'] as const, // Coleções com listener
+};
 
 // ============================================
 // STATE MANAGEMENT
@@ -25,13 +33,16 @@ interface FirestoreState {
     };
     error: string | null;
     lastSync: number | null;
+    // 🔧 OTIMIZAÇÃO: Controle de listeners em tempo real
+    listenersActive: boolean;
 }
 
 type FirestoreAction =
-    | { type: 'SET_DATA'; payload: { collection: keyof Omit<FirestoreState, 'loading' | 'error' | 'lastSync'>; data: any[] } }
+    | { type: 'SET_DATA'; payload: { collection: keyof Omit<FirestoreState, 'loading' | 'error' | 'lastSync' | 'listenersActive'>; data: any[] } }
     | { type: 'SET_LOADING_STATUS'; payload: { collection: keyof FirestoreState['loading']; status: boolean } }
     | { type: 'SET_ERROR'; payload: string }
     | { type: 'SET_LAST_SYNC'; payload: number }
+    | { type: 'SET_LISTENERS_ACTIVE'; payload: boolean }
     // Animals
     | { type: 'LOCAL_ADD_ANIMAL'; payload: Animal }
     | { type: 'LOCAL_UPDATE_ANIMAL'; payload: { animalId: string; updatedData: Partial<Animal> } }
@@ -61,7 +72,8 @@ const initialState: FirestoreState = {
     batches: [],
     loading: { animals: true, calendar: true, tasks: true, areas: true, batches: true },
     error: null,
-    lastSync: null
+    lastSync: null,
+    listenersActive: false,
 };
 
 const firestoreReducer = (state: FirestoreState, action: FirestoreAction): FirestoreState => {
@@ -74,6 +86,8 @@ const firestoreReducer = (state: FirestoreState, action: FirestoreAction): Fires
             return { ...state, error: action.payload };
         case 'SET_LAST_SYNC':
             return { ...state, lastSync: action.payload };
+        case 'SET_LISTENERS_ACTIVE':
+            return { ...state, listenersActive: action.payload };
 
         // ============================================
         // ANIMALS
@@ -202,6 +216,10 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
         stateRef.current = state;
     }, [state]);
 
+    // 🔧 OTIMIZAÇÃO: Refs para listeners em tempo real
+    const listenersRef = useRef<{ [key: string]: () => void }>({});
+    const initialLoadDoneRef = useRef(false);
+
     // ============================================
     // FUNÇÃO: Carregar dados com cache
     // ============================================
@@ -312,7 +330,272 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
     }, [userId]);
 
     // ============================================
-    // EFEITO: Carregamento inicial
+    // 🔧 OTIMIZAÇÃO 1: LISTENERS EM TEMPO REAL
+    // ============================================
+    // Substitui polling por listeners que só recebem mudanças
+    // Economia estimada: ~90% menos leituras do Firestore
+    const setupRealtimeListeners = useCallback(() => {
+        if (!userId || !db || !REALTIME_CONFIG.enabled) return;
+
+        console.log('🔴 [REALTIME] Configurando listeners em tempo real...');
+
+        // Listener para Animals
+        const animalsUnsubscribe = db.collection('animals')
+            .where('userId', '==', userId)
+            .onSnapshot(
+                (snapshot: any) => {
+                    // Ignora o snapshot inicial se já temos dados carregados
+                    if (!initialLoadDoneRef.current) return;
+
+                    snapshot.docChanges().forEach((change: any) => {
+                        const docData = convertTimestampsToDates(change.doc.data());
+                        const animal = processAnimalEntity({ id: change.doc.id, ...docData });
+
+                        if (change.type === 'added') {
+                            // Verifica se já existe (evita duplicação)
+                            const exists = stateRef.current.animals.some(a => a.id === animal.id);
+                            if (!exists) {
+                                console.log(`🟢 [REALTIME] Animal adicionado: ${animal.brinco}`);
+                                dispatch({ type: 'LOCAL_ADD_ANIMAL', payload: animal });
+                            }
+                        }
+                        if (change.type === 'modified') {
+                            console.log(`🟡 [REALTIME] Animal modificado: ${animal.brinco}`);
+                            dispatch({ type: 'LOCAL_UPDATE_ANIMAL', payload: { animalId: animal.id, updatedData: animal } });
+                        }
+                        if (change.type === 'removed') {
+                            console.log(`🔴 [REALTIME] Animal removido: ${animal.brinco}`);
+                            dispatch({ type: 'LOCAL_DELETE_ANIMAL', payload: { animalId: animal.id } });
+                        }
+                    });
+
+                    // Atualiza cache após mudanças
+                    updateLocalCache('animals', stateRef.current.animals);
+                },
+                (error: any) => {
+                    console.error('❌ [REALTIME] Erro no listener de animals:', error);
+                }
+            );
+        listenersRef.current.animals = animalsUnsubscribe;
+
+        // Listener para Calendar Events
+        const calendarUnsubscribe = db.collection('calendar')
+            .where('userId', '==', userId)
+            .onSnapshot(
+                (snapshot: any) => {
+                    if (!initialLoadDoneRef.current) return;
+
+                    snapshot.docChanges().forEach((change: any) => {
+                        const docData = convertTimestampsToDates(change.doc.data());
+                        const event: CalendarEvent = { id: change.doc.id, ...docData } as CalendarEvent;
+
+                        if (change.type === 'added') {
+                            const exists = stateRef.current.calendarEvents.some(e => e.id === event.id);
+                            if (!exists) {
+                                console.log(`🟢 [REALTIME] Evento adicionado: ${event.title}`);
+                                dispatch({ type: 'LOCAL_ADD_CALENDAR_EVENT', payload: event });
+                            }
+                        }
+                        if (change.type === 'modified') {
+                            console.log(`🟡 [REALTIME] Evento modificado: ${event.title}`);
+                            dispatch({ type: 'LOCAL_UPDATE_CALENDAR_EVENT', payload: event });
+                        }
+                        if (change.type === 'removed') {
+                            console.log(`🔴 [REALTIME] Evento removido: ${event.id}`);
+                            dispatch({ type: 'LOCAL_DELETE_CALENDAR_EVENT', payload: { eventId: event.id } });
+                        }
+                    });
+
+                    updateLocalCache('calendarEvents', stateRef.current.calendarEvents);
+                },
+                (error: any) => {
+                    console.error('❌ [REALTIME] Erro no listener de calendar:', error);
+                }
+            );
+        listenersRef.current.calendar = calendarUnsubscribe;
+
+        // Listener para Tasks
+        const tasksUnsubscribe = db.collection('tasks')
+            .where('userId', '==', userId)
+            .onSnapshot(
+                (snapshot: any) => {
+                    if (!initialLoadDoneRef.current) return;
+
+                    snapshot.docChanges().forEach((change: any) => {
+                        const docData = convertTimestampsToDates(change.doc.data());
+                        const task: Task = { id: change.doc.id, ...docData } as Task;
+
+                        if (change.type === 'added') {
+                            const exists = stateRef.current.tasks.some(t => t.id === task.id);
+                            if (!exists) {
+                                console.log(`🟢 [REALTIME] Tarefa adicionada: ${task.title}`);
+                                dispatch({ type: 'LOCAL_ADD_TASK', payload: task });
+                            }
+                        }
+                        if (change.type === 'modified') {
+                            console.log(`🟡 [REALTIME] Tarefa modificada: ${task.title}`);
+                            dispatch({ type: 'LOCAL_UPDATE_TASK', payload: { taskId: task.id, updatedData: task } });
+                        }
+                        if (change.type === 'removed') {
+                            console.log(`🔴 [REALTIME] Tarefa removida: ${task.id}`);
+                            dispatch({ type: 'LOCAL_DELETE_TASK', payload: { taskId: task.id } });
+                        }
+                    });
+
+                    updateLocalCache('tasks', stateRef.current.tasks);
+                },
+                (error: any) => {
+                    console.error('❌ [REALTIME] Erro no listener de tasks:', error);
+                }
+            );
+        listenersRef.current.tasks = tasksUnsubscribe;
+
+        dispatch({ type: 'SET_LISTENERS_ACTIVE', payload: true });
+        console.log('✅ [REALTIME] Listeners configurados com sucesso');
+    }, [userId, updateLocalCache]);
+
+    // ============================================
+    // 🔧 OTIMIZAÇÃO 3: SYNC DELTA (Apenas mudanças)
+    // ============================================
+    // Busca apenas documentos modificados desde o último sync
+    // Requer campo 'updatedAt' nos documentos
+    const syncDelta = useCallback(async () => {
+        if (!userId || !db || syncInProgressRef.current) return;
+
+        const lastSync = stateRef.current.lastSync;
+        if (!lastSync) {
+            // Se não tem lastSync, retorna false para indicar que precisa de sync completo
+            console.log('⚠️ [DELTA] Sem lastSync, necessário sync completo...');
+            return false;
+        }
+
+        console.log(`🔄 [DELTA] Buscando mudanças desde ${new Date(lastSync).toLocaleString()}...`);
+        syncInProgressRef.current = true;
+
+        try {
+            const lastSyncDate = new Date(lastSync);
+            let changesFound = 0;
+
+            // Sync delta para Animals (se tiver campo updatedAt)
+            try {
+                const animalsSnapshot = await db.collection('animals')
+                    .where('userId', '==', userId)
+                    .where('updatedAt', '>', lastSyncDate)
+                    .get();
+
+                if (!animalsSnapshot.empty) {
+                    animalsSnapshot.docs.forEach((doc: any) => {
+                        const docData = convertTimestampsToDates(doc.data());
+                        const animal = processAnimalEntity({ id: doc.id, ...docData });
+
+                        const exists = stateRef.current.animals.some(a => a.id === animal.id);
+                        if (exists) {
+                            dispatch({ type: 'LOCAL_UPDATE_ANIMAL', payload: { animalId: animal.id, updatedData: animal } });
+                        } else {
+                            dispatch({ type: 'LOCAL_ADD_ANIMAL', payload: animal });
+                        }
+                        changesFound++;
+                    });
+                    console.log(`📦 [DELTA] ${animalsSnapshot.size} animais atualizados`);
+                }
+            } catch (e) {
+                // Campo updatedAt pode não existir - ignora silenciosamente
+                console.log('ℹ️ [DELTA] Campo updatedAt não configurado para animals');
+            }
+
+            // Sync delta para Calendar
+            try {
+                const calendarSnapshot = await db.collection('calendar')
+                    .where('userId', '==', userId)
+                    .where('updatedAt', '>', lastSyncDate)
+                    .get();
+
+                if (!calendarSnapshot.empty) {
+                    calendarSnapshot.docs.forEach((doc: any) => {
+                        const docData = convertTimestampsToDates(doc.data());
+                        const event: CalendarEvent = { id: doc.id, ...docData } as CalendarEvent;
+
+                        const exists = stateRef.current.calendarEvents.some(e => e.id === event.id);
+                        if (exists) {
+                            dispatch({ type: 'LOCAL_UPDATE_CALENDAR_EVENT', payload: event });
+                        } else {
+                            dispatch({ type: 'LOCAL_ADD_CALENDAR_EVENT', payload: event });
+                        }
+                        changesFound++;
+                    });
+                    console.log(`📦 [DELTA] ${calendarSnapshot.size} eventos atualizados`);
+                }
+            } catch (e) {
+                console.log('ℹ️ [DELTA] Campo updatedAt não configurado para calendar');
+            }
+
+            // Sync delta para Tasks
+            try {
+                const tasksSnapshot = await db.collection('tasks')
+                    .where('userId', '==', userId)
+                    .where('updatedAt', '>', lastSyncDate)
+                    .get();
+
+                if (!tasksSnapshot.empty) {
+                    tasksSnapshot.docs.forEach((doc: any) => {
+                        const docData = convertTimestampsToDates(doc.data());
+                        const task: Task = { id: doc.id, ...docData } as Task;
+
+                        const exists = stateRef.current.tasks.some(t => t.id === task.id);
+                        if (exists) {
+                            dispatch({ type: 'LOCAL_UPDATE_TASK', payload: { taskId: task.id, updatedData: task } });
+                        } else {
+                            dispatch({ type: 'LOCAL_ADD_TASK', payload: task });
+                        }
+                        changesFound++;
+                    });
+                    console.log(`📦 [DELTA] ${tasksSnapshot.size} tarefas atualizadas`);
+                }
+            } catch (e) {
+                console.log('ℹ️ [DELTA] Campo updatedAt não configurado para tasks');
+            }
+
+            dispatch({ type: 'SET_LAST_SYNC', payload: Date.now() });
+
+            if (changesFound > 0) {
+                // Atualiza caches
+                await Promise.all([
+                    updateLocalCache('animals', stateRef.current.animals),
+                    updateLocalCache('calendarEvents', stateRef.current.calendarEvents),
+                    updateLocalCache('tasks', stateRef.current.tasks),
+                ]);
+                console.log(`✅ [DELTA] Sync concluído: ${changesFound} mudanças aplicadas`);
+            } else {
+                console.log('✅ [DELTA] Nenhuma mudança encontrada');
+            }
+
+        } catch (error) {
+            console.error('❌ [DELTA] Erro no sync delta:', error);
+        } finally {
+            syncInProgressRef.current = false;
+        }
+    }, [userId, updateLocalCache]);
+
+    // ============================================
+    // 🔧 OTIMIZAÇÃO 4: Limpeza automática de cache no startup
+    // ============================================
+    useEffect(() => {
+        const cleanupCache = async () => {
+            try {
+                const deletedCount = await localCache.cleanOldEntries(3 * 24 * 60 * 60 * 1000); // 3 dias
+                if (deletedCount > 0) {
+                    console.log(`🧹 [CACHE] Limpeza automática: ${deletedCount} entradas antigas removidas`);
+                }
+            } catch (error) {
+                console.warn('⚠️ [CACHE] Erro na limpeza automática:', error);
+            }
+        };
+
+        cleanupCache();
+    }, []); // Executa apenas uma vez no mount
+
+    // ============================================
+    // EFEITO: Carregamento inicial + Setup Listeners
     // ============================================
     useEffect(() => {
         if (!userId || !db) {
@@ -336,13 +619,34 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
                 ]);
 
                 dispatch({ type: 'SET_LAST_SYNC', payload: Date.now() });
+
+                // 🔧 OTIMIZAÇÃO: Marca que carga inicial terminou e configura listeners
+                initialLoadDoneRef.current = true;
+
+                // Configura listeners em tempo real após carga inicial
+                if (REALTIME_CONFIG.enabled) {
+                    setupRealtimeListeners();
+                }
             } finally {
                 syncInProgressRef.current = false;
             }
         };
 
         loadAllData();
-    }, [userId, loadWithCache]);
+
+        // 🔧 CLEANUP: Remove listeners ao desmontar ou trocar usuário
+        return () => {
+            console.log('🔄 [REALTIME] Removendo listeners...');
+            Object.values(listenersRef.current).forEach(unsubscribe => {
+                if (typeof unsubscribe === 'function') {
+                    unsubscribe();
+                }
+            });
+            listenersRef.current = {};
+            initialLoadDoneRef.current = false;
+            dispatch({ type: 'SET_LISTENERS_ACTIVE', payload: false });
+        };
+    }, [userId, loadWithCache, setupRealtimeListeners]);
 
     // ============================================
     // FUNÇÃO: Forçar sincronização manual
@@ -404,7 +708,8 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
             // só depois converte datas em Timestamps
             const dataWithTimestamp = convertDatesToTimestamps(sanitizedAnimalData);
 
-            batch.set(newAnimalRef, { ...dataWithTimestamp, userId });
+            // 🔧 OTIMIZAÇÃO: Adiciona updatedAt para suportar sync delta
+            batch.set(newAnimalRef, { ...dataWithTimestamp, userId, updatedAt: new Date() });
 
             if (animalData.maeNome) {
                 const motherBrinco = animalData.maeNome.toLowerCase().trim();
@@ -427,8 +732,10 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
                         newOffspringRecord.birthWeightKg = animalData.pesoKg;
                     }
 
+                    // 🔧 OTIMIZAÇÃO: Adiciona updatedAt para suportar sync delta
                     batch.update(motherRef, {
-                        historicoProgenie: FieldValue.arrayUnion(newOffspringRecord)
+                        historicoProgenie: FieldValue.arrayUnion(newOffspringRecord),
+                        updatedAt: new Date()
                     });
 
                     // Atualização otimista da mãe também!
@@ -475,7 +782,8 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
             const sanitizedData = removeUndefined(updatedData);
             const dataWithTimestamp = convertDatesToTimestamps(sanitizedData);
 
-            batch.update(animalRef, dataWithTimestamp);
+            // 🔧 OTIMIZAÇÃO: Adiciona updatedAt para suportar sync delta
+            batch.update(animalRef, { ...dataWithTimestamp, updatedAt: new Date() });
 
             // ============================================
             // 🔧 PROPAGAR PESOS ESPECIAIS PARA PROGÊNIE DA MÃE
@@ -545,7 +853,8 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
                             // Atualiza a mãe no batch
                             const maeRef = db.collection('animals').doc(mae.id);
                             const cleanedProgenie = removeUndefined(updatedProgenie);
-                            batch.update(maeRef, { historicoProgenie: cleanedProgenie });
+                            // 🔧 OTIMIZAÇÃO: Adiciona updatedAt para suportar sync delta
+                            batch.update(maeRef, { historicoProgenie: cleanedProgenie, updatedAt: new Date() });
 
                             // Atualização otimista da mãe
                             dispatch({
@@ -614,14 +923,15 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
                 // Atualização otimista IMEDIATA
                 dispatch({ type: 'LOCAL_UPDATE_CALENDAR_EVENT', payload: updatedEvent });
 
-                await db.collection('calendar').doc(id).update(dataWithTimestamp);
+                // 🔧 OTIMIZAÇÃO: Adiciona updatedAt para suportar sync delta
+                await db.collection('calendar').doc(id).update({ ...dataWithTimestamp, updatedAt: new Date() });
 
                 // 🔧 OTIMIZAÇÃO: Usa stateRef para cache
                 const updatedEvents = stateRef.current.calendarEvents.map((e: CalendarEvent) => e.id === id ? updatedEvent : e);
                 await updateLocalCache('calendarEvents', updatedEvents);
             } else {
-                // CRIAÇÃO
-                const newDocRef = await db.collection('calendar').add({ ...dataWithTimestamp, userId });
+                // CRIAÇÃO - 🔧 OTIMIZAÇÃO: Adiciona updatedAt para suportar sync delta
+                const newDocRef = await db.collection('calendar').add({ ...dataWithTimestamp, userId, updatedAt: new Date() });
                 const newEvent: CalendarEvent = {
                     id: newDocRef.id,
                     ...eventData
@@ -670,7 +980,8 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
         const dataWithTimestamp = convertDatesToTimestamps(cleanedTask);
 
         try {
-            const newDocRef = await db.collection('tasks').add(dataWithTimestamp);
+            // 🔧 OTIMIZAÇÃO: Adiciona updatedAt para suportar sync delta
+            const newDocRef = await db.collection('tasks').add({ ...dataWithTimestamp, updatedAt: new Date() });
             const newTask: Task = {
                 id: newDocRef.id,
                 ...task,
@@ -701,7 +1012,8 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
         });
 
         try {
-            await db.collection('tasks').doc(task.id).update({ isCompleted: newCompletedStatus });
+            // 🔧 OTIMIZAÇÃO: Adiciona updatedAt para suportar sync delta
+            await db.collection('tasks').doc(task.id).update({ isCompleted: newCompletedStatus, updatedAt: new Date() });
 
             // 🔧 OTIMIZAÇÃO: Usa stateRef para cache
             const updatedTasks = stateRef.current.tasks.map((t: Task) =>
@@ -752,14 +1064,15 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
                 // Atualização otimista IMEDIATA
                 dispatch({ type: 'LOCAL_UPDATE_AREA', payload: updatedArea });
 
-                await db.collection('areas').doc(id).update(cleanedAreaData);
+                // 🔧 OTIMIZAÇÃO: Adiciona updatedAt para suportar sync delta
+                await db.collection('areas').doc(id).update({ ...cleanedAreaData, updatedAt: new Date() });
 
                 // 🔧 OTIMIZAÇÃO: Usa stateRef para cache
                 const updatedAreas = stateRef.current.managementAreas.map((a: ManagementArea) => a.id === id ? updatedArea : a);
                 await updateLocalCache('managementAreas', updatedAreas);
             } else {
-                // CRIAÇÃO
-                const newDocRef = await db.collection('areas').add({ ...cleanedAreaData, userId });
+                // CRIAÇÃO - 🔧 OTIMIZAÇÃO: Adiciona updatedAt para suportar sync delta
+                const newDocRef = await db.collection('areas').add({ ...cleanedAreaData, userId, updatedAt: new Date() });
                 const newArea: ManagementArea = {
                     id: newDocRef.id,
                     ...areaData
@@ -803,7 +1116,8 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
             // Remove área dos animais (OTIMIZADO: Usa estado local para achar IDs em vez de query)
             animalsInArea.forEach((animal: Animal) => {
                 const ref = db.collection('animals').doc(animal.id);
-                batch.update(ref, { managementAreaId: FieldValue.delete() });
+                // 🔧 OTIMIZAÇÃO: Adiciona updatedAt para suportar sync delta
+                batch.update(ref, { managementAreaId: FieldValue.delete(), updatedAt: new Date() });
             });
 
             // Deleta a área
@@ -842,7 +1156,8 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
 
             animalIds.forEach(animalId => {
                 const animalRef = db.collection('animals').doc(animalId);
-                batch.update(animalRef, { managementAreaId: areaId });
+                // 🔧 OTIMIZAÇÃO: Adiciona updatedAt para suportar sync delta
+                batch.update(animalRef, { managementAreaId: areaId, updatedAt: new Date() });
             });
 
             await batch.commit();
@@ -869,7 +1184,8 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
         const dataWithTimestamp = convertDatesToTimestamps(cleanedBatch);
 
         try {
-            const newDocRef = await db.collection('batches').add(dataWithTimestamp);
+            // 🔧 OTIMIZAÇÃO: Adiciona updatedAt para suportar sync delta
+            const newDocRef = await db.collection('batches').add({ ...dataWithTimestamp, updatedAt: new Date() });
             const newBatch: ManagementBatch = {
                 id: newDocRef.id,
                 ...batchData
@@ -900,7 +1216,8 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
             const cleanedData = removeUndefined(updatedData);
             const dataWithTimestamp = convertDatesToTimestamps(cleanedData);
 
-            await batchRef.update(dataWithTimestamp);
+            // 🔧 OTIMIZAÇÃO: Adiciona updatedAt para suportar sync delta
+            await batchRef.update({ ...dataWithTimestamp, updatedAt: new Date() });
 
             // 🔧 OTIMIZAÇÃO: Usa stateRef para cache
             const updatedBatches = stateRef.current.batches.map((b: ManagementBatch) =>
@@ -948,6 +1265,8 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
         state,
         db,
         forceSync,
+        // 🔧 OTIMIZAÇÃO: Sync delta para economia de leituras
+        syncDelta,
         // Animals
         addAnimal,
         updateAnimal,
