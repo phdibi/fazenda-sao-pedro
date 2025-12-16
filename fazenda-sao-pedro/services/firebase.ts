@@ -38,6 +38,10 @@ try {
     db = globalFirebase.firestore();
     storage = globalFirebase.storage();
     googleProvider = new globalFirebase.auth.GoogleAuthProvider();
+    // Force account selection prompt
+    googleProvider.setCustomParameters({
+      prompt: 'select_account'
+    });
     Timestamp = globalFirebase.firestore.Timestamp;
     FieldValue = globalFirebase.firestore.FieldValue;
   } else {
