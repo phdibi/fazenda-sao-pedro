@@ -168,23 +168,21 @@ const RootComponent = () => {
         return;
     }
 
-    // --- 3. Verifica se há resultado de redirect pendente ---
-    // Isso é necessário quando o usuário retorna após o login com Google
-    auth.getRedirectResult().then((result: any) => {
-      if (result && result.user) {
-        console.log("Login via redirect bem-sucedido:", result.user.email);
-      }
-    }).catch((error: any) => {
-      if (isMounted) {
-        console.error("Erro ao processar redirect:", error);
-        if (error.code === 'auth/operation-not-allowed') {
-          setError("Login com Google não está ativado. Ative-o no Console do Firebase.");
-        } else if (error.code !== 'auth/popup-closed-by-user') {
-          setError("Falha no login. Tente novamente.");
+    // --- 3. Processa resultado de redirect (se houver) ---
+    // Isso é chamado quando o usuário retorna de um login via redirect
+    auth.getRedirectResult()
+      .then((result: any) => {
+        // O resultado será processado pelo onAuthStateChanged
+        if (result?.user) {
+          console.log("Redirect login processado:", result.user.email);
         }
-        setLoading(false);
-      }
-    });
+      })
+      .catch((error: any) => {
+        // Ignora erros de "no redirect" - isso é normal
+        if (error.code !== 'auth/null-user') {
+          console.error("Erro no redirect:", error);
+        }
+      });
 
     // --- 4. Monitora mudanças no estado de autenticação ---
     const unsubscribe = auth.onAuthStateChanged((firebaseUser: any) => {
@@ -211,14 +209,31 @@ const RootComponent = () => {
     };
   }, []);
 
-  // ✅ USA REDIRECT (mais confiável que popup)
-  // O método popup pode falhar devido a políticas de Cross-Origin-Opener-Policy
-  // que bloqueiam o acesso a window.closed, causando o erro "Cannot access 'm' before initialization"
+  // ✅ USA POPUP com tratamento de erro robusto
+  // Se o popup falhar por COOP, tentamos redirect como fallback
   const handleGoogleLogin = async () => {
       if (!auth || !googleProvider) {
           throw new Error("Autenticação não inicializada.");
       }
-      await auth.signInWithRedirect(googleProvider);
+
+      try {
+          // Tenta popup primeiro (melhor UX)
+          await auth.signInWithPopup(googleProvider);
+      } catch (popupError: any) {
+          console.warn("Popup falhou, tentando redirect:", popupError.code);
+
+          // Se o popup foi bloqueado ou falhou por COOP, usa redirect
+          if (popupError.code === 'auth/popup-blocked' ||
+              popupError.code === 'auth/popup-closed-by-user' ||
+              popupError.message?.includes('Cross-Origin') ||
+              popupError.message?.includes("Cannot access")) {
+              // Redirect como fallback
+              await auth.signInWithRedirect(googleProvider);
+          } else {
+              // Re-throw outros erros
+              throw popupError;
+          }
+      }
   };
 
   // --- RENDERIZAÇÃO ---
