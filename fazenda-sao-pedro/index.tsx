@@ -8,6 +8,32 @@ import { firebaseServices, ensureFirebaseReady } from './services/firebase';
 import Spinner from './components/common/Spinner';
 import ErrorBoundary from './components/ErrorBoundary';
 
+// ============================================
+// HANDLER GLOBAL PARA ERROS DO FIREBASE POPUP
+// ============================================
+// O Firebase Auth tem um bug onde erros de popup/COOP causam
+// "Cannot access 'X' before initialization" que não podem ser
+// capturados por try/catch. Este handler global ignora esses erros.
+window.addEventListener('error', (event) => {
+  const msg = event.message || '';
+  // Ignora erros de TDZ do Firebase popup
+  if (msg.includes("Cannot access") && msg.includes("before initialization")) {
+    console.warn('[Firebase Popup Bug] Erro ignorado:', msg);
+    event.preventDefault();
+    return false;
+  }
+});
+
+window.addEventListener('unhandledrejection', (event) => {
+  const msg = event.reason?.message || String(event.reason) || '';
+  // Ignora erros de TDZ do Firebase popup
+  if (msg.includes("Cannot access") && msg.includes("before initialization")) {
+    console.warn('[Firebase Popup Bug] Promise rejection ignorada:', msg);
+    event.preventDefault();
+    return false;
+  }
+});
+
 
 // --- GOOGLE AUTHENTICATION ---
 // O sistema de autenticação anônima foi substituído por "Login com Google".
@@ -234,7 +260,7 @@ const RootComponent = () => {
     };
   }, []);
 
-  // ✅ USA POPUP com fallback para REDIRECT
+  // ✅ USA APENAS REDIRECT (popup não funciona no Vercel por causa do COOP)
   const handleGoogleLogin = async () => {
       // Garante que Firebase está pronto antes de tentar login
       await ensureFirebaseReady();
@@ -247,21 +273,9 @@ const RootComponent = () => {
           throw new Error("Autenticação não inicializada. Verifique a configuração do Firebase.");
       }
 
-      try {
-          // Tenta popup primeiro (melhor UX)
-          await auth.signInWithPopup(googleProvider);
-      } catch (error: any) {
-          console.warn("Popup falhou:", error?.code || error?.message || error);
-
-          // Se falhou por qualquer motivo, tenta redirect
-          // Isso inclui: popup bloqueado, COOP, erros de inicialização, etc.
-          try {
-              await auth.signInWithRedirect(googleProvider);
-          } catch (redirectError) {
-              console.error("Redirect também falhou:", redirectError);
-              throw redirectError;
-          }
-      }
+      // Usa APENAS signInWithRedirect - popup tem bug com COOP no Vercel
+      // O usuário será redirecionado para o Google e voltará automaticamente
+      await auth.signInWithRedirect(googleProvider);
   };
 
   // --- RENDERIZAÇÃO ---
