@@ -62,6 +62,15 @@ try {
 // Re-export the global object under the name 'firebase'.
 const firebase = globalFirebase;
 
+// Helper object to match the imports expected by other files (e.g., App.tsx)
+const firebaseServices = {
+    get auth() { return auth; },
+    get db() { return db; },
+    get storage() { return storage; },
+    get Timestamp() { return Timestamp; },
+    get FieldValue() { return FieldValue; }
+};
+
 // Export everything for use throughout the app.
 // If initialization failed, some of these will be null.
 export {
@@ -71,5 +80,6 @@ export {
     storage,
     googleProvider,
     Timestamp,
-    FieldValue
+    FieldValue,
+    firebaseServices
 };
