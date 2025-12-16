@@ -6,7 +6,7 @@
 // - Network First: Para APIs e dados dinâmicos
 // - Stale While Revalidate: Para dados que podem ficar desatualizados
 
-const CACHE_VERSION = 'v6';
+const CACHE_VERSION = 'v7';
 const STATIC_CACHE = `fazenda-static-${CACHE_VERSION}`;
 const DYNAMIC_CACHE = `fazenda-dynamic-${CACHE_VERSION}`;
 const IMAGE_CACHE = `fazenda-images-${CACHE_VERSION}`;
@@ -160,6 +160,13 @@ self.addEventListener('fetch', (event) => {
     // Usa "includes" para cobrir apps hospedados em subpaths (ex: /app/__/auth/handler).
     // O caminho /__/auth/handler precisa ser carregado da rede para concluir o login.
     if (url.pathname.includes('/__/auth/')) {
+        return;
+    }
+
+    // Bypass para a navegação de retorno do OAuth (ex: /?state=...&code=...)
+    // O Firebase Auth depende desses parâmetros na URL para concluir o login via redirect.
+    // Qualquer interceptação pode descartar os params e "resetar" a tela de login.
+    if (request.mode === 'navigate' && url.searchParams.has('state') && url.searchParams.has('code')) {
         return;
     }
 
