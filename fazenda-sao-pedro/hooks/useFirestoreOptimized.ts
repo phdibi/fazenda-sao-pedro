@@ -264,7 +264,7 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
     // Getters dinâmicos para Firebase services
     const db = firebaseServices.db;
     const FieldValue = firebaseServices.FieldValue;
-    
+
     // 🔧 OTIMIZAÇÃO: Ref para acessar estado atual sem causar re-renders nos callbacks
     // Isso evita que callbacks sejam recriados quando o estado muda
     const stateRef = useRef(state);
@@ -378,6 +378,17 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
     }, [userId]);
 
     // ============================================
+    // FUNÇÃO: Atualizar cache local
+    // ============================================
+    // IMPORTANTE: Esta função deve estar definida ANTES de loadMoreAnimals
+    // para evitar erro "Cannot access 'updateLocalCache' before initialization"
+    const updateLocalCache = useCallback(async (collectionName: string, data: any[]) => {
+        if (!userId) return;
+        const cacheKey = `${userId}_${collectionName}`;
+        await localCache.set(cacheKey, data);
+    }, [userId]);
+
+    // ============================================
     // 🔧 OTIMIZAÇÃO 5: CARREGAR MAIS ANIMAIS (PAGINAÇÃO)
     // ============================================
     const loadMoreAnimals = useCallback(async () => {
@@ -467,14 +478,6 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
         };
     };
 
-    // ============================================
-    // FUNÇÃO: Atualizar cache local
-    // ============================================
-    const updateLocalCache = useCallback(async (collectionName: string, data: any[]) => {
-        if (!userId) return;
-        const cacheKey = `${userId}_${collectionName}`;
-        await localCache.set(cacheKey, data);
-    }, [userId]);
 
     // ============================================
     // 🔧 OTIMIZAÇÃO 1: LISTENERS EM TEMPO REAL

@@ -260,7 +260,8 @@ const RootComponent = () => {
     };
   }, []);
 
-  // ✅ USA APENAS REDIRECT (popup não funciona no Vercel por causa do COOP)
+  // ✅ USA POPUP em localhost, REDIRECT em produção
+  // Redirect requer domínio autorizado no Firebase; popup funciona sempre
   const handleGoogleLogin = async () => {
       // Garante que Firebase está pronto antes de tentar login
       await ensureFirebaseReady();
@@ -273,9 +274,18 @@ const RootComponent = () => {
           throw new Error("Autenticação não inicializada. Verifique a configuração do Firebase.");
       }
 
-      // Usa APENAS signInWithRedirect - popup tem bug com COOP no Vercel
-      // O usuário será redirecionado para o Google e voltará automaticamente
-      await auth.signInWithRedirect(googleProvider);
+      // Em localhost usa popup (não precisa de domínio autorizado)
+      // Em produção usa redirect (mais confiável com COOP)
+      const isLocalhost = window.location.hostname === 'localhost' || 
+                          window.location.hostname === '127.0.0.1';
+
+      if (isLocalhost) {
+          // Popup funciona em localhost sem precisar autorizar domínio
+          await auth.signInWithPopup(googleProvider);
+      } else {
+          // Redirect é mais confiável em produção (Vercel tem COOP)
+          await auth.signInWithRedirect(googleProvider);
+      }
   };
 
   // --- RENDERIZAÇÃO ---
