@@ -78,12 +78,6 @@
     </script>
     <!-- ================================================================== -->
     
-  <!-- Load Firebase via traditional script tags to ensure it's globally available -->
-  <!-- Usando versão 10.14.1 que corrige o bug "Cannot access 'm' before initialization" -->
-  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-storage-compat.js"></script>
 <style>
     @media print {
       body * {
@@ -121,18 +115,75 @@
 </head>
   <body class="bg-base-900 text-base-100">
     <div id="root"></div>
+
+    <!-- Load Firebase SYNCHRONOUSLY before app code -->
+    <!-- Usando versão 10.14.1 que corrige o bug "Cannot access 'm' before initialization" -->
+    <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-storage-compat.js"></script>
+
+    <!-- Wait a tick for Firebase to fully initialize -->
+    <script>
+      window.__FIREBASE_READY__ = new Promise(resolve => {
+        // Wait for next event loop tick to ensure Firebase is fully initialized
+        setTimeout(() => {
+          if (window.firebase) {
+            console.log('✅ Firebase pronto para uso');
+            resolve(true);
+          } else {
+            console.error('❌ Firebase não carregado');
+            resolve(false);
+          }
+        }, 0);
+      });
+    </script>
+
     <script type="module" src="./index.tsx"></script>
       <script>
-  // Registra o Service Worker
+  // TEMPORARIAMENTE DESABILITADO para debug
+  // TODO: Reabilitar após resolver o erro 'm'
+  /*
+  // Registra o Service Worker com atualização forçada
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
       navigator.serviceWorker.register('/sw.js')
         .then((registration) => {
           console.log('✅ Service Worker registrado:', registration.scope);
+
+          // Força atualização quando há nova versão
+          registration.addEventListener('updatefound', () => {
+            const newWorker = registration.installing;
+            console.log('🔄 Nova versão do Service Worker encontrada');
+
+            newWorker.addEventListener('statechange', () => {
+              if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                console.log('✨ Nova versão instalada! Recarregando...');
+                // Força reload para usar nova versão
+                window.location.reload();
+              }
+            });
+          });
+
+          // Verifica atualizações a cada 60 segundos
+          setInterval(() => {
+            registration.update();
+          }, 60000);
         })
         .catch((error) => {
           console.log('❌ Falha ao registrar Service Worker:', error);
         });
+    });
+  }
+  */
+
+  // Desregistra Service Workers existentes para debug
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.getRegistrations().then(registrations => {
+      registrations.forEach(registration => {
+        registration.unregister();
+        console.log('🧹 Service Worker removido para debug');
+      });
     });
   }
 </script>
