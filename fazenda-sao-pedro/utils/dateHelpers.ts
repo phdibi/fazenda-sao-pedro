@@ -12,7 +12,10 @@ import { Timestamp } from '../services/firebase';
 export const convertTimestampsToDates = (data: any): any => {
     if (!data) return data;
     if (Array.isArray(data)) return data.map(item => convertTimestampsToDates(item));
-    if (data instanceof Timestamp) return data.toDate();
+    // Verifica se é um Timestamp do Firestore (pode ser null antes da inicialização)
+    if (Timestamp && data instanceof Timestamp) return data.toDate();
+    // Fallback: verifica se tem o método toDate (duck typing)
+    if (data && typeof data.toDate === 'function') return data.toDate();
     if (typeof data === 'object' && data !== null) {
         const converted = { ...data };
         for (const key in converted) {
@@ -30,7 +33,14 @@ export const convertTimestampsToDates = (data: any): any => {
 export const convertDatesToTimestamps = (data: any): any => {
     if (!data) return data;
     if (Array.isArray(data)) return data.map(item => convertDatesToTimestamps(item));
-    if (data instanceof Date) return Timestamp.fromDate(data);
+    // Verifica se Timestamp está disponível antes de usar
+    if (data instanceof Date) {
+        if (Timestamp && typeof Timestamp.fromDate === 'function') {
+            return Timestamp.fromDate(data);
+        }
+        // Fallback: retorna a Date como está (será convertida posteriormente)
+        return data;
+    }
     if (typeof data === 'object' && data !== null) {
         const converted = { ...data };
         for (const key in converted) {
