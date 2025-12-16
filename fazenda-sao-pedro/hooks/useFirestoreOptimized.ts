@@ -35,14 +35,26 @@ interface FirestoreState {
     lastSync: number | null;
     // 🔧 OTIMIZAÇÃO: Controle de listeners em tempo real
     listenersActive: boolean;
+    // 🔧 OTIMIZAÇÃO: Paginação com cursor
+    pagination: {
+        animals: {
+            hasMore: boolean;
+            lastDoc: any | null;
+            isLoadingMore: boolean;
+        };
+    };
 }
 
 type FirestoreAction =
-    | { type: 'SET_DATA'; payload: { collection: keyof Omit<FirestoreState, 'loading' | 'error' | 'lastSync' | 'listenersActive'>; data: any[] } }
+    | { type: 'SET_DATA'; payload: { collection: keyof Omit<FirestoreState, 'loading' | 'error' | 'lastSync' | 'listenersActive' | 'pagination'>; data: any[] } }
     | { type: 'SET_LOADING_STATUS'; payload: { collection: keyof FirestoreState['loading']; status: boolean } }
     | { type: 'SET_ERROR'; payload: string }
     | { type: 'SET_LAST_SYNC'; payload: number }
     | { type: 'SET_LISTENERS_ACTIVE'; payload: boolean }
+    // 🔧 OTIMIZAÇÃO: Paginação
+    | { type: 'SET_PAGINATION'; payload: { collection: 'animals'; hasMore: boolean; lastDoc: any | null } }
+    | { type: 'SET_LOADING_MORE'; payload: { collection: 'animals'; isLoading: boolean } }
+    | { type: 'APPEND_DATA'; payload: { collection: 'animals'; data: Animal[] } }
     // Animals
     | { type: 'LOCAL_ADD_ANIMAL'; payload: Animal }
     | { type: 'LOCAL_UPDATE_ANIMAL'; payload: { animalId: string; updatedData: Partial<Animal> } }
@@ -74,6 +86,14 @@ const initialState: FirestoreState = {
     error: null,
     lastSync: null,
     listenersActive: false,
+    // 🔧 OTIMIZAÇÃO: Estado inicial de paginação
+    pagination: {
+        animals: {
+            hasMore: false,
+            lastDoc: null,
+            isLoadingMore: false,
+        },
+    },
 };
 
 const firestoreReducer = (state: FirestoreState, action: FirestoreAction): FirestoreState => {
@@ -88,6 +108,38 @@ const firestoreReducer = (state: FirestoreState, action: FirestoreAction): Fires
             return { ...state, lastSync: action.payload };
         case 'SET_LISTENERS_ACTIVE':
             return { ...state, listenersActive: action.payload };
+
+        // ============================================
+        // 🔧 OTIMIZAÇÃO: PAGINAÇÃO
+        // ============================================
+        case 'SET_PAGINATION':
+            return {
+                ...state,
+                pagination: {
+                    ...state.pagination,
+                    [action.payload.collection]: {
+                        ...state.pagination[action.payload.collection],
+                        hasMore: action.payload.hasMore,
+                        lastDoc: action.payload.lastDoc,
+                    },
+                },
+            };
+        case 'SET_LOADING_MORE':
+            return {
+                ...state,
+                pagination: {
+                    ...state.pagination,
+                    [action.payload.collection]: {
+                        ...state.pagination[action.payload.collection],
+                        isLoadingMore: action.payload.isLoading,
+                    },
+                },
+            };
+        case 'APPEND_DATA':
+            return {
+                ...state,
+                animals: [...state.animals, ...action.payload.data],
+            };
 
         // ============================================
         // ANIMALS
@@ -223,6 +275,9 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
     // ============================================
     // FUNÇÃO: Carregar dados com cache
     // ============================================
+    // 🔧 OTIMIZAÇÃO: Ref para armazenar lastDoc do cursor de paginação
+    const lastDocRef = useRef<any>(null);
+
     const loadWithCache = useCallback(async <T extends { id: string }>(
         collectionName: string,
         firestorePath: string,
@@ -234,23 +289,37 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
 
         const cacheKey = `${userId}_${collectionName}`;
 
-        // Função para buscar do Firestore
-        const fetchFromFirestore = async (): Promise<T[]> => {
+        // 🔧 OTIMIZAÇÃO: Função para buscar do Firestore com suporte a paginação
+        const fetchFromFirestore = async (): Promise<{ data: T[]; lastDoc: any | null; hasMore: boolean }> => {
             console.log(`🔥 [FIRESTORE] Buscando ${collectionName}...`);
-            let query: any = db.collection(firestorePath).where("userId", "==", userId);
+            let query: any = db.collection(firestorePath)
+                .where("userId", "==", userId);
+
+            // 🔧 OTIMIZAÇÃO: Apenas animals usa paginação com cursor (tem orderBy)
+            const isPaginated = collectionName === 'animals' && limit;
+            if (isPaginated) {
+                query = query.orderBy('brinco'); // Ordena por brinco para paginação consistente
+            }
 
             if (limit) {
-                query = query.limit(limit);
+                query = query.limit(isPaginated ? limit + 1 : limit); // +1 só se paginado
             }
 
             const snapshot = await query.get();
 
-            return snapshot.docs.map((doc: any) => {
+            // Verifica se tem mais páginas (só para coleções paginadas)
+            const hasMore = isPaginated ? snapshot.docs.length > limit : false;
+            const docsToProcess = hasMore ? snapshot.docs.slice(0, limit) : snapshot.docs;
+            const lastDoc = isPaginated && docsToProcess.length > 0 ? docsToProcess[docsToProcess.length - 1] : null;
+
+            const data = docsToProcess.map((doc: any) => {
                 const docData = convertTimestampsToDates(doc.data());
                 let entity = { id: doc.id, ...docData } as T;
                 if (processEntity) entity = processEntity(entity);
                 return entity;
             });
+
+            return { data, lastDoc, hasMore };
         };
 
         // 1. Tenta carregar do cache primeiro
@@ -264,9 +333,16 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
 
             // Se expirou, revalida em background (sem bloquear UI)
             if (!localCache.isFresh(cached.timestamp)) {
-                fetchFromFirestore().then(async (data) => {
+                fetchFromFirestore().then(async ({ data, lastDoc, hasMore }) => {
                     await localCache.set(cacheKey, data);
                     dispatch({ type: 'SET_DATA', payload: { collection: collectionName as any, data } });
+
+                    // 🔧 OTIMIZAÇÃO: Atualiza estado de paginação para animals
+                    if (collectionName === 'animals') {
+                        lastDocRef.current = lastDoc;
+                        dispatch({ type: 'SET_PAGINATION', payload: { collection: 'animals', hasMore, lastDoc } });
+                    }
+
                     console.log(`🔄 [REVALIDATED] ${collectionName}`);
                 }).catch(err => console.error(`Erro ao revalidar ${collectionName}:`, err));
             }
@@ -275,11 +351,18 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
 
         // 2. Sem cache - busca do Firestore
         try {
-            const data = await fetchFromFirestore();
+            const { data, lastDoc, hasMore } = await fetchFromFirestore();
             await localCache.set(cacheKey, data);
 
             dispatch({ type: 'SET_DATA', payload: { collection: collectionName as any, data } });
             dispatch({ type: 'SET_LOADING_STATUS', payload: { collection: loadingKey, status: false } });
+
+            // 🔧 OTIMIZAÇÃO: Atualiza estado de paginação para animals
+            if (collectionName === 'animals') {
+                lastDocRef.current = lastDoc;
+                dispatch({ type: 'SET_PAGINATION', payload: { collection: 'animals', hasMore, lastDoc } });
+                console.log(`📄 [PAGINATION] Animals: hasMore=${hasMore}, loaded=${data.length}`);
+            }
 
             return data;
         } catch (error) {
@@ -289,6 +372,66 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
             return [];
         }
     }, [userId]);
+
+    // ============================================
+    // 🔧 OTIMIZAÇÃO 5: CARREGAR MAIS ANIMAIS (PAGINAÇÃO)
+    // ============================================
+    const loadMoreAnimals = useCallback(async () => {
+        if (!userId || !db) return;
+
+        const { hasMore, isLoadingMore } = stateRef.current.pagination.animals;
+        const lastDoc = lastDocRef.current;
+
+        if (!hasMore || isLoadingMore || !lastDoc) {
+            console.log('📄 [PAGINATION] Não há mais animais para carregar ou já está carregando');
+            return;
+        }
+
+        dispatch({ type: 'SET_LOADING_MORE', payload: { collection: 'animals', isLoading: true } });
+
+        try {
+            console.log(`📄 [PAGINATION] Carregando mais animais...`);
+
+            const query = db.collection('animals')
+                .where("userId", "==", userId)
+                .orderBy('brinco')
+                .startAfter(lastDoc)
+                .limit(QUERY_LIMITS.PAGINATION_SIZE + 1); // +1 para verificar se tem mais
+
+            const snapshot = await query.get();
+
+            // Verifica se tem mais páginas
+            const hasMorePages = snapshot.docs.length > QUERY_LIMITS.PAGINATION_SIZE;
+            const docsToProcess = hasMorePages
+                ? snapshot.docs.slice(0, QUERY_LIMITS.PAGINATION_SIZE)
+                : snapshot.docs;
+            const newLastDoc = docsToProcess.length > 0
+                ? docsToProcess[docsToProcess.length - 1]
+                : null;
+
+            const newAnimals: Animal[] = docsToProcess.map((doc: any) => {
+                const docData = convertTimestampsToDates(doc.data());
+                return processAnimalEntity({ id: doc.id, ...docData });
+            });
+
+            // Atualiza estado
+            dispatch({ type: 'APPEND_DATA', payload: { collection: 'animals', data: newAnimals } });
+            lastDocRef.current = newLastDoc;
+            dispatch({ type: 'SET_PAGINATION', payload: { collection: 'animals', hasMore: hasMorePages, lastDoc: newLastDoc } });
+
+            // Atualiza cache com todos os animais
+            const allAnimals = [...stateRef.current.animals, ...newAnimals];
+            await updateLocalCache('animals', allAnimals);
+
+            console.log(`✅ [PAGINATION] Carregados ${newAnimals.length} animais. Total: ${allAnimals.length}. Tem mais: ${hasMorePages}`);
+
+        } catch (error) {
+            console.error('❌ [PAGINATION] Erro ao carregar mais animais:', error);
+            dispatch({ type: 'SET_ERROR', payload: 'Erro ao carregar mais animais' });
+        } finally {
+            dispatch({ type: 'SET_LOADING_MORE', payload: { collection: 'animals', isLoading: false } });
+        }
+    }, [userId, updateLocalCache]);
 
     // ============================================
     // FUNÇÃO: Processar entidade Animal
@@ -1267,6 +1410,8 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
         forceSync,
         // 🔧 OTIMIZAÇÃO: Sync delta para economia de leituras
         syncDelta,
+        // 🔧 OTIMIZAÇÃO: Paginação com cursor
+        loadMoreAnimals,
         // Animals
         addAnimal,
         updateAnimal,

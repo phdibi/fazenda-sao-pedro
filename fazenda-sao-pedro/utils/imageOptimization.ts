@@ -114,21 +114,22 @@ export const compressImageToBase64 = async (
 };
 
 /**
- * Cria thumbnail ainda menor para listagens
+ * 🔧 OTIMIZAÇÃO: Thumbnail mais agressivo para listagens
+ * Reduzido de 200px/60% para 150px/40% = ~50% menor
  */
 export const createThumbnail = async (
     file: File
 ): Promise<Blob> => {
     return compressImage(file, {
-        maxWidth: 200,
-        maxHeight: 200,
-        quality: 0.6,
+        maxWidth: 150,
+        maxHeight: 150,
+        quality: 0.4,
         format: 'image/webp'
     });
 };
 
 /**
- * Cria thumbnail a partir de Blob
+ * 🔧 OTIMIZAÇÃO: Thumbnail a partir de Blob (mais agressivo)
  */
 export const createThumbnailFromBlob = async (
     blob: Blob
@@ -136,9 +137,9 @@ export const createThumbnailFromBlob = async (
     // Converte Blob para File temporário
     const file = new File([blob], 'temp.webp', { type: blob.type });
     return compressImage(file, {
-        maxWidth: 200,
-        maxHeight: 200,
-        quality: 0.6,
+        maxWidth: 150,
+        maxHeight: 150,
+        quality: 0.4,
         format: 'image/webp'
     });
 };
@@ -282,7 +283,7 @@ export const getCachedImage = async (url: string): Promise<Response | undefined>
  */
 export const cleanImageCache = async (maxAge: number = 7 * 24 * 60 * 60 * 1000): Promise<void> => {
     if (!('caches' in window)) return;
-    
+
     // Por simplicidade, limpa todo o cache antigo
     // Em produção, você pode implementar lógica mais sofisticada
     const cacheNames = await caches.keys();
@@ -290,5 +291,213 @@ export const cleanImageCache = async (maxAge: number = 7 * 24 * 60 * 60 * 1000):
         if (name.startsWith('fazenda-images-') && name !== IMAGE_CACHE_NAME) {
             await caches.delete(name);
         }
+    }
+};
+
+// ============================================
+// 🔧 OTIMIZAÇÃO: CACHE DE IMAGENS POR HASH
+// ============================================
+// Evita re-download de imagens idênticas usando hash do conteúdo
+
+const IMAGE_HASH_DB_NAME = 'fazenda-image-hashes';
+const IMAGE_HASH_STORE_NAME = 'hashes';
+
+/**
+ * Gera hash simples de uma string (URL)
+ * Usado para criar chave de cache única
+ */
+const simpleHash = (str: string): string => {
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+        const char = str.charCodeAt(i);
+        hash = ((hash << 5) - hash) + char;
+        hash = hash & hash; // Convert to 32bit integer
+    }
+    return Math.abs(hash).toString(36);
+};
+
+/**
+ * Gera hash do conteúdo de um Blob
+ * Permite identificar imagens idênticas mesmo com URLs diferentes
+ */
+export const generateImageHash = async (blob: Blob): Promise<string> => {
+    const buffer = await blob.arrayBuffer();
+    const hashBuffer = await crypto.subtle.digest('SHA-256', buffer);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('').substring(0, 16);
+};
+
+/**
+ * Interface para o cache de hash de imagens
+ */
+interface ImageHashEntry {
+    url: string;
+    hash: string;
+    timestamp: number;
+    size: number;
+}
+
+/**
+ * Abre o IndexedDB para cache de hashes
+ */
+const openHashDB = (): Promise<IDBDatabase> => {
+    return new Promise((resolve, reject) => {
+        const request = indexedDB.open(IMAGE_HASH_DB_NAME, 1);
+
+        request.onerror = () => reject(request.error);
+        request.onsuccess = () => resolve(request.result);
+
+        request.onupgradeneeded = (event) => {
+            const db = (event.target as IDBOpenDBRequest).result;
+            if (!db.objectStoreNames.contains(IMAGE_HASH_STORE_NAME)) {
+                const store = db.createObjectStore(IMAGE_HASH_STORE_NAME, { keyPath: 'hash' });
+                store.createIndex('url', 'url', { unique: false });
+                store.createIndex('timestamp', 'timestamp', { unique: false });
+            }
+        };
+    });
+};
+
+/**
+ * Verifica se uma imagem já está no cache pelo hash
+ * Retorna a URL cacheada se existir
+ */
+export const getImageByHash = async (hash: string): Promise<string | null> => {
+    try {
+        const db = await openHashDB();
+        const transaction = db.transaction(IMAGE_HASH_STORE_NAME, 'readonly');
+        const store = transaction.objectStore(IMAGE_HASH_STORE_NAME);
+
+        return new Promise((resolve) => {
+            const request = store.get(hash);
+            request.onsuccess = () => {
+                const entry = request.result as ImageHashEntry | undefined;
+                if (entry) {
+                    console.log(`🖼️ [HASH-CACHE] Hit: ${hash.substring(0, 8)}...`);
+                    resolve(entry.url);
+                } else {
+                    resolve(null);
+                }
+            };
+            request.onerror = () => resolve(null);
+        });
+    } catch (error) {
+        console.warn('⚠️ [HASH-CACHE] Erro ao buscar:', error);
+        return null;
+    }
+};
+
+/**
+ * Salva hash de imagem no cache
+ */
+export const saveImageHash = async (hash: string, url: string, size: number): Promise<void> => {
+    try {
+        const db = await openHashDB();
+        const transaction = db.transaction(IMAGE_HASH_STORE_NAME, 'readwrite');
+        const store = transaction.objectStore(IMAGE_HASH_STORE_NAME);
+
+        const entry: ImageHashEntry = {
+            hash,
+            url,
+            timestamp: Date.now(),
+            size
+        };
+
+        store.put(entry);
+        console.log(`🖼️ [HASH-CACHE] Saved: ${hash.substring(0, 8)}... (${formatBytes(size)})`);
+    } catch (error) {
+        console.warn('⚠️ [HASH-CACHE] Erro ao salvar:', error);
+    }
+};
+
+/**
+ * Verifica se uma URL de imagem já foi baixada (pelo conteúdo)
+ * Útil para evitar re-upload de imagens idênticas
+ */
+export const checkDuplicateImage = async (blob: Blob): Promise<{ isDuplicate: boolean; existingUrl?: string }> => {
+    try {
+        const hash = await generateImageHash(blob);
+        const existingUrl = await getImageByHash(hash);
+
+        if (existingUrl) {
+            return { isDuplicate: true, existingUrl };
+        }
+
+        return { isDuplicate: false };
+    } catch (error) {
+        console.warn('⚠️ [HASH-CACHE] Erro ao verificar duplicata:', error);
+        return { isDuplicate: false };
+    }
+};
+
+/**
+ * Limpa hashes antigos do cache (mais de 30 dias)
+ */
+export const cleanOldHashes = async (maxAgeMs: number = 30 * 24 * 60 * 60 * 1000): Promise<number> => {
+    try {
+        const db = await openHashDB();
+        const transaction = db.transaction(IMAGE_HASH_STORE_NAME, 'readwrite');
+        const store = transaction.objectStore(IMAGE_HASH_STORE_NAME);
+        const index = store.index('timestamp');
+
+        const cutoffTime = Date.now() - maxAgeMs;
+        const range = IDBKeyRange.upperBound(cutoffTime);
+
+        let deletedCount = 0;
+
+        return new Promise((resolve) => {
+            const request = index.openCursor(range);
+
+            request.onsuccess = (event) => {
+                const cursor = (event.target as IDBRequest<IDBCursorWithValue>).result;
+                if (cursor) {
+                    cursor.delete();
+                    deletedCount++;
+                    cursor.continue();
+                } else {
+                    console.log(`🧹 [HASH-CACHE] Removidos ${deletedCount} hashes antigos`);
+                    resolve(deletedCount);
+                }
+            };
+
+            request.onerror = () => resolve(0);
+        });
+    } catch (error) {
+        console.warn('⚠️ [HASH-CACHE] Erro na limpeza:', error);
+        return 0;
+    }
+};
+
+/**
+ * Obtém estatísticas do cache de hashes
+ */
+export const getHashCacheStats = async (): Promise<{ count: number; totalSize: number }> => {
+    try {
+        const db = await openHashDB();
+        const transaction = db.transaction(IMAGE_HASH_STORE_NAME, 'readonly');
+        const store = transaction.objectStore(IMAGE_HASH_STORE_NAME);
+
+        return new Promise((resolve) => {
+            let count = 0;
+            let totalSize = 0;
+
+            const request = store.openCursor();
+
+            request.onsuccess = (event) => {
+                const cursor = (event.target as IDBRequest<IDBCursorWithValue>).result;
+                if (cursor) {
+                    count++;
+                    totalSize += (cursor.value as ImageHashEntry).size || 0;
+                    cursor.continue();
+                } else {
+                    resolve({ count, totalSize });
+                }
+            };
+
+            request.onerror = () => resolve({ count: 0, totalSize: 0 });
+        });
+    } catch (error) {
+        console.warn('⚠️ [HASH-CACHE] Erro ao obter stats:', error);
+        return { count: 0, totalSize: 0 };
     }
 };

@@ -26,7 +26,8 @@ export const ARCHIVED_COLLECTION_NAME = 'animals_archived';
 // ============================================
 // UI E INTERAÇÃO
 // ============================================
-export const DEBOUNCE_DELAY_MS = 300;
+// 🔧 OTIMIZAÇÃO: Aumentado de 300ms para 500ms para reduzir re-renders
+export const DEBOUNCE_DELAY_MS = 500;
 export const SWIPE_THRESHOLD = 80;
 export const LONG_PRESS_DURATION_MS = 600;
 
