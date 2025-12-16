@@ -124,12 +124,31 @@
 
     <script type="module" src="./index.tsx"></script>
       <script>
-  // Registra o Service Worker
+  // Registra o Service Worker com atualização forçada
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
       navigator.serviceWorker.register('/sw.js')
         .then((registration) => {
           console.log('✅ Service Worker registrado:', registration.scope);
+
+          // Força atualização quando há nova versão
+          registration.addEventListener('updatefound', () => {
+            const newWorker = registration.installing;
+            console.log('🔄 Nova versão do Service Worker encontrada');
+
+            newWorker.addEventListener('statechange', () => {
+              if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                console.log('✨ Nova versão instalada! Recarregando...');
+                // Força reload para usar nova versão
+                window.location.reload();
+              }
+            });
+          });
+
+          // Verifica atualizações a cada 60 segundos
+          setInterval(() => {
+            registration.update();
+          }, 60000);
         })
         .catch((error) => {
           console.log('❌ Falha ao registrar Service Worker:', error);

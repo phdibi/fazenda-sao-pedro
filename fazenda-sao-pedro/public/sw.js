@@ -6,7 +6,7 @@
 // - Network First: Para APIs e dados dinâmicos
 // - Stale While Revalidate: Para dados que podem ficar desatualizados
 
-const CACHE_VERSION = 'v3';
+const CACHE_VERSION = 'v4';
 const STATIC_CACHE = `fazenda-static-${CACHE_VERSION}`;
 const DYNAMIC_CACHE = `fazenda-dynamic-${CACHE_VERSION}`;
 const IMAGE_CACHE = `fazenda-images-${CACHE_VERSION}`;
