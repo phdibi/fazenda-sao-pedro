@@ -124,6 +124,9 @@
 
     <script type="module" src="./index.tsx"></script>
       <script>
+  // TEMPORARIAMENTE DESABILITADO para debug
+  // TODO: Reabilitar após resolver o erro 'm'
+  /*
   // Registra o Service Worker com atualização forçada
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
@@ -153,6 +156,17 @@
         .catch((error) => {
           console.log('❌ Falha ao registrar Service Worker:', error);
         });
+    });
+  }
+  */
+
+  // Desregistra Service Workers existentes para debug
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.getRegistrations().then(registrations => {
+      registrations.forEach(registration => {
+        registration.unregister();
+        console.log('🧹 Service Worker removido para debug');
+      });
     });
   }
 </script>
