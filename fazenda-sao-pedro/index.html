@@ -116,13 +116,33 @@
   <body class="bg-base-900 text-base-100">
     <div id="root"></div>
 
-    <!-- Load Firebase BEFORE app code to ensure it's available when modules load -->
-    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-storage-compat.js"></script>
+    <!-- Load Firebase scripts and wait for them before loading app -->
+    <script>
+      // Flag to track Firebase loading
+      window.__FIREBASE_LOADED__ = false;
 
-    <script type="module" src="./index.tsx"></script>
+      // Count loaded scripts
+      let loadedScripts = 0;
+      const totalScripts = 4;
+
+      function onFirebaseScriptLoad() {
+        loadedScripts++;
+        if (loadedScripts === totalScripts) {
+          window.__FIREBASE_LOADED__ = true;
+          console.log('✅ Firebase completamente carregado');
+          // Load app after Firebase is ready
+          const appScript = document.createElement('script');
+          appScript.type = 'module';
+          appScript.src = './index.tsx';
+          document.body.appendChild(appScript);
+        }
+      }
+    </script>
+
+    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js" onload="onFirebaseScriptLoad()"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js" onload="onFirebaseScriptLoad()"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js" onload="onFirebaseScriptLoad()"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-storage-compat.js" onload="onFirebaseScriptLoad()"></script>
       <script>
   // TEMPORARIAMENTE DESABILITADO para debug
   // TODO: Reabilitar após resolver o erro 'm'
