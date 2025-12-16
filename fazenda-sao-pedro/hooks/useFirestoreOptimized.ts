@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useReducer, useRef } from 'react';
-import { db, Timestamp, FieldValue } from '../services/firebase';
+import { firebaseServices } from '../services/firebase';
 import { localCache } from '../services/localCache';
 import { Animal, FirestoreCollectionName, ManagementBatch, UserRole, WeighingType, AnimalStatus, Sexo, CalendarEvent, AppUser, ManagementArea, MedicationAdministration, PregnancyRecord, PregnancyType, AbortionRecord, Task, LoadingKey, LocalStateCollectionName } from '../types';
 import { QUERY_LIMITS, ARCHIVED_COLLECTION_NAME, AUTO_SYNC_INTERVAL_MS } from '../constants/app';
@@ -260,6 +260,10 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
     const userId = user?.uid;
     const syncInProgressRef = useRef(false);
     const lastSyncTimeRef = useRef<number>(0);
+
+    // Getters dinâmicos para Firebase services
+    const db = firebaseServices.db;
+    const FieldValue = firebaseServices.FieldValue;
     
     // 🔧 OTIMIZAÇÃO: Ref para acessar estado atual sem causar re-renders nos callbacks
     // Isso evita que callbacks sejam recriados quando o estado muda

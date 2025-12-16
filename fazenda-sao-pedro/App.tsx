@@ -4,7 +4,7 @@ import { offlineQueue } from './utils/offlineSync';
 import { Animal, AppUser, WeighingType, WeightEntry, MedicationAdministration } from './types';
 import Spinner from './components/common/Spinner';
 import MobileNavBar from './components/MobileNavBar';
-import { storage } from './services/firebase';
+import { firebaseServices } from './services/firebase';
 import DashboardSettings from './components/DashboardSettings';
 import RoleSelector from './components/RoleSelector';
 import CapatazView from './components/CapatazView';
@@ -66,8 +66,8 @@ const InnerApp = ({ user, firebaseReady }: AppProps) => {
     const selectedAnimal = useMemo(() => state.animals.find(a => a.id === selectedAnimalId) || null, [state.animals, selectedAnimalId]);
 
     const hasDatabase = Boolean(dbInstance);
-    // storage vem do import estático, mas verificamos se está disponível
-    const hasStorage = Boolean(storage);
+    // storage vem do getter dinâmico
+    const hasStorage = Boolean(firebaseServices.storage);
     const costlyActionsEnabled = firebaseReady && hasDatabase && hasStorage;
 
     useEffect(() => {
