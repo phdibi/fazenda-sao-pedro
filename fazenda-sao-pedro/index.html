@@ -78,11 +78,6 @@
     </script>
     <!-- ================================================================== -->
     
-  <!-- Load Firebase via traditional script tags to ensure it's globally available -->
-  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-storage-compat.js"></script>
 <style>
     @media print {
       body * {
@@ -120,6 +115,13 @@
 </head>
   <body class="bg-base-900 text-base-100">
     <div id="root"></div>
+
+    <!-- Load Firebase BEFORE app code to ensure it's available when modules load -->
+    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-storage-compat.js"></script>
+
     <script type="module" src="./index.tsx"></script>
       <script>
   // Registra o Service Worker
