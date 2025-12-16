@@ -68,10 +68,13 @@
       // Esta configuração PRECISA ser atribuída a window.__FIREBASE_CONFIG__
       // para que os outros arquivos do aplicativo possam encontrá-la.
       window.__FIREBASE_CONFIG__ = {
-        apiKey: "AIzaSyC7oqm8NkbRqh2yGdgfkI-orGtqadcJuaw", // ATENÇÃO: Substitua pela sua chave real.
-        authDomain: "fazenda-sao-pedro-home.firebaseapp.com",
+        apiKey: "AIzaSyC7oqm8NkbRqh2yGdgfkI-orGtqadcJuaw",
+        // Use o domínio do Vercel para evitar erros de init.json
+        // O Firebase precisa que este domínio esteja autorizado em:
+        // Firebase Console > Authentication > Settings > Authorized domains
+        authDomain: "fazenda-sao-pedro.vercel.app",
         projectId: "fazenda-sao-pedro-home",
-        storageBucket: "fazenda-sao-pedro-home.firebasestorage.app", // CORRIGIDO: O bucket de exemplo estava errado.
+        storageBucket: "fazenda-sao-pedro-home.firebasestorage.app",
         messagingSenderId: "24202795399",
         appId: "1:24202795399:web:4321f14c896a38cb3adb22",
         measurementId: "G-6KKVTF0DV3"
