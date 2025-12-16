@@ -3,6 +3,9 @@
 // making the `firebase` object available on the `window`.
 // This is a robust strategy to prevent module resolution conflicts.
 
+// Wait for Firebase to be ready before accessing it
+await (window as any).__FIREBASE_READY__;
+
 // Cast window to `any` to access the globally loaded firebase object.
 const globalFirebase = (window as any).firebase;
 
