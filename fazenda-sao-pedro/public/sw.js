@@ -6,7 +6,7 @@
 // - Network First: Para APIs e dados dinâmicos
 // - Stale While Revalidate: Para dados que podem ficar desatualizados
 
-const CACHE_VERSION = 'v4';
+const CACHE_VERSION = 'v5';
 const STATIC_CACHE = `fazenda-static-${CACHE_VERSION}`;
 const DYNAMIC_CACHE = `fazenda-dynamic-${CACHE_VERSION}`;
 const IMAGE_CACHE = `fazenda-images-${CACHE_VERSION}`;
@@ -153,6 +153,12 @@ self.addEventListener('fetch', (event) => {
 
     // Ignora requests não-GET
     if (request.method !== 'GET') {
+        return;
+    }
+
+    // Evita interferir no fluxo de autenticação do Firebase (redirect handler)
+    // O caminho /__/auth/handler precisa ser carregado da rede para concluir o login.
+    if (url.pathname.startsWith('/__/auth/')) {
         return;
     }
 
