@@ -168,7 +168,25 @@ const RootComponent = () => {
         return;
     }
 
-    // --- 3. Monitora mudanças no estado de autenticação ---
+    // --- 3. Verifica se há resultado de redirect pendente ---
+    // Isso é necessário quando o usuário retorna após o login com Google
+    auth.getRedirectResult().then((result: any) => {
+      if (result && result.user) {
+        console.log("Login via redirect bem-sucedido:", result.user.email);
+      }
+    }).catch((error: any) => {
+      if (isMounted) {
+        console.error("Erro ao processar redirect:", error);
+        if (error.code === 'auth/operation-not-allowed') {
+          setError("Login com Google não está ativado. Ative-o no Console do Firebase.");
+        } else if (error.code !== 'auth/popup-closed-by-user') {
+          setError("Falha no login. Tente novamente.");
+        }
+        setLoading(false);
+      }
+    });
+
+    // --- 4. Monitora mudanças no estado de autenticação ---
     const unsubscribe = auth.onAuthStateChanged((firebaseUser: any) => {
       if (!isMounted) return;
 
@@ -193,12 +211,14 @@ const RootComponent = () => {
     };
   }, []);
 
-  // ✅ USA POPUP (NÃO REDIRECT!)
+  // ✅ USA REDIRECT (mais confiável que popup)
+  // O método popup pode falhar devido a políticas de Cross-Origin-Opener-Policy
+  // que bloqueiam o acesso a window.closed, causando o erro "Cannot access 'm' before initialization"
   const handleGoogleLogin = async () => {
       if (!auth || !googleProvider) {
           throw new Error("Autenticação não inicializada.");
       }
-      await auth.signInWithPopup(googleProvider);
+      await auth.signInWithRedirect(googleProvider);
   };
 
   // --- RENDERIZAÇÃO ---
