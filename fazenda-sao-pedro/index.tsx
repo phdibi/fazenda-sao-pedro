@@ -234,8 +234,7 @@ const RootComponent = () => {
     };
   }, []);
 
-  // ✅ USA POPUP com tratamento de erro robusto
-  // Se o popup falhar por COOP, tentamos redirect como fallback
+  // ✅ USA REDIRECT diretamente (popup tem problemas com COOP no Vercel)
   const handleGoogleLogin = async () => {
       // Garante que Firebase está pronto antes de tentar login
       await ensureFirebaseReady();
@@ -248,24 +247,9 @@ const RootComponent = () => {
           throw new Error("Autenticação não inicializada. Verifique a configuração do Firebase.");
       }
 
-      try {
-          // Tenta popup primeiro (melhor UX)
-          await auth.signInWithPopup(googleProvider);
-      } catch (popupError: any) {
-          console.warn("Popup falhou, tentando redirect:", popupError.code);
-
-          // Se o popup foi bloqueado ou falhou por COOP, usa redirect
-          if (popupError.code === 'auth/popup-blocked' ||
-              popupError.code === 'auth/popup-closed-by-user' ||
-              popupError.message?.includes('Cross-Origin') ||
-              popupError.message?.includes("Cannot access")) {
-              // Redirect como fallback
-              await auth.signInWithRedirect(googleProvider);
-          } else {
-              // Re-throw outros erros
-              throw popupError;
-          }
-      }
+      // Usa redirect diretamente - mais confiável que popup
+      // O popup tem problemas com Cross-Origin-Opener-Policy no Vercel
+      await auth.signInWithRedirect(googleProvider);
   };
 
   // --- RENDERIZAÇÃO ---
