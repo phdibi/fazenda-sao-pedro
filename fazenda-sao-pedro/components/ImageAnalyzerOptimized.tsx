@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import Spinner from './common/Spinner';
 import { PhotoIcon, CheckIcon } from './common/Icons';
-import { storage } from '../services/firebase';
+import { firebaseServices } from '../services/firebase';
 import { prepareImageForUpload, getOptimalFormat } from '../utils/imageOptimization';
 
 interface ImageAnalyzerProps {
@@ -57,6 +57,7 @@ const ImageAnalyzerOptimized = ({ imageUrl, onUploadComplete, animalId, userId }
         const file = event.target.files?.[0];
         if (!file) return;
 
+        const storage = firebaseServices.storage;
         if (!storage) {
             setError({
                 message: "Firebase Storage não configurado.",

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { DocumentChartBarIcon, PlusIcon, CalendarDaysIcon, ClipboardDocumentCheckIcon, MapPinIcon, ScaleIcon } from './common/Icons';
 import { AppUser, UserRole } from '../types';
-import { auth } from '../services/firebase';
+import { firebaseServices } from '../services/firebase';
 
 type ViewType = 'dashboard' | 'reports' | 'calendar' | 'tasks' | 'management' | 'batches';
 
@@ -70,6 +70,7 @@ const Header = ({
     const [isSyncing, setIsSyncing] = useState(false);
 
     const handleLogout = () => {
+        const auth = firebaseServices.auth;
         if (auth) auth.signOut();
     };
 

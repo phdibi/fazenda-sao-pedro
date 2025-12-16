@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import Spinner from './common/Spinner';
 import { PhotoIcon, CheckIcon } from './common/Icons';
-import { storage } from '../services/firebase';
+import { firebaseServices } from '../services/firebase';
 import { prepareImageForUpload, getOptimalFormat } from '../utils/imageOptimization';
 
 interface ImageAnalyzerProps {
@@ -68,6 +68,7 @@ const ImageAnalyzer = ({ imageUrl, onUploadComplete, animalId, userId }: ImageAn
       return;
     }
 
+    const storage = firebaseServices.storage;
     if (!storage) {
       setError({
         message: "O serviço de armazenamento (Firebase Storage) não está disponível. Verifique a configuração do Firebase em index.html.",

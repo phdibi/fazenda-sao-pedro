@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
 import { AppUser } from './types';
-import { auth, googleProvider, ensureFirebaseReady } from './services/firebase';
+import { firebaseServices, ensureFirebaseReady } from './services/firebase';
 import Spinner from './components/common/Spinner';
 import ErrorBoundary from './components/ErrorBoundary';
 
@@ -175,6 +175,9 @@ const RootComponent = () => {
         console.error("Erro ao inicializar Firebase:", e);
       }
 
+      // Usa o getter dinâmico para acessar auth após inicialização
+      const auth = firebaseServices.auth;
+
       if (!auth) {
           if (isMounted) {
             setError(
@@ -236,6 +239,10 @@ const RootComponent = () => {
   const handleGoogleLogin = async () => {
       // Garante que Firebase está pronto antes de tentar login
       await ensureFirebaseReady();
+
+      // Usa getters dinâmicos para acessar após inicialização
+      const auth = firebaseServices.auth;
+      const googleProvider = firebaseServices.googleProvider;
 
       if (!auth || !googleProvider) {
           throw new Error("Autenticação não inicializada. Verifique a configuração do Firebase.");
