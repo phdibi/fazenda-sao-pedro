@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
 import { AppUser } from './types';
-import { auth, googleProvider } from './services/firebase';
+import { auth, googleProvider, ensureFirebaseReady } from './services/firebase';
 import Spinner from './components/common/Spinner';
 import ErrorBoundary from './components/ErrorBoundary';
 
@@ -141,79 +141,104 @@ const RootComponent = () => {
 
   useEffect(() => {
     let isMounted = true;
+    let unsubscribe: (() => void) | null = null;
 
-    // --- 1. Verificação de Ambiente Completa (Storage e Protocolo) ---
-    const envCheck = isFirebaseAuthSupported();
-    if (!envCheck.supported) {
-        setEnvironmentError(envCheck.reason);
-        setLoading(false);
-        return;
-    }
+    const initializeApp = async () => {
+      // --- 1. Verificação de Ambiente Completa (Storage e Protocolo) ---
+      const envCheck = isFirebaseAuthSupported();
+      if (!envCheck.supported) {
+          if (isMounted) {
+            setEnvironmentError(envCheck.reason);
+            setLoading(false);
+          }
+          return;
+      }
 
-    // --- 2. Verificação de Configuração do Firebase ---
-    const firebaseConfigStatus = validateFirebaseConfig();
-    if (!firebaseConfigStatus.valid) {
-        setError(firebaseConfigStatus.reason);
-        setLoading(false);
-        return;
-    }
-    setFirebaseConfigValid(true);
+      // --- 2. Verificação de Configuração do Firebase ---
+      const firebaseConfigStatus = validateFirebaseConfig();
+      if (!firebaseConfigStatus.valid) {
+          if (isMounted) {
+            setError(firebaseConfigStatus.reason);
+            setLoading(false);
+          }
+          return;
+      }
 
-    if (!auth) {
-        setError(
-            "A configuração do Firebase é inválida ou está ausente. " +
-            "O aplicativo não pode se conectar ao banco de dados."
-        );
-        setLoading(false);
-        return;
-    }
+      if (isMounted) {
+        setFirebaseConfigValid(true);
+      }
 
-    // --- 3. Processa resultado de redirect (se houver) ---
-    // Isso é chamado quando o usuário retorna de um login via redirect
-    auth.getRedirectResult()
-      .then((result: any) => {
+      // --- 3. Aguarda Firebase estar pronto ---
+      try {
+        await ensureFirebaseReady();
+      } catch (e) {
+        console.error("Erro ao inicializar Firebase:", e);
+      }
+
+      if (!auth) {
+          if (isMounted) {
+            setError(
+                "A configuração do Firebase é inválida ou está ausente. " +
+                "O aplicativo não pode se conectar ao banco de dados."
+            );
+            setLoading(false);
+          }
+          return;
+      }
+
+      // --- 4. Processa resultado de redirect (se houver) ---
+      // Isso é chamado quando o usuário retorna de um login via redirect
+      try {
+        const result = await auth.getRedirectResult();
         // O resultado será processado pelo onAuthStateChanged
         if (result?.user) {
           console.log("Redirect login processado:", result.user.email);
         }
-      })
-      .catch((error: any) => {
+      } catch (error: any) {
         // Ignora erros de "no redirect" - isso é normal
         if (error.code !== 'auth/null-user') {
           console.error("Erro no redirect:", error);
         }
-      });
-
-    // --- 4. Monitora mudanças no estado de autenticação ---
-    const unsubscribe = auth.onAuthStateChanged((firebaseUser: any) => {
-      if (!isMounted) return;
-
-      if (firebaseUser) {
-        const appUser: AppUser = {
-          uid: firebaseUser.uid,
-          displayName: firebaseUser.displayName || 'Usuário',
-          email: firebaseUser.email,
-          photoURL: firebaseUser.photoURL,
-        };
-        setUser(appUser);
-        setError(null);
-      } else {
-        setUser(null);
       }
-      setLoading(false);
-    });
+
+      // --- 5. Monitora mudanças no estado de autenticação ---
+      unsubscribe = auth.onAuthStateChanged((firebaseUser: any) => {
+        if (!isMounted) return;
+
+        if (firebaseUser) {
+          const appUser: AppUser = {
+            uid: firebaseUser.uid,
+            displayName: firebaseUser.displayName || 'Usuário',
+            email: firebaseUser.email,
+            photoURL: firebaseUser.photoURL,
+          };
+          setUser(appUser);
+          setError(null);
+        } else {
+          setUser(null);
+        }
+        setLoading(false);
+      });
+    };
+
+    initializeApp();
 
     return () => {
         isMounted = false;
-        unsubscribe();
+        if (unsubscribe) {
+          unsubscribe();
+        }
     };
   }, []);
 
   // ✅ USA POPUP com tratamento de erro robusto
   // Se o popup falhar por COOP, tentamos redirect como fallback
   const handleGoogleLogin = async () => {
+      // Garante que Firebase está pronto antes de tentar login
+      await ensureFirebaseReady();
+
       if (!auth || !googleProvider) {
-          throw new Error("Autenticação não inicializada.");
+          throw new Error("Autenticação não inicializada. Verifique a configuração do Firebase.");
       }
 
       try {

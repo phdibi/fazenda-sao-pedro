@@ -68,15 +68,31 @@ async function initializeFirebase() {
   }
 }
 
-// Initialize immediately
-initializeFirebase();
+// Promise that resolves when Firebase is fully initialized
+let initPromise: Promise<void> | null = null;
 
+/**
+ * Ensures Firebase is initialized before use.
+ * Call this before accessing auth, db, storage, etc.
+ */
+export async function ensureFirebaseReady(): Promise<boolean> {
+    if (!initPromise) {
+        initPromise = initializeFirebase();
+    }
+    await initPromise;
+    return !!auth && !!db;
+}
+
+// Initialize immediately but don't block module loading
+initPromise = initializeFirebase();
 
 // Re-export the global object under the name 'firebase'.
+// Note: These may be null until ensureFirebaseReady() resolves
 const firebase = globalFirebase;
 
 // Export everything for use throughout the app.
-// If initialization failed, some of these will be null.
+// IMPORTANT: These values are null until initializeFirebase() completes!
+// Use ensureFirebaseReady() before accessing them.
 export {
     firebase,
     auth,
