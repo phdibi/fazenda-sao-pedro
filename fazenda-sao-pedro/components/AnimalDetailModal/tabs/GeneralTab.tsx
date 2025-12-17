@@ -45,7 +45,17 @@ const GeneralTab: React.FC<GeneralTabProps> = ({
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
           <div>
             <strong className="block text-gray-400">Brinco</strong>
-            <span className="text-lg font-bold text-brand-primary-light">{editableAnimal.brinco}</span>
+            {isEditing ? (
+              <input
+                type="text"
+                name="brinco"
+                value={editableAnimal.brinco}
+                onChange={onAnimalFormChange}
+                className="bg-base-700 w-full p-1 rounded border border-base-600"
+              />
+            ) : (
+              <span className="text-lg font-bold text-brand-primary-light">{editableAnimal.brinco}</span>
+            )}
           </div>
 
           <div>

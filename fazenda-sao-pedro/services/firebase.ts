@@ -36,6 +36,18 @@ try {
     // Get all required services from the now-initialized global object.
     auth = globalFirebase.auth();
     db = globalFirebase.firestore();
+
+    // Habilitar persistência offline para pesquisa e uso offline
+    db.enablePersistence({ synchronizeTabs: true }).catch((err: any) => {
+        if (err.code === 'failed-precondition') {
+             // Múltiplas abas abertas
+             console.warn('Persistência offline falhou: múltiplas abas abertas');
+        } else if (err.code === 'unimplemented') {
+             // Browser não suporta
+             console.warn('Persistência offline não suportada neste browser');
+        }
+    });
+
     storage = globalFirebase.storage();
     googleProvider = new globalFirebase.auth.GoogleAuthProvider();
     Timestamp = globalFirebase.firestore.Timestamp;
