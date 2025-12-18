@@ -75,9 +75,18 @@ export interface ReproductiveReportData {
   recommendations: string;
 }
 
+export interface TurnWeightAnalysis {
+  averageWeight: number;
+  totalAnimals: number;
+  topPerformers: { brinco: string; weight: number; raca: string }[];
+  breedAnalysis: { raca: string; avgWeight: number; count: number }[];
+  recommendations: string;
+}
+
 export interface ComprehensiveReport {
   sanitary: SanitaryReportData;
   reproductive: ReproductiveReportData;
+  turnWeight: TurnWeightAnalysis;
 }
 
 // ============================================

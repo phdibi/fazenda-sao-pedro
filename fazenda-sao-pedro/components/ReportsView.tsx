@@ -6,6 +6,7 @@ import { PrinterIcon, SparklesIcon } from './common/Icons';
 import SanitaryReportDisplay from './SanitaryReportDisplay';
 import ReproductiveReportDisplay from './ReproductiveReportDisplay';
 import PerformanceComparisonView from './PerformanceComparisonView';
+import TurnWeightReportDisplay from './TurnWeightReportDisplay';
 import { WeatherCorrelationView } from './WeatherWidget';
 import NFeIntegrationPanel from './NFeIntegrationPanel';
 
@@ -15,7 +16,7 @@ interface ReportsViewProps {
   onNFeHandled?: () => void;
 }
 
-type TabName = 'sanitary' | 'reproductive' | 'performance' | 'comparatives';
+type TabName = 'sanitary' | 'reproductive' | 'performance' | 'comparatives' | 'turnWeight';
 
 interface TabButtonProps {
   tabName: TabName;
@@ -145,6 +146,7 @@ const ReportsView = ({ animals, focusNFe = false, onNFeHandled }: ReportsViewPro
             <div className="bg-base-800/50 p-3 rounded-lg flex flex-col sm:flex-row flex-wrap gap-2 print-hide mb-6">
               <TabButton tabName="sanitary" label="Análise Sanitária" />
               <TabButton tabName="reproductive" label="Reprodutivo" />
+              <TabButton tabName="turnWeight" label="Peso de Virada" />
               <TabButton tabName="comparatives" label="Comparativos" />
               <TabButton tabName="performance" label="Desempenho (Em breve)" disabled />
             </div>
@@ -165,6 +167,7 @@ const ReportsView = ({ animals, focusNFe = false, onNFeHandled }: ReportsViewPro
 
             {hasReport && activeTab === 'sanitary' && <SanitaryReportDisplay data={reportData!.sanitary} />}
             {hasReport && activeTab === 'reproductive' && <ReproductiveReportDisplay data={reportData!.reproductive} />}
+            {hasReport && activeTab === 'turnWeight' && <TurnWeightReportDisplay data={reportData!.turnWeight} />}
           </div>
         </div>
       </div>
