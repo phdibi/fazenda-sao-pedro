@@ -25,6 +25,7 @@ export enum WeighingType {
   Birth = 'Nascimento',
   Weaning = 'Desmame',
   Yearling = 'Sobreano',
+  Turn = 'Peso de Virada',
 }
 
 export enum PregnancyType {

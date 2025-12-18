@@ -1,6 +1,6 @@
 // 🔧 OTIMIZAÇÃO: Lazy import do Gemini SDK
 // O SDK só será carregado quando realmente necessário, economizando ~200KB no bundle inicial
-import { Animal, MedicationAdministration, Raca, Sexo, ComprehensiveReport } from "../types";
+import { Animal, MedicationAdministration, Raca, Sexo, ComprehensiveReport, WeighingType, TurnWeightAnalysis } from "../types";
 
 // Tipos do Gemini (apenas para tipagem, não carrega o SDK)
 type GoogleGenAI = any;
@@ -313,9 +313,13 @@ export const generateComprehensiveReport = async (
     // --- RELATÓRIO REPRODUTIVO (processamento local) ---
     const reproductiveReport = generateReproductiveReportLocally(animals);
 
+    // --- RELATÓRIO PESO DE VIRADA (processamento local) ---
+    const turnWeightReport = generateTurnWeightReportLocally(animals);
+
     const report: ComprehensiveReport = {
         sanitary: sanitaryReport,
-        reproductive: reproductiveReport
+        reproductive: reproductiveReport,
+        turnWeight: turnWeightReport
     };
 
     // Cacheia resultado
@@ -469,6 +473,70 @@ function generateReproductiveReportLocally(animals: Animal[]) {
         : "Dados insuficientes. Registre nascimentos e pesos para obter insights.";
 
     return { performanceData, recommendations };
+}
+
+// Função auxiliar para relatório de peso de virada
+function generateTurnWeightReportLocally(animals: Animal[]): TurnWeightAnalysis {
+    const animalsWithTurnWeight = animals.filter(
+        a => a.historicoPesagens?.some(p => p.type === WeighingType.Turn)
+    ).map(a => {
+        const turnWeight = a.historicoPesagens.find(p => p.type === WeighingType.Turn)!.weightKg;
+        return {
+            ...a,
+            turnWeight
+        };
+    });
+
+    if (animalsWithTurnWeight.length === 0) {
+        return {
+            averageWeight: 0,
+            totalAnimals: 0,
+            topPerformers: [],
+            breedAnalysis: [],
+            recommendations: "Nenhum animal com registro de Peso de Virada encontrado."
+        };
+    }
+
+    const totalWeight = animalsWithTurnWeight.reduce((sum, a) => sum + a.turnWeight, 0);
+    const averageWeight = totalWeight / animalsWithTurnWeight.length;
+
+    // Top 5 animais mais pesados no virada
+    const topPerformers = animalsWithTurnWeight
+        .sort((a, b) => b.turnWeight - a.turnWeight)
+        .slice(0, 5)
+        .map(a => ({
+            brinco: a.brinco,
+            weight: a.turnWeight,
+            raca: a.raca
+        }));
+
+    // Análise por raça
+    const breedMap = new Map<string, { count: number; totalWeight: number }>();
+    animalsWithTurnWeight.forEach(a => {
+        const current = breedMap.get(a.raca) || { count: 0, totalWeight: 0 };
+        breedMap.set(a.raca, {
+            count: current.count + 1,
+            totalWeight: current.totalWeight + a.turnWeight
+        });
+    });
+
+    const breedAnalysis = Array.from(breedMap.entries()).map(([raca, data]) => ({
+        raca,
+        avgWeight: data.totalWeight / data.count,
+        count: data.count
+    })).sort((a, b) => b.avgWeight - a.avgWeight);
+
+    // Gerar recomendação simples
+    const topBreed = breedAnalysis[0];
+    const recommendations = `A média de peso de virada do rebanho é de **${averageWeight.toFixed(2)} kg** (${animalsWithTurnWeight.length} animais). A raça **${topBreed.raca}** apresentou o melhor desempenho com média de **${topBreed.avgWeight.toFixed(2)} kg**. O animal destaque é **${topPerformers[0].brinco}** com **${topPerformers[0].weight} kg**.`;
+
+    return {
+        averageWeight,
+        totalAnimals: animalsWithTurnWeight.length,
+        topPerformers,
+        breedAnalysis,
+        recommendations
+    };
 }
 
 // ============================================
