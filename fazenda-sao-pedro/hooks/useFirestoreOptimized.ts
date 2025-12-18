@@ -610,7 +610,13 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
     // Busca apenas documentos modificados desde o último sync
     // Requer campo 'updatedAt' nos documentos
     const syncDelta = useCallback(async () => {
-        if (!userId || !db || syncInProgressRef.current) return;
+        // Se já está sincronizando, não faz nada
+        if (syncInProgressRef.current) {
+            console.log('⏳ [DELTA] Sync já em progresso, ignorando...');
+            return true; // Retorna true para evitar fallback
+        }
+
+        if (!userId || !db) return;
 
         const lastSync = stateRef.current.lastSync;
         if (!lastSync) {

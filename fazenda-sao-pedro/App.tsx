@@ -1,7 +1,6 @@
 import React, { useState, useMemo, useEffect, lazy, Suspense } from 'react';
 import Header from './components/Header';
-import { offlineQueue } from './utils/offlineSync';
-import { Animal, AppUser, WeighingType, WeightEntry, MedicationAdministration } from './types';
+import { Animal, AppUser } from './types';
 import Spinner from './components/common/Spinner';
 import MobileNavBar from './components/MobileNavBar';
 import { firebaseServices } from './services/firebase';
@@ -13,6 +12,8 @@ import QuickMedicationModal from './components/QuickMedicationModal';
 import AppRouter from './components/AppRouter';
 import { FarmProvider, useFarmData } from './contexts/FarmContext';
 import { AUTO_SYNC_INTERVAL_MS } from './constants/app';
+import { useOfflineSyncManager } from './hooks/useOfflineSyncManager';
+import { useAnimalActions } from './hooks/useAnimalActions';
 
 // Modais globais (permanecem aqui)
 const AnimalDetailModal = lazy(() => import('./components/AnimalDetailModal'));
@@ -29,15 +30,23 @@ const InnerApp = ({ user, firebaseReady }: AppProps) => {
     // Consumindo Contexto Global
     const { firestore, userProfile, dashboardConfig } = useFarmData();
 
+    // 🔧 CUSTOM HOOKS
+    useOfflineSyncManager();
+    const {
+        handleAddAnimal: performAddAnimal,
+        handleUpdateAnimal,
+        handleDeleteAnimal,
+        handleQuickWeightSave,
+        handleQuickMedicationSave,
+        handleScaleImportComplete
+    } = useAnimalActions(user.uid);
+
     // Destruturando dados do Firestore
     const {
         state,
         db: dbInstance,
         forceSync,
         syncDelta, // 🔧 OTIMIZAÇÃO: Sync delta para economia de leituras
-        addAnimal,
-        updateAnimal,
-        deleteAnimal,
         addOrUpdateCalendarEvent,
         deleteCalendarEvent,
         addTask,
@@ -70,159 +79,22 @@ const InnerApp = ({ user, firebaseReady }: AppProps) => {
     const hasStorage = Boolean(firebaseServices.storage);
     const costlyActionsEnabled = firebaseReady && hasDatabase && hasStorage;
 
-    useEffect(() => {
-        if (!dbInstance) return;
-
-        const handleSync = async () => {
-            console.log('🔄 Internet voltou! Sincronizando dados offline...');
-            await offlineQueue.processQueue(dbInstance);
-            alert('✅ Dados sincronizados com sucesso!');
-        };
-
-        window.addEventListener('sync-offline-data', handleSync);
-        return () => window.removeEventListener('sync-offline-data', handleSync);
-    }, [firestore, dbInstance]);
-
     const handleSelectAnimal = (animal: Animal) => {
         setSelectedAnimalId(animal.id);
-    };
-
-    const handleDeleteAnimal = async (animalId: string) => {
-        try {
-            await deleteAnimal(animalId);
-        } catch (error) {
-            alert(`Ocorreu um erro ao excluir o animal.`);
-            console.error("Deletion failed:", error);
-        }
     };
 
     const handleCloseModal = () => {
         setSelectedAnimalId(null);
     };
 
-    const handleAddAnimal = async (animalData: Omit<Animal, 'id' | 'fotos' | 'historicoSanitario' | 'historicoPesagens'>) => {
-        try {
-            if (navigator.onLine) {
-                await addAnimal(animalData);
-                setIsAddAnimalModalOpen(false);
-            } else {
-                offlineQueue.add({
-                    type: 'create',
-                    collection: 'animals',
-                    data: {
-                        ...animalData,
-                        userId: user.uid
-                    }
-                });
-                setIsAddAnimalModalOpen(false);
-                alert('📱 Animal salvo localmente! Será sincronizado quando a internet voltar.');
-            }
-        } catch (error) {
-            console.error('Erro ao adicionar animal:', error);
-            alert('❌ Erro ao adicionar animal');
-        }
-    };
-
-    const handleUpdateAnimal = async (animalId: string, updatedData: Partial<Animal>) => {
-        try {
-            if (navigator.onLine) {
-                await updateAnimal(animalId, updatedData);
-            } else {
-                offlineQueue.add({
-                    type: 'update',
-                    collection: 'animals',
-                    data: { id: animalId, ...updatedData }
-                });
-                alert('📱 Alterações salvas localmente!');
-            }
-        } catch (error) {
-            console.error('Erro ao atualizar animal:', error);
-            alert('❌ Erro ao atualizar animal');
-        }
-    };
-
     const handleOpenAddAnimalModal = () => {
         setIsAddAnimalModalOpen(true);
     };
 
-    // Handler para salvar peso rápido (swipe direita)
-    const handleQuickWeightSave = async (animalId: string, weight: number, type: WeighingType) => {
-        try {
-            const animal = state.animals.find(a => a.id === animalId);
-            if (!animal) return;
-
-            const newEntry: WeightEntry = {
-                id: `quick-${Date.now()}`,
-                date: new Date(),
-                weightKg: weight,
-                type: type === WeighingType.None ? undefined : type,
-            };
-
-            const historicoPesagens = [...(animal.historicoPesagens || []), newEntry]
-                .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-
-            await updateAnimal(animalId, {
-                historicoPesagens,
-                pesoKg: weight,
-            });
-        } catch (error) {
-            console.error('Erro ao salvar peso:', error);
-            alert('❌ Erro ao salvar peso');
-        }
-    };
-
-    // Handler para salvar medicação rápida (swipe esquerda)
-    const handleQuickMedicationSave = async (animalId: string, medication: Omit<MedicationAdministration, 'id'>) => {
-        try {
-            const animal = state.animals.find(a => a.id === animalId);
-            if (!animal) return;
-
-            const newMedication: MedicationAdministration = {
-                id: `med-${Date.now()}`,
-                ...medication,
-            };
-
-            const historicoSanitario = [...(animal.historicoSanitario || []), newMedication];
-
-            await updateAnimal(animalId, { historicoSanitario });
-        } catch (error) {
-            console.error('Erro ao salvar medicação:', error);
-            alert('❌ Erro ao salvar medicação');
-        }
-    };
-
-    const handleScaleImportComplete = async (
-        weightsMap: Map<string, { weight: number; date: Date; type: WeighingType }>
-    ) => {
-        try {
-            const updates: Promise<void>[] = [];
-
-            weightsMap.forEach((data, animalId) => {
-                const animal = state.animals.find(a => a.id === animalId);
-                if (!animal) return;
-
-                const newEntry: WeightEntry = {
-                    id: `scale-${Date.now()}-${animalId}`,
-                    date: data.date,
-                    weightKg: data.weight,
-                    type: data.type === WeighingType.None ? undefined : data.type,
-                };
-
-                const historicoPesagens = [...(animal.historicoPesagens || []), newEntry]
-                    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-
-                updates.push(updateAnimal(animalId, {
-                    historicoPesagens,
-                    pesoKg: data.weight,
-                }));
-            });
-
-            await Promise.all(updates);
-            alert('Pesagens importadas da balança com sucesso!');
-        } catch (error) {
-            console.error('Erro ao importar pesagens:', error);
-            alert('Não foi possível concluir a importação da balança.');
-        }
+    // Wrapper para fechar o modal após adicionar
+    const handleAddAnimalWrapper = async (animalData: Omit<Animal, 'id' | 'fotos' | 'historicoSanitario' | 'historicoPesagens'>) => {
+        await performAddAnimal(animalData);
+        setIsAddAnimalModalOpen(false);
     };
 
     // 🔧 OTIMIZAÇÃO: Auto-sync com delta (economiza leituras do Firestore)
@@ -346,7 +218,7 @@ const InnerApp = ({ user, firebaseReady }: AppProps) => {
                 <AddAnimalModal
                     isOpen={isAddAnimalModalOpen}
                     onClose={() => setIsAddAnimalModalOpen(false)}
-                    onAddAnimal={handleAddAnimal}
+                    onAddAnimal={handleAddAnimalWrapper}
                     animals={state.animals}
                 />
 

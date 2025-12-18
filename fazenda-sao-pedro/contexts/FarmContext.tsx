@@ -41,12 +41,14 @@ export const FarmProvider: React.FC<FarmProviderProps> = ({ children, user }) =>
     // 4. Inicializa Perfil do Usuário
     const userProfile = useUserProfile(user);
 
-    const value = {
+    // 🔧 OTIMIZAÇÃO: Memoização do valor do contexto para evitar re-renders desnecessários
+    // Embora os hooks internos já tenham seus próprios mecanismos, agrupar aqui ajuda
+    const value = React.useMemo(() => ({
         firestore,
         filters,
         dashboardConfig,
         userProfile,
-    };
+    }), [firestore, filters, dashboardConfig, userProfile]);
 
     return (
         <FarmContext.Provider value={value}>
