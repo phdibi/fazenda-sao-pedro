@@ -26,9 +26,6 @@ interface AppRouterProps {
     onLongPress: (animal: Animal) => void;
     setShowScaleImportModal: (show: boolean) => void;
 
-    // Reports specific
-    focusNFePanel: boolean;
-    setFocusNFePanel: (focus: boolean) => void;
 }
 
 const AppRouter: React.FC<AppRouterProps> = ({
@@ -40,8 +37,6 @@ const AppRouter: React.FC<AppRouterProps> = ({
     onQuickMedication,
     onLongPress,
     setShowScaleImportModal,
-    focusNFePanel,
-    setFocusNFePanel,
 }) => {
     const { firestore, filters: advancedFilters, dashboardConfig } = useFarmData();
 
@@ -209,8 +204,6 @@ const AppRouter: React.FC<AppRouterProps> = ({
             <Suspense fallback={<div className="flex justify-center p-8"><Spinner size="lg" /></div>}>
                 <ReportsView
                     animals={state.animals}
-                    focusNFe={focusNFePanel}
-                    onNFeHandled={() => setFocusNFePanel(false)}
                 />
             </Suspense>
         );
