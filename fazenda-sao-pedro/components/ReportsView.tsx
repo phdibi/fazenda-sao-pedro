@@ -8,15 +8,13 @@ import ReproductiveReportDisplay from './ReproductiveReportDisplay';
 import PerformanceComparisonView from './PerformanceComparisonView';
 import TurnWeightReportDisplay from './TurnWeightReportDisplay';
 import { WeatherCorrelationView } from './WeatherWidget';
-import NFeIntegrationPanel from './NFeIntegrationPanel';
+import PhenotypicAnalysisView from './PhenotypicAnalysisView';
 
 interface ReportsViewProps {
   animals: Animal[];
-  focusNFe?: boolean;
-  onNFeHandled?: () => void;
 }
 
-type TabName = 'sanitary' | 'reproductive' | 'performance' | 'comparatives' | 'turnWeight';
+type TabName = 'sanitary' | 'reproductive' | 'performance' | 'comparatives' | 'turnWeight' | 'phenotypic';
 
 interface TabButtonProps {
   tabName: TabName;
@@ -24,21 +22,10 @@ interface TabButtonProps {
   disabled?: boolean;
 }
 
-const ReportsView = ({ animals, focusNFe = false, onNFeHandled }: ReportsViewProps) => {
+const ReportsView = ({ animals }: ReportsViewProps) => {
   const [reportData, setReportData] = useState<ComprehensiveReport | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string>('');
-
-  React.useEffect(() => {
-    if (!focusNFe) return;
-    const element = document.getElementById('nfe-integration-panel');
-    if (element) {
-      element.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      element.classList.add('ring-2', 'ring-brand-primary');
-      setTimeout(() => element.classList.remove('ring-2', 'ring-brand-primary'), 2000);
-    }
-    onNFeHandled?.();
-  }, [focusNFe, onNFeHandled]);
   
   const today = new Date();
   const ninetyDaysAgo = new Date(new Date().setDate(today.getDate() - 90));
@@ -102,10 +89,6 @@ const ReportsView = ({ animals, focusNFe = false, onNFeHandled }: ReportsViewPro
           )}
         </div>
 
-        <div id="nfe-integration-panel" className="mb-6 rounded-lg">
-          <NFeIntegrationPanel animals={animals} />
-        </div>
-
         {/* --- Controls --- */}
         <div className="bg-base-800 p-4 mb-6 rounded-lg shadow-lg flex flex-col md:flex-row gap-4 items-center justify-between print-hide">
           <div className="flex items-center gap-2 flex-wrap">
@@ -148,8 +131,11 @@ const ReportsView = ({ animals, focusNFe = false, onNFeHandled }: ReportsViewPro
               <TabButton tabName="reproductive" label="Reprodutivo" />
               <TabButton tabName="turnWeight" label="Peso de Virada" />
               <TabButton tabName="comparatives" label="Comparativos" />
+              <TabButton tabName="phenotypic" label="Análise Fenotípica" />
               <TabButton tabName="performance" label="Desempenho (Em breve)" disabled />
             </div>
+
+            {activeTab === 'phenotypic' && <PhenotypicAnalysisView animals={animals} />}
 
             {activeTab === 'comparatives' && (
               <div className="space-y-6">
@@ -158,7 +144,7 @@ const ReportsView = ({ animals, focusNFe = false, onNFeHandled }: ReportsViewPro
               </div>
             )}
 
-            {activeTab !== 'comparatives' && !hasReport && (
+            {activeTab !== 'comparatives' && activeTab !== 'phenotypic' && !hasReport && (
               <div className="text-center text-gray-500 bg-base-800 p-16 rounded-lg">
                 <p className="text-lg">Gere um relatório para ver esta seção.</p>
                 <p className="mt-2">Clique em "Gerar Relatório" para liberar a aba selecionada.</p>

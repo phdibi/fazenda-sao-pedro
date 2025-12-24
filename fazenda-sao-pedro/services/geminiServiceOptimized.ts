@@ -721,3 +721,71 @@ export const startChat = async (animals: Animal[]) => {
 
 // Exporta função para limpar cache manualmente
 export const clearGeminiCache = () => geminiCache.clear();
+
+// ============================================
+// ANÁLISE FENOTÍPICA
+// ============================================
+
+export interface PhenotypicData {
+    name: string;
+    breed: string;
+    traits: string;
+    age?: string;
+    weight?: number;
+    isExternal: boolean;
+}
+
+export const generatePhenotypicAnalysis = async (
+    animalA: PhenotypicData,
+    animalB: PhenotypicData
+): Promise<string> => {
+    const cacheKey = `pheno:${JSON.stringify(animalA)}:${JSON.stringify(animalB)}`;
+    const cached = geminiCache.get(cacheKey);
+    if (cached) return cached;
+
+    return debouncedCall(cacheKey, async () => {
+        checkRateLimit();
+        try {
+            const aiClient = await getAiClient();
+            console.log("🧬 [GEMINI] Gerando análise fenotípica...");
+
+            const prompt = `
+            Atue como um especialista em melhoramento genético bovino. Realize uma análise de acasalamento entre dois animais com base nas seguintes características:
+
+            ANIMAL A (${animalA.isExternal ? 'Externo' : 'Do Rebanho'}):
+            - Nome/Identificação: ${animalA.name}
+            - Raça: ${animalA.breed}
+            - Idade/Nascimento: ${animalA.age || 'Não informado'}
+            - Peso: ${animalA.weight ? animalA.weight + ' kg' : 'Não informado'}
+            - Características Fenotípicas e Observações: ${animalA.traits}
+
+            ANIMAL B (${animalB.isExternal ? 'Externo' : 'Do Rebanho'}):
+            - Nome/Identificação: ${animalB.name}
+            - Raça: ${animalB.breed}
+            - Idade/Nascimento: ${animalB.age || 'Não informado'}
+            - Peso: ${animalB.weight ? animalB.weight + ' kg' : 'Não informado'}
+            - Características Fenotípicas e Observações: ${animalB.traits}
+
+            Forneça um relatório detalhado contendo:
+            1. Análise de Compatibilidade Fenotípica: Pontos fortes e fracos de cada animal e como se complementam.
+            2. Previsão da Progênie: O que esperar das crias (porte, musculatura, aptidão leiteira/corte, precocidade).
+            3. Recomendação Final: O acasalamento é recomendado? Por que? Dê uma nota de 0 a 10 para este acasalamento.
+            4. Sugestões: O que buscar corrigir ou melhorar em futuras gerações caso este acasalamento ocorra.
+
+            Use formatação Markdown para deixar o texto legível e profissional. Seja direto e técnico.
+            `;
+
+            const response = await aiClient.models.generateContent({
+                model: geminiModel,
+                contents: prompt,
+            });
+
+            const result = response.text.trim();
+            geminiCache.set(cacheKey, result);
+            return result;
+        } catch (error) {
+            console.error("Erro ao gerar análise fenotípica:", error);
+            throw new Error("Não foi possível gerar a análise fenotípica no momento.");
+        }
+    });
+};

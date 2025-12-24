@@ -66,7 +66,6 @@ const InnerApp = ({ user, firebaseReady }: AppProps) => {
     const [isAddAnimalModalOpen, setIsAddAnimalModalOpen] = useState(false);
     const [showDashboardSettings, setShowDashboardSettings] = useState(false);
     const [showScaleImportModal, setShowScaleImportModal] = useState(false);
-    const [focusNFePanel, setFocusNFePanel] = useState(false);
 
     // Estados para ações rápidas (swipe)
     const [quickWeightAnimal, setQuickWeightAnimal] = useState<Animal | null>(null);
@@ -198,8 +197,6 @@ const InnerApp = ({ user, firebaseReady }: AppProps) => {
                     onQuickMedication={(animal) => setQuickMedicationAnimal(animal)}
                     onLongPress={(animal) => setSelectedAnimalId(animal.id)}
                     setShowScaleImportModal={setShowScaleImportModal}
-                    focusNFePanel={focusNFePanel}
-                    setFocusNFePanel={setFocusNFePanel}
                 />
             </main>
 
