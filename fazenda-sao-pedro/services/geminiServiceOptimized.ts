@@ -18,10 +18,49 @@ interface CacheEntry {
     hash: string;
 }
 
+// 🔧 OTIMIZAÇÃO: Cache persistente usando localStorage
+// Evita rechamadas ao Gemini após reload da página
 class GeminiCache {
     private cache: Map<string, CacheEntry> = new Map();
     private maxAge = 30 * 60 * 1000; // 30 minutos
     private maxEntries = 50;
+    private readonly STORAGE_KEY = 'fazenda-gemini-cache';
+
+    constructor() {
+        this.loadFromStorage();
+    }
+
+    private loadFromStorage(): void {
+        try {
+            const stored = localStorage.getItem(this.STORAGE_KEY);
+            if (stored) {
+                const entries: [string, CacheEntry][] = JSON.parse(stored);
+                const now = Date.now();
+                let loadedCount = 0;
+                entries.forEach(([key, entry]) => {
+                    // Só carrega entradas não expiradas
+                    if (now - entry.timestamp < this.maxAge) {
+                        this.cache.set(key, entry);
+                        loadedCount++;
+                    }
+                });
+                if (loadedCount > 0) {
+                    console.log(`📦 [GEMINI CACHE] Carregadas ${loadedCount} entradas do storage`);
+                }
+            }
+        } catch (error) {
+            console.warn('⚠️ [GEMINI CACHE] Erro ao carregar do storage:', error);
+        }
+    }
+
+    private saveToStorage(): void {
+        try {
+            const entries = Array.from(this.cache.entries());
+            localStorage.setItem(this.STORAGE_KEY, JSON.stringify(entries));
+        } catch (error) {
+            console.warn('⚠️ [GEMINI CACHE] Erro ao salvar no storage:', error);
+        }
+    }
 
     private hash(str: string): string {
         // Hash simples para identificar queries similares
@@ -53,6 +92,7 @@ class GeminiCache {
         // Verifica expiração
         if (Date.now() - entry.timestamp > this.maxAge) {
             this.cache.delete(key);
+            this.saveToStorage();
             return null;
         }
 
@@ -67,7 +107,7 @@ class GeminiCache {
         // Limpa entradas antigas se necessário
         if (this.cache.size >= this.maxEntries) {
             const oldestKey = this.cache.keys().next().value;
-            this.cache.delete(oldestKey);
+            if (oldestKey) this.cache.delete(oldestKey);
         }
 
         this.cache.set(key, {
@@ -75,10 +115,28 @@ class GeminiCache {
             timestamp: Date.now(),
             hash: key
         });
+
+        this.saveToStorage();
     }
 
     clear(): void {
         this.cache.clear();
+        localStorage.removeItem(this.STORAGE_KEY);
+        console.log('🗑️ [GEMINI CACHE] Cache limpo');
+    }
+
+    // Retorna estatísticas do cache
+    getStats(): { entries: number; oldestAge: number } {
+        let oldestTimestamp = Date.now();
+        this.cache.forEach(entry => {
+            if (entry.timestamp < oldestTimestamp) {
+                oldestTimestamp = entry.timestamp;
+            }
+        });
+        return {
+            entries: this.cache.size,
+            oldestAge: Math.floor((Date.now() - oldestTimestamp) / 60000) // em minutos
+        };
     }
 }
 
@@ -708,12 +766,117 @@ export const startChat = async (animals: Animal[]) => {
             return "De nada! 🐄 Estou aqui para ajudar com o manejo do seu rebanho.";
         }
 
+        // ============================================
+        // 🔧 OTIMIZAÇÃO: Respostas locais expandidas
+        // ============================================
+
+        // Busca por animal específico (por brinco)
+        if (lower.includes("brinco") || lower.match(/\b\d{3,}\b/)) {
+            const brincoMatch = lower.match(/\b\d{3,}\b/);
+            if (brincoMatch) {
+                const brinco = brincoMatch[0];
+                const animal = animals.find(a =>
+                    a.brinco.includes(brinco) ||
+                    a.brinco.toLowerCase() === brinco.toLowerCase()
+                );
+                if (animal) {
+                    const idade = animal.dataNascimento
+                        ? Math.floor((Date.now() - new Date(animal.dataNascimento).getTime()) / (1000 * 60 * 60 * 24 * 30))
+                        : null;
+                    return `🐄 **${animal.nome || `Brinco ${animal.brinco}`}**\n` +
+                           `• Brinco: ${animal.brinco}\n` +
+                           `• Raça: ${animal.raca}\n` +
+                           `• Sexo: ${animal.sexo}\n` +
+                           `• Peso: ${animal.pesoKg} kg\n` +
+                           `• Status: ${animal.status}\n` +
+                           (idade ? `• Idade: ~${idade} meses\n` : '') +
+                           (animal.maeNome ? `• Mãe: ${animal.maeNome}\n` : '') +
+                           (animal.paiNome ? `• Pai: ${animal.paiNome}` : '');
+                }
+                return `❌ Animal com brinco "${brinco}" não encontrado no rebanho.`;
+            }
+        }
+
+        // Listar animais (top, últimos, etc)
+        if (lower.includes("listar") || lower.includes("mostrar") || lower.includes("quais são") || lower.includes("top")) {
+            if (lower.includes("pesado") || lower.includes("maior") || lower.includes("top")) {
+                const top5 = [...animals].sort((a, b) => b.pesoKg - a.pesoKg).slice(0, 5);
+                const lista = top5.map((a, i) => `${i + 1}. ${a.nome || a.brinco}: ${a.pesoKg} kg`).join('\n');
+                return `🏆 **Top 5 mais pesados:**\n${lista}`;
+            }
+            if (lower.includes("leve") || lower.includes("menor")) {
+                const bottom5 = [...animals].sort((a, b) => a.pesoKg - b.pesoKg).slice(0, 5);
+                const lista = bottom5.map((a, i) => `${i + 1}. ${a.nome || a.brinco}: ${a.pesoKg} kg`).join('\n');
+                return `🪶 **Top 5 mais leves:**\n${lista}`;
+            }
+        }
+
+        // Animais por raça específica
+        const racaMatch = lower.match(/raça\s+(\w+)|(\w+)\s+raça/i);
+        if (racaMatch) {
+            const racaBuscada = (racaMatch[1] || racaMatch[2]).toLowerCase();
+            const animaisDaRaca = animals.filter(a =>
+                a.raca.toLowerCase().includes(racaBuscada)
+            );
+            if (animaisDaRaca.length > 0) {
+                return `🏷️ Encontrados **${animaisDaRaca.length}** animais da raça "${racaBuscada}":\n` +
+                       `• Peso médio: ${(animaisDaRaca.reduce((s, a) => s + a.pesoKg, 0) / animaisDaRaca.length).toFixed(2)} kg\n` +
+                       `• Machos: ${animaisDaRaca.filter(a => a.sexo === Sexo.Macho).length}\n` +
+                       `• Fêmeas: ${animaisDaRaca.filter(a => a.sexo === Sexo.Femea).length}`;
+            }
+            return `❌ Nenhum animal da raça "${racaBuscada}" encontrado.`;
+        }
+
+        // Comparações e análises
+        if (lower.includes("comparar") || lower.includes("versus") || lower.includes(" vs ") || lower.includes("cruzamento")) {
+            return "🧬 Para comparar animais ou analisar cruzamentos, use a função **Análise Fenotípica** disponível no menu do aplicativo.";
+        }
+
+        // Recomendações
+        if (lower.includes("recomend") || lower.includes("sugest") || lower.includes("dica")) {
+            const semPeso = animals.filter(a => !a.pesoKg || a.pesoKg === 0).length;
+            const semVacina = animals.filter(a => !a.historicoSanitario || a.historicoSanitario.length === 0).length;
+            let recomendacoes = "💡 **Recomendações:**\n";
+            if (semPeso > 0) recomendacoes += `• ${semPeso} animais sem peso registrado - atualize!\n`;
+            if (semVacina > 0) recomendacoes += `• ${semVacina} animais sem histórico sanitário\n`;
+            if (semPeso === 0 && semVacina === 0) recomendacoes += "• Todos os registros estão atualizados! ✅";
+            return recomendacoes;
+        }
+
+        // Busca por nome
+        if (lower.includes("onde está") || lower.includes("encontrar") || lower.includes("achar")) {
+            const palavras = lower.split(' ');
+            for (const palavra of palavras) {
+                if (palavra.length > 2) {
+                    const encontrado = animals.find(a =>
+                        a.nome?.toLowerCase().includes(palavra) ||
+                        a.brinco.toLowerCase().includes(palavra)
+                    );
+                    if (encontrado) {
+                        return `📍 **${encontrado.nome || encontrado.brinco}** encontrado!\n` +
+                               `• Brinco: ${encontrado.brinco}\n` +
+                               `• Peso: ${encontrado.pesoKg} kg\n` +
+                               `• Status: ${encontrado.status}`;
+                    }
+                }
+            }
+        }
+
+        // GMD (Ganho Médio Diário)
+        if (lower.includes("gmd") || lower.includes("ganho") || lower.includes("engorda")) {
+            const animaisComPesagens = animals.filter(a => a.historicoPesagens && a.historicoPesagens.length >= 2);
+            if (animaisComPesagens.length === 0) {
+                return "📊 Nenhum animal com histórico de pesagens suficiente para calcular GMD.";
+            }
+            return `📈 **${animaisComPesagens.length}** animais têm pesagens suficientes para análise de GMD. Use a seção de **Relatórios** para ver os dados detalhados.`;
+        }
+
         // Verifica cache para perguntas não reconhecidas
         const cached = geminiCache.get(`chat:${lower}`);
         if (cached) return cached;
 
         // Resposta padrão melhorada
-        return `🤔 Não entendi sua pergunta. Tente perguntar sobre:\n• Quantidade de animais\n• Peso (médio, total, mais pesado)\n• Vacinação e tratamentos\n• Prenhez e reprodução\n• Raças\n• Idade média\n\nOu digite "ajuda" para ver todas as opções.`;
+        return `🤔 Não entendi sua pergunta. Tente perguntar sobre:\n• Quantidade de animais\n• Peso (médio, total, mais pesado)\n• Vacinação e tratamentos\n• Prenhez e reprodução\n• Raças\n• Idade média\n• Buscar por brinco (ex: "brinco 123")\n• Top 5 mais pesados/leves\n\nOu digite "ajuda" para ver todas as opções.`;
     };
 
     return { sendMessage };

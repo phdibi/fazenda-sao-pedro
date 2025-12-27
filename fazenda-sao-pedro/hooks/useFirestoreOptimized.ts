@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useReducer, useRef } from 'react';
 import { firebaseServices } from '../services/firebase';
 import { localCache } from '../services/localCache';
+import { trackReads, trackWrites, trackDeletes, isQuotaCritical, canPerformOperation } from '../services/quotaMonitor';
 import { Animal, FirestoreCollectionName, ManagementBatch, UserRole, WeighingType, AnimalStatus, Sexo, CalendarEvent, AppUser, ManagementArea, MedicationAdministration, PregnancyRecord, PregnancyType, AbortionRecord, Task, LoadingKey, LocalStateCollectionName } from '../types';
 import { QUERY_LIMITS, ARCHIVED_COLLECTION_NAME, AUTO_SYNC_INTERVAL_MS } from '../constants/app';
 import { convertTimestampsToDates, convertDatesToTimestamps } from '../utils/dateHelpers';
@@ -295,6 +296,16 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
 
         // 🔧 OTIMIZAÇÃO: Função para buscar do Firestore com suporte a paginação
         const fetchFromFirestore = async (): Promise<{ data: T[]; lastDoc: any | null; hasMore: boolean }> => {
+            // 🔧 OTIMIZAÇÃO: Verificar quota antes de buscar
+            if (isQuotaCritical()) {
+                console.warn('⛔ [QUOTA] Quota crítica! Tentando usar cache local...');
+                const cachedData = await localCache.get<T>(cacheKey);
+                if (cachedData) {
+                    return { data: cachedData.data, lastDoc: null, hasMore: false };
+                }
+                throw new Error('Quota crítica e sem cache disponível. Tente novamente amanhã.');
+            }
+
             console.log(`🔥 [FIRESTORE] Buscando ${collectionName}...`);
             let query: any = db.collection(firestorePath)
                 .where("userId", "==", userId);
@@ -310,6 +321,9 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
             }
 
             const snapshot = await query.get();
+
+            // 🔧 OTIMIZAÇÃO: Rastrear leituras do Firestore
+            trackReads(snapshot.docs.length);
 
             // Verifica se tem mais páginas (só para coleções paginadas)
             const hasMore = isPaginated ? snapshot.docs.length > limit : false;
@@ -805,6 +819,39 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
     }, [userId, loadWithCache, setupRealtimeListeners]);
 
     // ============================================
+    // 🔧 OTIMIZAÇÃO: Pausar listeners quando aba não está visível
+    // ============================================
+    // Economia estimada: ~40% menos leituras do Firestore
+    useEffect(() => {
+        const handleVisibilityChange = () => {
+            if (!userId || !db) return;
+
+            if (document.hidden) {
+                // Pausa listeners quando aba não está visível
+                console.log('👁️ [VISIBILITY] Aba oculta - pausando listeners...');
+                Object.values(listenersRef.current).forEach(unsubscribe => {
+                    if (typeof unsubscribe === 'function') {
+                        unsubscribe();
+                    }
+                });
+                listenersRef.current = {};
+                dispatch({ type: 'SET_LISTENERS_ACTIVE', payload: false });
+            } else {
+                // Reativa quando aba volta a ficar visível
+                console.log('👁️ [VISIBILITY] Aba visível - reativando...');
+                syncDelta().then(() => {
+                    if (REALTIME_CONFIG.enabled && !stateRef.current.listenersActive) {
+                        setupRealtimeListeners();
+                    }
+                });
+            }
+        };
+
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+        return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+    }, [userId, syncDelta, setupRealtimeListeners]);
+
+    // ============================================
     // FUNÇÃO: Forçar sincronização manual
     // ============================================
     const forceSync = useCallback(async () => {
@@ -839,6 +886,11 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
     // ============================================
     const addAnimal = useCallback(async (animalData: Omit<Animal, 'id' | 'fotos' | 'historicoSanitario' | 'historicoPesagens'>) => {
         if (!userId || !db) return;
+
+        // 🔧 OTIMIZAÇÃO: Verificar quota antes de escrever (2 porque pode atualizar mãe)
+        if (!canPerformOperation('write', 2)) {
+            throw new Error('Limite de escritas atingido. Tente novamente amanhã.');
+        }
 
         try {
             const batch = db.batch();
@@ -915,6 +967,9 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
 
             await batch.commit();
 
+            // 🔧 OTIMIZAÇÃO: Rastrear escritas (1 animal + possível atualização da mãe)
+            trackWrites(animalData.maeNome ? 2 : 1);
+
             // Atualiza cache usando stateRef
             await updateLocalCache('animals', [...stateRef.current.animals, newAnimal]);
 
@@ -929,8 +984,15 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
     const updateAnimal = useCallback(async (animalId: string, updatedData: Partial<Omit<Animal, 'id'>>) => {
         if (!userId || !db) return;
 
+        // 🔧 OTIMIZAÇÃO: Verificar quota antes de escrever
+        if (!canPerformOperation('write', 2)) {
+            throw new Error('Limite de escritas atingido. Tente novamente amanhã.');
+        }
+
         // Atualização otimista
         dispatch({ type: 'LOCAL_UPDATE_ANIMAL', payload: { animalId, updatedData } });
+
+        let writeCount = 1; // Contador para rastrear escritas
 
         try {
             const batch = db.batch();
@@ -1011,6 +1073,7 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
                             const cleanedProgenie = removeUndefined(updatedProgenie);
                             // 🔧 OTIMIZAÇÃO: Adiciona updatedAt para suportar sync delta
                             batch.update(maeRef, { historicoProgenie: cleanedProgenie, updatedAt: new Date() });
+                            writeCount++; // Incrementa contador de escritas
 
                             // Atualização otimista da mãe
                             dispatch({
@@ -1027,6 +1090,9 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
 
             await batch.commit();
 
+            // 🔧 OTIMIZAÇÃO: Rastrear escritas
+            trackWrites(writeCount);
+
             // 🔧 OTIMIZAÇÃO: Usa stateRef para cache
             const updatedAnimals = stateRef.current.animals.map((a: Animal) =>
                 a.id === animalId ? { ...a, ...updatedData } : a
@@ -1042,11 +1108,19 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
     const deleteAnimal = useCallback(async (animalId: string): Promise<void> => {
         if (!userId || !db) throw new Error("Não autenticado");
 
+        // 🔧 OTIMIZAÇÃO: Verificar quota antes de deletar
+        if (!canPerformOperation('delete', 1)) {
+            throw new Error('Limite de exclusões atingido. Tente novamente amanhã.');
+        }
+
         // Atualização otimista
         dispatch({ type: 'LOCAL_DELETE_ANIMAL', payload: { animalId } });
 
         try {
             await db.collection('animals').doc(animalId).delete();
+
+            // 🔧 OTIMIZAÇÃO: Rastrear exclusão
+            trackDeletes(1);
 
             // 🔧 OTIMIZAÇÃO: Usa stateRef para cache
             const updatedAnimals = stateRef.current.animals.filter((a: Animal) => a.id !== animalId);

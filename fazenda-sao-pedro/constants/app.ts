@@ -12,6 +12,31 @@ export const CACHE_EXPIRY_MS = 60 * 60 * 1000; // 1 hora
 // Com listeners em tempo real, o auto-sync serve apenas como fallback
 export const AUTO_SYNC_INTERVAL_MS = 30 * 60 * 1000; // 30 minutos (antes era 5 minutos)
 
+/**
+ * 🔧 OTIMIZAÇÃO: Retorna intervalo de auto-sync baseado na hora do dia
+ * - Horário comercial (6h-20h): sync mais frequente (15 min)
+ * - Noite (20h-6h): sync menos frequente (1 hora)
+ * - Fim de semana: sync menos frequente (30 min)
+ */
+export const getAutoSyncInterval = (): number => {
+    const now = new Date();
+    const hour = now.getHours();
+    const dayOfWeek = now.getDay(); // 0 = Domingo, 6 = Sábado
+
+    const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+    const isBusinessHours = hour >= 6 && hour <= 20;
+
+    if (isWeekend) {
+        return 30 * 60 * 1000; // 30 minutos no fim de semana
+    }
+
+    if (isBusinessHours) {
+        return 15 * 60 * 1000; // 15 minutos em horário comercial
+    }
+
+    return 60 * 60 * 1000; // 1 hora à noite
+};
+
 // ============================================
 // FIREBASE LIMITS
 // ============================================

@@ -402,3 +402,64 @@ export const createIndexedCache = <T extends { id: string }>(baseKey: string) =>
     new IndexedCache<T>(baseKey);
 
 export { IndexedCache };
+
+// ============================================
+// 🔧 OTIMIZAÇÃO: CACHE DE QUERIES EM MEMÓRIA
+// ============================================
+// Para resultados de filtros frequentes (ex: animais por área)
+
+const queryCache = new Map<string, { data: any[]; timestamp: number }>();
+const QUERY_CACHE_TTL = 5 * 60 * 1000; // 5 minutos
+
+/**
+ * Obtém resultado de query do cache ou computa e cacheia
+ * @param key Chave única para a query (ex: "animals-by-area-123")
+ * @param computeFn Função que computa o resultado se não estiver em cache
+ */
+export const getCachedQuery = <T>(
+    key: string,
+    computeFn: () => T[]
+): T[] => {
+    const cached = queryCache.get(key);
+
+    if (cached && Date.now() - cached.timestamp < QUERY_CACHE_TTL) {
+        console.log(`📦 [QUERY CACHE HIT] ${key}`);
+        return cached.data as T[];
+    }
+
+    const result = computeFn();
+    queryCache.set(key, { data: result, timestamp: Date.now() });
+    console.log(`💾 [QUERY CACHE SET] ${key} (${result.length} items)`);
+
+    return result;
+};
+
+/**
+ * Invalida cache de queries (chamar após mutações)
+ * @param keyPrefix Prefixo das chaves a invalidar (ex: "animals" invalida todas queries de animais)
+ */
+export const invalidateQueryCache = (keyPrefix?: string): void => {
+    if (keyPrefix) {
+        const keysToDelete: string[] = [];
+        queryCache.forEach((_, key) => {
+            if (key.startsWith(keyPrefix)) {
+                keysToDelete.push(key);
+            }
+        });
+        keysToDelete.forEach(key => queryCache.delete(key));
+        if (keysToDelete.length > 0) {
+            console.log(`🗑️ [QUERY CACHE] Invalidadas ${keysToDelete.length} queries com prefixo "${keyPrefix}"`);
+        }
+    } else {
+        queryCache.clear();
+        console.log('🗑️ [QUERY CACHE] Todo cache de queries invalidado');
+    }
+};
+
+/**
+ * Retorna estatísticas do cache de queries
+ */
+export const getQueryCacheStats = (): { entries: number; keys: string[] } => ({
+    entries: queryCache.size,
+    keys: Array.from(queryCache.keys())
+});

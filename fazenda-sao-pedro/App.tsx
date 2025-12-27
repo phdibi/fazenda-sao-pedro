@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, lazy, Suspense } from 'react';
+import React, { useState, useMemo, useEffect, lazy, Suspense, useRef } from 'react';
 import Header from './components/Header';
 import { Animal, AppUser } from './types';
 import Spinner from './components/common/Spinner';
@@ -11,9 +11,10 @@ import QuickWeightModal from './components/QuickWeightModal';
 import QuickMedicationModal from './components/QuickMedicationModal';
 import AppRouter from './components/AppRouter';
 import { FarmProvider, useFarmData } from './contexts/FarmContext';
-import { AUTO_SYNC_INTERVAL_MS } from './constants/app';
+import { getAutoSyncInterval } from './constants/app';
 import { useOfflineSyncManager } from './hooks/useOfflineSyncManager';
 import { useAnimalActions } from './hooks/useAnimalActions';
+import QuotaIndicator from './components/common/QuotaIndicator';
 
 // Modais globais (permanecem aqui)
 const AnimalDetailModal = lazy(() => import('./components/AnimalDetailModal'));
@@ -96,24 +97,47 @@ const InnerApp = ({ user, firebaseReady }: AppProps) => {
         setIsAddAnimalModalOpen(false);
     };
 
-    // 🔧 OTIMIZAÇÃO: Auto-sync com delta (economiza leituras do Firestore)
-    // Com listeners em tempo real, este sync serve apenas como fallback de segurança
+    // 🔧 OTIMIZAÇÃO: Auto-sync com delta e intervalo inteligente
+    // - Intervalo varia conforme horário (15min dia, 30min fds, 1h noite)
+    // - Com listeners em tempo real, este sync serve apenas como fallback de segurança
+    const syncIntervalRef = useRef<number | null>(null);
+
     useEffect(() => {
         if (!dbInstance) return;
 
-        const intervalId = window.setInterval(async () => {
-            if (navigator.onLine) {
-                // Tenta sync delta primeiro (mais eficiente)
-                const deltaResult = await syncDelta();
-                if (deltaResult === false) {
-                    // Se não tem lastSync, faz sync completo
-                    console.log('🔄 [AUTO-SYNC] Executando sync completo como fallback...');
-                    forceSync();
-                }
+        const scheduleNextSync = () => {
+            // Limpa intervalo anterior se existir
+            if (syncIntervalRef.current) {
+                window.clearTimeout(syncIntervalRef.current);
             }
-        }, AUTO_SYNC_INTERVAL_MS);
 
-        return () => window.clearInterval(intervalId);
+            // Obtém intervalo dinâmico baseado na hora atual
+            const interval = getAutoSyncInterval();
+
+            syncIntervalRef.current = window.setTimeout(async () => {
+                if (navigator.onLine) {
+                    // Tenta sync delta primeiro (mais eficiente)
+                    const deltaResult = await syncDelta();
+                    if (deltaResult === false) {
+                        // Se não tem lastSync, faz sync completo
+                        console.log('🔄 [AUTO-SYNC] Executando sync completo como fallback...');
+                        forceSync();
+                    }
+                }
+                // Agenda próximo sync
+                scheduleNextSync();
+            }, interval);
+
+            console.log(`⏰ [AUTO-SYNC] Próximo sync em ${Math.round(interval / 60000)} minutos`);
+        };
+
+        scheduleNextSync();
+
+        return () => {
+            if (syncIntervalRef.current) {
+                window.clearTimeout(syncIntervalRef.current);
+            }
+        };
     }, [forceSync, syncDelta, dbInstance]);
 
     const isAppLoading = state.loading.animals || state.loading.calendar || state.loading.tasks || state.loading.areas;
@@ -266,6 +290,9 @@ const InnerApp = ({ user, firebaseReady }: AppProps) => {
                 isOpen={showRoleSelector}
                 onClose={() => setShowRoleSelector(false)}
             />
+
+            {/* 🔧 OTIMIZAÇÃO: Indicador visual de quota do Firebase */}
+            <QuotaIndicator />
         </div>
     );
 };
