@@ -9,12 +9,15 @@ import PerformanceComparisonView from './PerformanceComparisonView';
 import TurnWeightReportDisplay from './TurnWeightReportDisplay';
 import { WeatherCorrelationView } from './WeatherWidget';
 import PhenotypicAnalysisView from './PhenotypicAnalysisView';
+// 🔧 NOVOS COMPONENTES: KPIs, DEP e Estação de Monta
+import KPIDashboard from './KPIDashboard';
+import DEPReportComponent from './DEPReport';
 
 interface ReportsViewProps {
   animals: Animal[];
 }
 
-type TabName = 'sanitary' | 'reproductive' | 'performance' | 'comparatives' | 'turnWeight' | 'phenotypic';
+type TabName = 'sanitary' | 'reproductive' | 'performance' | 'comparatives' | 'turnWeight' | 'phenotypic' | 'kpis' | 'dep';
 
 interface TabButtonProps {
   tabName: TabName;
@@ -33,7 +36,7 @@ const ReportsView = ({ animals }: ReportsViewProps) => {
   const [startDate, setStartDate] = useState(ninetyDaysAgo.toISOString().split('T')[0]);
   const [endDate, setEndDate] = useState(today.toISOString().split('T')[0]);
 
-  const [activeTab, setActiveTab] = useState<TabName>('sanitary');
+  const [activeTab, setActiveTab] = useState<TabName>('kpis');
   const hasReport = Boolean(reportData);
 
   const handleGenerateReport = async () => {
@@ -127,6 +130,8 @@ const ReportsView = ({ animals }: ReportsViewProps) => {
 
           <div className="print-area">
             <div className="bg-base-800/50 p-3 rounded-lg flex flex-col sm:flex-row flex-wrap gap-2 print-hide mb-6">
+              <TabButton tabName="kpis" label="KPIs Zootécnicos" />
+              <TabButton tabName="dep" label="DEP Genético" />
               <TabButton tabName="sanitary" label="Análise Sanitária" />
               <TabButton tabName="reproductive" label="Reprodutivo" />
               <TabButton tabName="turnWeight" label="Peso de Virada" />
@@ -134,6 +139,11 @@ const ReportsView = ({ animals }: ReportsViewProps) => {
               <TabButton tabName="phenotypic" label="Análise Fenotípica" />
               <TabButton tabName="performance" label="Desempenho (Em breve)" disabled />
             </div>
+
+            {/* 🔧 NOVOS: KPIs e DEP - Funcionam sem gerar relatório */}
+            {activeTab === 'kpis' && <KPIDashboard animals={animals} />}
+
+            {activeTab === 'dep' && <DEPReportComponent animals={animals} />}
 
             {activeTab === 'phenotypic' && <PhenotypicAnalysisView animals={animals} />}
 
@@ -144,7 +154,7 @@ const ReportsView = ({ animals }: ReportsViewProps) => {
               </div>
             )}
 
-            {activeTab !== 'comparatives' && activeTab !== 'phenotypic' && !hasReport && (
+            {activeTab !== 'comparatives' && activeTab !== 'phenotypic' && activeTab !== 'kpis' && activeTab !== 'dep' && !hasReport && (
               <div className="text-center text-gray-500 bg-base-800 p-16 rounded-lg">
                 <p className="text-lg">Gere um relatório para ver esta seção.</p>
                 <p className="mt-2">Clique em "Gerar Relatório" para liberar a aba selecionada.</p>
