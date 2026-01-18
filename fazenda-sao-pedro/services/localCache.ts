@@ -1,20 +1,66 @@
 /**
  * LocalCache - Serviço de cache local usando IndexedDB
- * 
+ *
  * Funcionalidades:
  * - Cache persistente entre sessões
  * - Versionamento para invalidação automática
  * - Expiração por tempo (stale-while-revalidate)
  * - Singleton thread-safe (evita race conditions)
+ * - 🔧 OTIMIZAÇÃO: Compressão LZ-string (~50-70% economia de espaço)
  */
 
 import { CACHE_VERSION, CACHE_EXPIRY_MS } from '../constants/app';
+import LZString from 'lz-string';
+
+// 🔧 OTIMIZAÇÃO: Configuração de compressão
+const COMPRESSION_CONFIG = {
+  enabled: true,
+  // Só comprimir dados maiores que 1KB (compressão de dados pequenos não vale a pena)
+  minSizeBytes: 1024,
+  // Log de economia de espaço
+  logCompression: false,
+};
 
 export interface CacheEntry<T> {
   data: T[];
   timestamp: number;
   version: string;
 }
+
+// 🔧 Estrutura interna com suporte a compressão
+interface StoredCacheEntry {
+  key: string;
+  data?: any[];
+  compressedData?: string;
+  isCompressed: boolean;
+  timestamp: number;
+  version: string;
+  originalSize?: number;
+  compressedSize?: number;
+}
+
+// 🔧 OTIMIZAÇÃO: Funções de compressão/descompressão
+const compressData = <T>(data: T[]): { compressed: string; originalSize: number; compressedSize: number } => {
+  const jsonString = JSON.stringify(data);
+  const originalSize = jsonString.length;
+  const compressed = LZString.compressToUTF16(jsonString);
+  const compressedSize = compressed.length;
+
+  if (COMPRESSION_CONFIG.logCompression) {
+    const ratio = ((1 - compressedSize / originalSize) * 100).toFixed(1);
+    console.log(`🗜️ [COMPRESSION] ${originalSize} → ${compressedSize} bytes (${ratio}% economia)`);
+  }
+
+  return { compressed, originalSize, compressedSize };
+};
+
+const decompressData = <T>(compressed: string): T[] => {
+  const decompressed = LZString.decompressFromUTF16(compressed);
+  if (!decompressed) {
+    throw new Error('Falha ao descomprimir dados');
+  }
+  return JSON.parse(decompressed);
+};
 
 class LocalCache {
   private dbName = 'fazenda-cache';
@@ -64,6 +110,7 @@ class LocalCache {
 
   /**
    * Recupera dados do cache
+   * 🔧 OTIMIZAÇÃO: Suporte a dados comprimidos
    * @returns CacheEntry se válido, null se expirado ou inexistente
    */
   async get<T>(key: string): Promise<CacheEntry<T> | null> {
@@ -78,9 +125,29 @@ class LocalCache {
         const request = store.get(key);
 
         request.onsuccess = () => {
-          const result = request.result;
+          const result = request.result as StoredCacheEntry | undefined;
           if (result && result.version === CACHE_VERSION) {
-            resolve(result);
+            try {
+              // 🔧 Descomprimir se necessário
+              let data: T[];
+              if (result.isCompressed && result.compressedData) {
+                data = decompressData<T>(result.compressedData);
+                if (COMPRESSION_CONFIG.logCompression) {
+                  console.log(`🗜️ [DECOMPRESS] ${key}: ${result.compressedSize} → ${result.originalSize} bytes`);
+                }
+              } else {
+                data = result.data as T[];
+              }
+
+              resolve({
+                data,
+                timestamp: result.timestamp,
+                version: result.version,
+              });
+            } catch (decompressError) {
+              console.warn('[LocalCache] Erro ao descomprimir:', decompressError);
+              resolve(null);
+            }
           } else {
             resolve(null);
           }
@@ -99,6 +166,7 @@ class LocalCache {
 
   /**
    * Armazena dados no cache
+   * 🔧 OTIMIZAÇÃO: Comprime automaticamente dados grandes
    */
   async set<T>(key: string, data: T[]): Promise<void> {
     await this.init();
@@ -110,12 +178,39 @@ class LocalCache {
         const transaction = this.db!.transaction([this.storeName], 'readwrite');
         const store = transaction.objectStore(this.storeName);
 
-        store.put({
-          key,
-          data,
-          timestamp: Date.now(),
-          version: CACHE_VERSION,
-        });
+        // 🔧 OTIMIZAÇÃO: Comprimir se habilitado e dados grandes o suficiente
+        const jsonSize = JSON.stringify(data).length;
+        const shouldCompress = COMPRESSION_CONFIG.enabled && jsonSize >= COMPRESSION_CONFIG.minSizeBytes;
+
+        let entry: StoredCacheEntry;
+
+        if (shouldCompress) {
+          const { compressed, originalSize, compressedSize } = compressData(data);
+          entry = {
+            key,
+            compressedData: compressed,
+            isCompressed: true,
+            timestamp: Date.now(),
+            version: CACHE_VERSION,
+            originalSize,
+            compressedSize,
+          };
+
+          if (COMPRESSION_CONFIG.logCompression) {
+            const ratio = ((1 - compressedSize / originalSize) * 100).toFixed(1);
+            console.log(`🗜️ [CACHE SET] ${key}: ${originalSize} → ${compressedSize} bytes (${ratio}% economia)`);
+          }
+        } else {
+          entry = {
+            key,
+            data,
+            isCompressed: false,
+            timestamp: Date.now(),
+            version: CACHE_VERSION,
+          };
+        }
+
+        store.put(entry);
 
         transaction.oncomplete = () => resolve();
         transaction.onerror = () => {

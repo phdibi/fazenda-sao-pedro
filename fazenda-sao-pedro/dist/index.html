@@ -1,24 +1,25 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
-  <head>
-    <link rel="manifest" href="/manifest.json">
-    <meta name="theme-color" content="#5b483f">
-    <link rel="icon" type="image/png" href="/logo.png">
-    <link rel="apple-touch-icon" href="/icon-192.png">
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Fazenda+</title>
-    <meta name="description" content="Gerencie seu rebanho com inteligência - Sistema completo de gestão pecuária">
-    <script src="https://cdn.tailwindcss.com"></script>
+
+<head>
+  <link rel="manifest" href="/manifest.json">
+  <meta name="theme-color" content="#5b483f">
+  <link rel="icon" type="image/png" href="/logo.png">
+  <link rel="apple-touch-icon" href="/icon-192.png">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Fazenda+</title>
+  <meta name="description" content="Gerencie seu rebanho com inteligência - Sistema completo de gestão pecuária">
+  <script src="https://cdn.tailwindcss.com"></script>
   <script>
     tailwind.config = {
       theme: {
         extend: {
           colors: {
-        'brand-primary': '#381b18',           // Marrom escuro
-        'brand-primary-light': '#ab9185ff',     // Marrom claro
-        'brand-accent': '#d4a373',            // Bege
-        'brand-accent-dark': '#220d0b',       // Marrom muito escuro
+            'brand-primary': '#381b18',           // Marrom escuro
+            'brand-primary-light': '#ab9185ff',     // Marrom claro
+            'brand-accent': '#d4a373',            // Bege
+            'brand-accent-dark': '#220d0b',       // Marrom muito escuro
             'base': {
               950: '#0a0a0a',
               900: '#1a1a1a',
@@ -41,154 +42,171 @@
       },
     };
   </script>
-    
-    <!-- ================================================================== -->
-    <!-- 🚨 AÇÃO NECESSÁRIA: ATUALIZE SUA CONFIGURAÇÃO DO FIREBASE 🚨        -->
-    <!-- ================================================================== -->
-    <!-- O objeto `__FIREBASE_CONFIG__` abaixo contém valores de exemplo.   -->
-    <!-- Você PRECISA substituí-los pelos valores do SEU projeto Firebase. -->
-    <!--                                                                   -->
-    <!-- ONDE ENCONTRAR:                                                   -->
-    <!-- 1. Acesse seu Console do Firebase: https://console.firebase.google.com/ -->
-    <!-- 2. Selecione seu projeto.                                         -->
-    <!-- 3. Clique no ícone de engrenagem (⚙️) -> "Configurações do Projeto". -->
-    <!-- 4. Na aba "Geral", role para baixo até "Seus apps".               -->
-    <!-- 5. Selecione seu app da web e escolha a opção "Config".           -->
-    <!-- 6. Copie o objeto de configuração inteiro e cole aqui,            -->
-    <!--    substituindo o objeto de exemplo.                              -->
-    <!--                                                                   -->
-    <!-- 💡 DICA PARA O ERRO DE UPLOAD TRAVADO:                              -->
-    <!-- Este erro acontece quando o valor de 'storageBucket' está errado. -->
-    <!-- Confirme que ele corresponde EXATAMENTE ao do seu projeto.        -->
-    <!--                                                                   -->
-    <!-- ✅ CORRETO:   'seu-projeto-12345.appspot.com'                      -->
-    <!-- ❌ ERRADO:    'gs://seu-projeto-12345.appspot.com' (sem o gs://)    -->
-    <!-- ================================================================== -->
-    <script>
-      // Esta configuração PRECISA ser atribuída a window.__FIREBASE_CONFIG__
-      // para que os outros arquivos do aplicativo possam encontrá-la.
-      window.__FIREBASE_CONFIG__ = {
-        apiKey: "AIzaSyC7oqm8NkbRqh2yGdgfkI-orGtqadcJuaw",
-        authDomain: "fazenda-sao-pedro-home.firebaseapp.com",
-        projectId: "fazenda-sao-pedro-home",
-        storageBucket: "fazenda-sao-pedro-home.firebasestorage.app",
-        messagingSenderId: "24202795399",
-        appId: "1:24202795399:web:4321f14c896a38cb3adb22",
-        measurementId: "G-6KKVTF0DV3"
-      };
-    </script>
-    <!-- ================================================================== -->
-    
-<style>
+
+  <!-- ================================================================== -->
+  <!-- 🚨 AÇÃO NECESSÁRIA: ATUALIZE SUA CONFIGURAÇÃO DO FIREBASE 🚨        -->
+  <!-- ================================================================== -->
+  <!-- O objeto `__FIREBASE_CONFIG__` abaixo contém valores de exemplo.   -->
+  <!-- Você PRECISA substituí-los pelos valores do SEU projeto Firebase. -->
+  <!--                                                                   -->
+  <!-- ONDE ENCONTRAR:                                                   -->
+  <!-- 1. Acesse seu Console do Firebase: https://console.firebase.google.com/ -->
+  <!-- 2. Selecione seu projeto.                                         -->
+  <!-- 3. Clique no ícone de engrenagem (⚙️) -> "Configurações do Projeto". -->
+  <!-- 4. Na aba "Geral", role para baixo até "Seus apps".               -->
+  <!-- 5. Selecione seu app da web e escolha a opção "Config".           -->
+  <!-- 6. Copie o objeto de configuração inteiro e cole aqui,            -->
+  <!--    substituindo o objeto de exemplo.                              -->
+  <!--                                                                   -->
+  <!-- 💡 DICA PARA O ERRO DE UPLOAD TRAVADO:                              -->
+  <!-- Este erro acontece quando o valor de 'storageBucket' está errado. -->
+  <!-- Confirme que ele corresponde EXATAMENTE ao do seu projeto.        -->
+  <!--                                                                   -->
+  <!-- ✅ CORRETO:   'seu-projeto-12345.appspot.com'                      -->
+  <!-- ❌ ERRADO:    'gs://seu-projeto-12345.appspot.com' (sem o gs://)    -->
+  <!-- ================================================================== -->
+  <script>
+    // Esta configuração PRECISA ser atribuída a window.__FIREBASE_CONFIG__
+    // para que os outros arquivos do aplicativo possam encontrá-la.
+    window.__FIREBASE_CONFIG__ = {
+      apiKey: "AIzaSyC7oqm8NkbRqh2yGdgfkI-orGtqadcJuaw",
+      authDomain: "fazenda-sao-pedro-home.firebaseapp.com",
+      projectId: "fazenda-sao-pedro-home",
+      storageBucket: "fazenda-sao-pedro-home.firebasestorage.app",
+      messagingSenderId: "24202795399",
+      appId: "1:24202795399:web:4321f14c896a38cb3adb22",
+      measurementId: "G-6KKVTF0DV3"
+    };
+  </script>
+  <!-- ================================================================== -->
+
+  <style>
     @media print {
       body * {
         visibility: hidden;
       }
-      .print-area, .print-area * {
+
+      .print-area,
+      .print-area * {
         visibility: visible;
       }
+
       .print-area {
         position: absolute;
         left: 0;
         top: 0;
         width: 100%;
         padding: 2rem;
-        color: #000 !important; /* Ensure text is black for printing */
+        color: #000 !important;
+        /* Ensure text is black for printing */
       }
+
       .print-hide {
         display: none !important;
       }
-       /* Ensure background colors print */
+
+      /* Ensure background colors print */
       .print-bg-visible {
         -webkit-print-color-adjust: exact !important;
         print-color-adjust: exact !important;
-        background-color: #fff !important; /* Force white background for report cards */
+        background-color: #fff !important;
+        /* Force white background for report cards */
         border: 1px solid #ccc;
       }
-      h1, h2, h3, h4 {
+
+      h1,
+      h2,
+      h3,
+      h4 {
         color: #000 !important;
       }
-      p, span, div, li {
+
+      p,
+      span,
+      div,
+      li {
         color: #333 !important;
       }
     }
   </style>
-  <script type="module" crossorigin src="/assets/index-D39ftn_f.js"></script>
+  <script type="module" crossorigin src="/assets/index-DkhWCn1f.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/vendor-CMJYdXG8.js">
-  <link rel="stylesheet" crossorigin href="/assets/index-JMiAYMBz.css">
+  <link rel="stylesheet" crossorigin href="/assets/index-BXHO1x_E.css">
 </head>
-  <body class="bg-base-900 text-base-100">
-    <div id="root"></div>
 
-    <!-- Load Firebase SYNCHRONOUSLY before app code -->
-    <!-- Usando versão 10.14.1 que corrige o bug "Cannot access 'm' before initialization" -->
-    <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-storage-compat.js"></script>
+<body class="bg-base-900 text-base-100">
+  <div id="root"></div>
 
-    <!-- Wait a tick for Firebase to fully initialize -->
-    <script>
-      window.__FIREBASE_READY__ = new Promise(resolve => {
-        // Wait for next event loop tick to ensure Firebase is fully initialized
-        setTimeout(() => {
-          if (window.firebase) {
-            console.log('✅ Firebase pronto para uso');
-            resolve(true);
-          } else {
-            console.error('❌ Firebase não carregado');
-            resolve(false);
-          }
-        }, 0);
-      });
-    </script>
+  <!-- Load Firebase SYNCHRONOUSLY before app code -->
+  <!-- Usando versão 10.14.1 que corrige o bug "Cannot access 'm' before initialization" -->
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-storage-compat.js"></script>
 
-      <script>
-  // TEMPORARIAMENTE DESABILITADO para debug
-  // TODO: Reabilitar após resolver o erro 'm'
-  /*
-  // Registra o Service Worker com atualização forçada
-  if ('serviceWorker' in navigator) {
-    window.addEventListener('load', () => {
-      navigator.serviceWorker.register('/sw.js')
-        .then((registration) => {
-          console.log('✅ Service Worker registrado:', registration.scope);
+  <!-- Wait a tick for Firebase to fully initialize -->
+  <script>
+    window.__FIREBASE_READY__ = new Promise(resolve => {
+      // Wait for next event loop tick to ensure Firebase is fully initialized
+      setTimeout(() => {
+        if (window.firebase) {
+          console.log('✅ Firebase pronto para uso');
+          resolve(true);
+        } else {
+          console.error('❌ Firebase não carregado');
+          resolve(false);
+        }
+      }, 0);
+    });
+  </script>
 
-          // Força atualização quando há nova versão
-          registration.addEventListener('updatefound', () => {
-            const newWorker = registration.installing;
-            console.log('🔄 Nova versão do Service Worker encontrada');
-
-            newWorker.addEventListener('statechange', () => {
-              if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                console.log('✨ Nova versão instalada! Recarregando...');
-                // Força reload para usar nova versão
-                window.location.reload();
-              }
+  <script>
+    // TEMPORARIAMENTE DESABILITADO para debug
+    // TODO: Reabilitar após resolver o erro 'm'
+    /*
+    // Registra o Service Worker com atualização forçada
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/sw.js')
+          .then((registration) => {
+            console.log('✅ Service Worker registrado:', registration.scope);
+  
+            // Força atualização quando há nova versão
+            registration.addEventListener('updatefound', () => {
+              const newWorker = registration.installing;
+              console.log('🔄 Nova versão do Service Worker encontrada');
+  
+              newWorker.addEventListener('statechange', () => {
+                if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                  console.log('✨ Nova versão instalada! Recarregando...');
+                  // Força reload para usar nova versão
+                  window.location.reload();
+                }
+              });
             });
+  
+            // Verifica atualizações a cada 60 segundos
+            setInterval(() => {
+              registration.update();
+            }, 60000);
+          })
+          .catch((error) => {
+            console.log('❌ Falha ao registrar Service Worker:', error);
           });
-
-          // Verifica atualizações a cada 60 segundos
-          setInterval(() => {
-            registration.update();
-          }, 60000);
-        })
-        .catch((error) => {
-          console.log('❌ Falha ao registrar Service Worker:', error);
-        });
-    });
-  }
-  */
-
-  // Desregistra Service Workers existentes para debug
-  if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.getRegistrations().then(registrations => {
-      registrations.forEach(registration => {
-        registration.unregister();
-        console.log('🧹 Service Worker removido para debug');
       });
-    });
-  }
-</script>
+    }
+    */
+
+    // Desregistra Service Workers existentes para debug
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.getRegistrations().then(registrations => {
+        registrations.forEach(registration => {
+          registration.unregister();
+          console.log('🧹 Service Worker removido para debug');
+        });
+      });
+    }
+  </script>
 </body>
+
 </html>

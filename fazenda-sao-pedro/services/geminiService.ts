@@ -1,29 +1,48 @@
-import { GoogleGenAI, Type } from "@google/genai";
+// 🔧 OTIMIZAÇÃO: Dynamic import do Gemini SDK
+// O SDK só é carregado quando realmente necessário, economizando ~200KB no bundle inicial
 import { Animal, MedicationAdministration, Raca, Sexo, ComprehensiveReport, MonthlyMedicationUsage, MedicationUsageDetail, DamPerformanceData } from "../types";
 import { geminiRateLimiter, RateLimitError, isRateLimitError } from "./rateLimiter";
 
-// --- LAZY, FAULT-TOLERANT INITIALIZATION ---
-// O cliente de IA é inicializado apenas quando necessário pela primeira vez. Isso evita que o aplicativo
-// trave no carregamento se a chave da API (process.env.API_KEY) não estiver disponível
-// no ambiente de execução (por exemplo, durante o desenvolvimento local ou na Netlify).
+// Tipos para o SDK (evita importar o pacote inteiro)
+type GoogleGenAI = any;
+type Type = any;
+
+// --- LAZY, FAULT-TOLERANT INITIALIZATION COM DYNAMIC IMPORT ---
+// O cliente de IA é inicializado apenas quando necessário pela primeira vez.
+// Isso evita que o aplicativo carregue ~200KB do SDK no bundle inicial.
 let ai: GoogleGenAI | null = null;
-const getAiClient = (): GoogleGenAI => {
+let TypeEnum: Type | null = null;
+
+const getAiClient = async (): Promise<GoogleGenAI> => {
     if (ai) {
         return ai;
     }
     try {
         const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
         if (!apiKey) {
-    throw new Error("A variável de ambiente VITE_GEMINI_API_KEY não foi encontrada.");
-}
+            throw new Error("A variável de ambiente VITE_GEMINI_API_KEY não foi encontrada.");
+        }
+
+        // 🔧 DYNAMIC IMPORT: Carrega SDK apenas quando necessário
+        console.log('📦 [GEMINI] Carregando SDK dinamicamente...');
+        const { GoogleGenAI, Type } = await import('@google/genai');
+        TypeEnum = Type;
 
         ai = new GoogleGenAI({ apiKey });
+        console.log('✅ [GEMINI] SDK carregado com sucesso');
         return ai;
     } catch (e) {
         console.error("Falha ao inicializar o cliente Gemini:", e);
-        // Lançamos um erro aqui para que a função chamadora possa capturá-lo e mostrar um erro amigável ao usuário.
         throw new Error("Não foi possível conectar à IA do Gemini. Verifique se a chave de API está configurada corretamente no ambiente de execução.");
     }
+};
+
+// Helper para obter Type enum após SDK carregado
+const getTypeEnum = async (): Promise<Type> => {
+    if (!TypeEnum) {
+        await getAiClient(); // Isso carrega o TypeEnum também
+    }
+    return TypeEnum!;
 };
 
 const geminiModel = 'gemini-2.5-flash';
@@ -41,29 +60,35 @@ const callWithRateLimit = async <T>(fn: () => Promise<T>): Promise<T> => {
     }
 };
 
-// --- Schemas for structured data extraction ---
-const medicationSchema = {
-    type: Type.OBJECT,
-    properties: {
-        medicamento: { type: Type.STRING, description: 'Nome do medicamento' },
-        dose: { type: Type.NUMBER, description: 'Dosagem numérica' },
-        unidade: { type: Type.STRING, description: 'Unidade da dose (ml, mg, dose)', enum: ['ml', 'mg', 'dose'] },
-        motivo: { type: Type.STRING, description: 'Motivo da aplicação' }
-    },
+// --- Schemas for structured data extraction (criados dinamicamente) ---
+const getMedicationSchema = async () => {
+    const Type = await getTypeEnum();
+    return {
+        type: Type.OBJECT,
+        properties: {
+            medicamento: { type: Type.STRING, description: 'Nome do medicamento' },
+            dose: { type: Type.NUMBER, description: 'Dosagem numérica' },
+            unidade: { type: Type.STRING, description: 'Unidade da dose (ml, mg, dose)', enum: ['ml', 'mg', 'dose'] },
+            motivo: { type: Type.STRING, description: 'Motivo da aplicação' }
+        },
+    };
 };
 
-const animalSchema = {
-    type: Type.OBJECT,
-    properties: {
-        brinco: { type: Type.STRING, description: 'Número do brinco do animal' },
-        nome: { type: Type.STRING, description: 'Nome do animal' },
-        raca: { type: Type.STRING, description: 'Raça do animal', enum: Object.values(Raca) },
-        sexo: { type: Type.STRING, description: 'Sexo do animal', enum: Object.values(Sexo) },
-        dataNascimento: { type: Type.STRING, description: 'Data de nascimento no formato AAAA-MM-DD' },
-        pesoKg: { type: Type.NUMBER, description: 'Peso do animal em quilogramas' },
-        maeNome: { type: Type.STRING, description: 'Nome ou brinco da mãe' },
-        paiNome: { type: Type.STRING, description: 'Nome ou brinco do pai' }
-    },
+const getAnimalSchema = async () => {
+    const Type = await getTypeEnum();
+    return {
+        type: Type.OBJECT,
+        properties: {
+            brinco: { type: Type.STRING, description: 'Número do brinco do animal' },
+            nome: { type: Type.STRING, description: 'Nome do animal' },
+            raca: { type: Type.STRING, description: 'Raça do animal', enum: Object.values(Raca) },
+            sexo: { type: Type.STRING, description: 'Sexo do animal', enum: Object.values(Sexo) },
+            dataNascimento: { type: Type.STRING, description: 'Data de nascimento no formato AAAA-MM-DD' },
+            pesoKg: { type: Type.NUMBER, description: 'Peso do animal em quilogramas' },
+            maeNome: { type: Type.STRING, description: 'Nome ou brinco da mãe' },
+            paiNome: { type: Type.STRING, description: 'Nome ou brinco do pai' }
+        },
+    };
 };
 
 // --- MOCK IMPLEMENTATION (for features not reported as bugs) ---
@@ -76,7 +101,8 @@ const mockApiCall = <T,>(data: T, delay = 1500): Promise<T> =>
 export const structureMedicalDataFromText = async (text: string): Promise<Partial<MedicationAdministration>> => {
   return callWithRateLimit(async () => {
     try {
-      const aiClient = getAiClient();
+      const aiClient = await getAiClient();
+      const medicationSchema = await getMedicationSchema();
       console.log("Calling Gemini to structure medical text:", text);
       const response = await aiClient.models.generateContent({
         model: geminiModel,
@@ -106,7 +132,8 @@ export const structureMedicalDataFromText = async (text: string): Promise<Partia
 export const structureAnimalDataFromText = async (text: string): Promise<Partial<Omit<Animal, 'id' | 'fotos' | 'historicoSanitario' | 'historicoPesagens'>>> => {
   return callWithRateLimit(async () => {
     try {
-      const aiClient = getAiClient();
+      const aiClient = await getAiClient();
+      const animalSchema = await getAnimalSchema();
       console.log("Calling Gemini to structure animal registration text:", text);
       const response = await aiClient.models.generateContent({
         model: geminiModel,

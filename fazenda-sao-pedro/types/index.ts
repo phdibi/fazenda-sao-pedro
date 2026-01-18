@@ -121,3 +121,214 @@ export interface WeatherCorrelation {
   avgGMD: number;
   animalCount: number;
 }
+
+// ============================================
+// 🔧 KPIs ZOOTÉCNICOS
+// ============================================
+
+export interface ZootechnicalKPIs {
+  // Taxa de desmame: bezerros desmamados / vacas expostas × 100
+  weaningRate: number;
+  // Peso médio ao desmame em kg
+  avgWeaningWeight: number;
+  // Intervalo entre partos em dias
+  calvingInterval: number;
+  // Taxa de prenhez: vacas prenhes / vacas expostas × 100
+  pregnancyRate: number;
+  // Kg de bezerro/vaca/ano: (peso desmame × taxa desmame) / vacas expostas
+  kgCalfPerCowYear: number;
+  // Taxa de mortalidade: óbitos / total × 100
+  mortalityRate: number;
+  // GMD médio do rebanho
+  avgGMD: number;
+  // Taxa de natalidade: nascimentos / vacas expostas × 100
+  birthRate: number;
+  // Idade média ao primeiro parto em meses
+  avgFirstCalvingAge: number;
+  // Peso médio ao nascimento
+  avgBirthWeight: number;
+  // Peso médio ao sobreano
+  avgYearlingWeight: number;
+}
+
+export interface KPITarget {
+  metric: keyof ZootechnicalKPIs;
+  target: number;
+  unit: string;
+  description: string;
+  minAcceptable: number;
+  excellent: number;
+}
+
+export const DEFAULT_KPI_TARGETS: KPITarget[] = [
+  { metric: 'weaningRate', target: 80, unit: '%', description: 'Taxa de Desmame', minAcceptable: 70, excellent: 90 },
+  { metric: 'avgWeaningWeight', target: 180, unit: 'kg', description: 'Peso Médio Desmame', minAcceptable: 150, excellent: 200 },
+  { metric: 'calvingInterval', target: 365, unit: 'dias', description: 'Intervalo Entre Partos', minAcceptable: 400, excellent: 330 },
+  { metric: 'pregnancyRate', target: 85, unit: '%', description: 'Taxa de Prenhez', minAcceptable: 75, excellent: 92 },
+  { metric: 'kgCalfPerCowYear', target: 140, unit: 'kg', description: 'Kg Bezerro/Vaca/Ano', minAcceptable: 100, excellent: 160 },
+  { metric: 'mortalityRate', target: 3, unit: '%', description: 'Taxa de Mortalidade', minAcceptable: 5, excellent: 2 },
+  { metric: 'avgGMD', target: 0.8, unit: 'kg/dia', description: 'GMD Médio', minAcceptable: 0.5, excellent: 1.0 },
+  { metric: 'birthRate', target: 85, unit: '%', description: 'Taxa de Natalidade', minAcceptable: 75, excellent: 92 },
+  { metric: 'avgFirstCalvingAge', target: 24, unit: 'meses', description: 'Idade 1º Parto', minAcceptable: 30, excellent: 22 },
+  { metric: 'avgBirthWeight', target: 32, unit: 'kg', description: 'Peso Médio Nascimento', minAcceptable: 28, excellent: 35 },
+  { metric: 'avgYearlingWeight', target: 300, unit: 'kg', description: 'Peso Médio Sobreano', minAcceptable: 250, excellent: 350 },
+];
+
+// ============================================
+// 🔧 ESTAÇÃO DE MONTA DIGITAL
+// ============================================
+
+export type BreedingSeasonStatus = 'planning' | 'active' | 'finished' | 'cancelled';
+export type CoverageType = 'natural' | 'ia' | 'iatf' | 'te';
+
+export interface CoverageRecord {
+  id: string;
+  cowId: string;
+  cowBrinco: string;
+  bullId?: string;
+  bullBrinco?: string;
+  semenCode?: string; // Para IA/IATF
+  date: Date;
+  type: CoverageType;
+  technician?: string;
+  notes?: string;
+  // Resultado do diagnóstico de gestação
+  pregnancyCheckDate?: Date;
+  pregnancyResult?: 'positive' | 'negative' | 'pending';
+  expectedCalvingDate?: Date;
+}
+
+export interface BreedingSeason {
+  id: string;
+  userId: string;
+  name: string;
+  startDate: Date;
+  endDate: Date;
+  status: BreedingSeasonStatus;
+  // Touros utilizados
+  bulls: {
+    id: string;
+    brinco: string;
+    nome?: string;
+    type: 'natural' | 'semen';
+  }[];
+  // Vacas expostas
+  exposedCowIds: string[];
+  // Registros de cobertura
+  coverageRecords: CoverageRecord[];
+  // Configurações
+  config: {
+    useIATF: boolean;
+    iatfProtocol?: string;
+    pregnancyCheckDays: number; // Dias após cobertura para diagnóstico
+    targetPregnancyRate: number;
+  };
+  // Métricas calculadas
+  metrics?: {
+    totalExposed: number;
+    totalCovered: number;
+    totalPregnant: number;
+    pregnancyRate: number;
+    serviceRate: number; // Vacas cobertas / Vacas expostas
+    conceptionRate: number; // Prenhes / Cobertas
+  };
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+// ============================================
+// 🔧 DEP - DIFERENÇA ESPERADA NA PROGÊNIE
+// ============================================
+
+export interface DEPValues {
+  // Pesos
+  birthWeight: number;      // DEP Peso ao Nascimento (kg)
+  weaningWeight: number;    // DEP Peso ao Desmame (kg)
+  yearlingWeight: number;   // DEP Peso ao Sobreano (kg)
+  // Maternais
+  milkProduction: number;   // DEP Produção de Leite (kg)
+  totalMaternal: number;    // DEP Habilidade Materna Total (kg)
+  // Carcaça (se disponível)
+  ribeyeArea?: number;      // DEP Área de Olho de Lombo (cm²)
+  fatThickness?: number;    // DEP Espessura de Gordura (mm)
+  // Fertilidade
+  scrotalCircumference?: number; // DEP Circunferência Escrotal (cm)
+  stayability?: number;     // DEP Permanência (%)
+}
+
+export interface DEPReport {
+  animalId: string;
+  brinco: string;
+  nome?: string;
+  sexo: string;
+  raca: string;
+  // Valores DEP calculados
+  dep: DEPValues;
+  // Acurácias (% confiança baseado no número de informações)
+  accuracy: {
+    birthWeight: number;
+    weaningWeight: number;
+    yearlingWeight: number;
+    milkProduction: number;
+    totalMaternal: number;
+  };
+  // Percentis dentro do rebanho
+  percentile: {
+    birthWeight: number;
+    weaningWeight: number;
+    yearlingWeight: number;
+    milkProduction: number;
+    totalMaternal: number;
+  };
+  // Informações usadas no cálculo
+  dataSource: {
+    ownRecords: number;       // Registros próprios
+    progenyRecords: number;   // Registros de progênie
+    siblingsRecords: number;  // Registros de irmãos
+  };
+  // Recomendação de uso
+  recommendation: 'reprodutor_elite' | 'reprodutor' | 'descarte' | 'matriz_elite' | 'matriz' | 'indefinido';
+  calculatedAt: Date;
+}
+
+// Médias e desvios padrão do rebanho para cálculo de DEP
+export interface HerdDEPBaseline {
+  raca: string;
+  metrics: {
+    birthWeight: { mean: number; stdDev: number };
+    weaningWeight: { mean: number; stdDev: number };
+    yearlingWeight: { mean: number; stdDev: number };
+  };
+  updatedAt: Date;
+}
+
+// ============================================
+// 🔧 FILA OFFLINE PERSISTENTE
+// ============================================
+
+export type OfflineOperationType =
+  | 'add_animal'
+  | 'update_animal'
+  | 'delete_animal'
+  | 'add_weight'
+  | 'add_medication'
+  | 'add_pregnancy'
+  | 'add_calendar_event'
+  | 'update_calendar_event'
+  | 'delete_calendar_event'
+  | 'add_task'
+  | 'update_task'
+  | 'delete_task'
+  | 'add_breeding_coverage';
+
+export interface OfflineOperation {
+  id: string;
+  type: OfflineOperationType;
+  collection: string;
+  documentId?: string;
+  data: any;
+  timestamp: number;
+  retryCount: number;
+  lastError?: string;
+  status: 'pending' | 'processing' | 'failed' | 'completed';
+}
