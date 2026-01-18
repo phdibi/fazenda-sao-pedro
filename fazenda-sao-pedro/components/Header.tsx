@@ -3,7 +3,7 @@ import { DocumentChartBarIcon, PlusIcon, CalendarDaysIcon, ClipboardDocumentChec
 import { AppUser, UserRole } from '../types';
 import { firebaseServices } from '../services/firebase';
 
-type ViewType = 'dashboard' | 'reports' | 'calendar' | 'tasks' | 'management' | 'batches';
+type ViewType = 'dashboard' | 'reports' | 'calendar' | 'tasks' | 'management' | 'batches' | 'breeding';
 
 interface HeaderProps {
     currentView: ViewType;
@@ -133,6 +133,11 @@ const Header = ({
                         </NavButton>
                         <NavButton view="tasks" label="Tarefas" currentView={currentView} setCurrentView={setCurrentView}>
                             <ClipboardDocumentCheckIcon className="h-4 w-4" />
+                        </NavButton>
+                        <NavButton view="breeding" label="Monta" currentView={currentView} setCurrentView={setCurrentView}>
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                                <path fillRule="evenodd" d="M3.172 5.172a4 4 0 015.656 0L10 6.343l1.172-1.171a4 4 0 115.656 5.656L10 17.657l-6.828-6.829a4 4 0 010-5.656z" clipRule="evenodd" />
+                            </svg>
                         </NavButton>
                         <NavButton view="reports" label="Relatórios" currentView={currentView} setCurrentView={setCurrentView}>
                             <DocumentChartBarIcon className="h-4 w-4" />

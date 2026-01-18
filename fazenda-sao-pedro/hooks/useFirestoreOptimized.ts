@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useReducer, useRef } from 'react';
 import { firebaseServices } from '../services/firebase';
 import { localCache } from '../services/localCache';
 import { trackReads, trackWrites, trackDeletes, isQuotaCritical, canPerformOperation } from '../services/quotaMonitor';
-import { Animal, FirestoreCollectionName, ManagementBatch, UserRole, WeighingType, AnimalStatus, Sexo, CalendarEvent, AppUser, ManagementArea, MedicationAdministration, PregnancyRecord, PregnancyType, AbortionRecord, Task, LoadingKey, LocalStateCollectionName } from '../types';
+import { Animal, FirestoreCollectionName, ManagementBatch, UserRole, WeighingType, AnimalStatus, Sexo, CalendarEvent, AppUser, ManagementArea, MedicationAdministration, PregnancyRecord, PregnancyType, AbortionRecord, Task, LoadingKey, LocalStateCollectionName, BreedingSeason, CoverageRecord } from '../types';
 import { QUERY_LIMITS, ARCHIVED_COLLECTION_NAME, AUTO_SYNC_INTERVAL_MS } from '../constants/app';
 import { convertTimestampsToDates, convertDatesToTimestamps } from '../utils/dateHelpers';
 import { removeUndefined } from '../utils/objectHelpers';
@@ -25,12 +25,14 @@ interface FirestoreState {
     tasks: Task[];
     managementAreas: ManagementArea[];
     batches: ManagementBatch[];
+    breedingSeasons: BreedingSeason[];
     loading: {
         animals: boolean;
         calendar: boolean;
         tasks: boolean;
         areas: boolean;
         batches: boolean;
+        breedingSeasons: boolean;
     };
     error: string | null;
     lastSync: number | null;
@@ -75,7 +77,11 @@ type FirestoreAction =
     // Batches
     | { type: 'LOCAL_ADD_BATCH'; payload: ManagementBatch }
     | { type: 'LOCAL_UPDATE_BATCH'; payload: { batchId: string; updatedData: Partial<ManagementBatch> } }
-    | { type: 'LOCAL_DELETE_BATCH'; payload: { batchId: string } };
+    | { type: 'LOCAL_DELETE_BATCH'; payload: { batchId: string } }
+    // Breeding Seasons
+    | { type: 'LOCAL_ADD_BREEDING_SEASON'; payload: BreedingSeason }
+    | { type: 'LOCAL_UPDATE_BREEDING_SEASON'; payload: { seasonId: string; updatedData: Partial<BreedingSeason> } }
+    | { type: 'LOCAL_DELETE_BREEDING_SEASON'; payload: { seasonId: string } };
 
 const initialState: FirestoreState = {
     animals: [],
@@ -83,7 +89,8 @@ const initialState: FirestoreState = {
     tasks: [],
     managementAreas: [],
     batches: [],
-    loading: { animals: true, calendar: true, tasks: true, areas: true, batches: true },
+    breedingSeasons: [],
+    loading: { animals: true, calendar: true, tasks: true, areas: true, batches: true, breedingSeasons: true },
     error: null,
     lastSync: null,
     listenersActive: false,
@@ -245,6 +252,29 @@ const firestoreReducer = (state: FirestoreState, action: FirestoreAction): Fires
             return {
                 ...state,
                 batches: state.batches.filter(batch => batch.id !== action.payload.batchId)
+            };
+
+        // ============================================
+        // BREEDING SEASONS - ATUALIZAÇÃO OTIMISTA
+        // ============================================
+        case 'LOCAL_ADD_BREEDING_SEASON':
+            return {
+                ...state,
+                breedingSeasons: [...state.breedingSeasons, action.payload]
+            };
+        case 'LOCAL_UPDATE_BREEDING_SEASON':
+            return {
+                ...state,
+                breedingSeasons: state.breedingSeasons.map(season =>
+                    season.id === action.payload.seasonId
+                        ? { ...season, ...action.payload.updatedData }
+                        : season
+                ),
+            };
+        case 'LOCAL_DELETE_BREEDING_SEASON':
+            return {
+                ...state,
+                breedingSeasons: state.breedingSeasons.filter(season => season.id !== action.payload.seasonId)
             };
 
         default:
@@ -786,6 +816,7 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
                     loadWithCache<Task>('tasks', 'tasks', 'tasks', undefined, QUERY_LIMITS.INITIAL_LOAD),
                     loadWithCache<ManagementArea>('managementAreas', 'areas', 'areas'),
                     loadWithCache<ManagementBatch>('batches', 'batches', 'batches'),
+                    loadWithCache<BreedingSeason>('breedingSeasons', 'breeding_seasons', 'breedingSeasons'),
                 ]);
 
                 dispatch({ type: 'SET_LAST_SYNC', payload: Date.now() });
@@ -876,6 +907,7 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
             loadWithCache<Task>('tasks', 'tasks', 'tasks'),
             loadWithCache<ManagementArea>('managementAreas', 'areas', 'areas'),
             loadWithCache<ManagementBatch>('batches', 'batches', 'batches'),
+            loadWithCache<BreedingSeason>('breedingSeasons', 'breeding_seasons', 'breedingSeasons'),
         ]);
 
         dispatch({ type: 'SET_LAST_SYNC', payload: Date.now() });
@@ -1491,6 +1523,218 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
         await updateBatch(batchId, completedData);
     }, [userId, db, updateBatch]);
 
+    // ============================================
+    // 🔧 ESTAÇÃO DE MONTA (BREEDING SEASONS)
+    // ============================================
+    const createBreedingSeason = useCallback(async (seasonData: Omit<BreedingSeason, 'id'>) => {
+        if (!userId || !db) return;
+
+        const cleanedSeason = removeUndefined({ ...seasonData, userId });
+        const dataWithTimestamp = convertDatesToTimestamps(cleanedSeason);
+
+        try {
+            const newDocRef = await db.collection('breeding_seasons').add({ ...dataWithTimestamp, updatedAt: new Date() });
+            const newSeason: BreedingSeason = {
+                id: newDocRef.id,
+                ...seasonData
+            } as BreedingSeason;
+
+            // Atualização otimista
+            dispatch({ type: 'LOCAL_ADD_BREEDING_SEASON', payload: newSeason });
+
+            await updateLocalCache('breedingSeasons', [...stateRef.current.breedingSeasons, newSeason]);
+
+            return newSeason;
+        } catch (error) {
+            console.error("Erro ao criar estação de monta:", error);
+            await forceSync();
+            throw error;
+        }
+    }, [userId, updateLocalCache, forceSync]);
+
+    const updateBreedingSeason = useCallback(async (seasonId: string, updatedData: Partial<BreedingSeason>) => {
+        if (!userId || !db) return;
+
+        // Atualização otimista
+        dispatch({ type: 'LOCAL_UPDATE_BREEDING_SEASON', payload: { seasonId, updatedData } });
+
+        try {
+            const seasonRef = db.collection('breeding_seasons').doc(seasonId);
+            const cleanedData = removeUndefined(updatedData);
+            const dataWithTimestamp = convertDatesToTimestamps(cleanedData);
+
+            await seasonRef.update({ ...dataWithTimestamp, updatedAt: new Date() });
+
+            const updatedSeasons = stateRef.current.breedingSeasons.map((s: BreedingSeason) =>
+                s.id === seasonId ? { ...s, ...updatedData } : s
+            );
+            await updateLocalCache('breedingSeasons', updatedSeasons);
+        } catch (error) {
+            console.error("Erro ao atualizar estação de monta:", error);
+            await forceSync();
+            throw error;
+        }
+    }, [userId, updateLocalCache, forceSync]);
+
+    const deleteBreedingSeason = useCallback(async (seasonId: string) => {
+        if (!userId || !db) return;
+
+        // Atualização otimista
+        dispatch({ type: 'LOCAL_DELETE_BREEDING_SEASON', payload: { seasonId } });
+
+        try {
+            await db.collection('breeding_seasons').doc(seasonId).delete();
+
+            const updatedSeasons = stateRef.current.breedingSeasons.filter((s: BreedingSeason) => s.id !== seasonId);
+            await updateLocalCache('breedingSeasons', updatedSeasons);
+        } catch (error) {
+            console.error("Erro ao deletar estação de monta:", error);
+            await forceSync();
+            throw error;
+        }
+    }, [userId, updateLocalCache, forceSync]);
+
+    // Adiciona cobertura a uma estação de monta
+    // 🔧 INTEGRAÇÃO: Sincroniza automaticamente com historicoPrenhez do animal
+    const addCoverageToSeason = useCallback(async (
+        seasonId: string,
+        coverage: Omit<CoverageRecord, 'id' | 'expectedCalvingDate'>
+    ) => {
+        if (!userId || !db) return;
+
+        const season = stateRef.current.breedingSeasons.find((s: BreedingSeason) => s.id === seasonId);
+        if (!season) {
+            throw new Error('Estação de monta não encontrada');
+        }
+
+        // Calcula data prevista de parto (283 dias)
+        const coverageDate = new Date(coverage.date);
+        const expectedCalvingDate = new Date(coverageDate);
+        expectedCalvingDate.setDate(expectedCalvingDate.getDate() + 283);
+
+        const newCoverage: CoverageRecord = {
+            ...coverage,
+            id: `cov_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+            expectedCalvingDate,
+            pregnancyResult: 'pending',
+        };
+
+        const updatedCoverageRecords = [...(season.coverageRecords || []), newCoverage];
+
+        await updateBreedingSeason(seasonId, {
+            coverageRecords: updatedCoverageRecords,
+        });
+
+        // 🔧 INTEGRAÇÃO: Adiciona registro no historicoPrenhez do animal
+        const animal = stateRef.current.animals.find((a: Animal) => a.id === coverage.cowId);
+        if (animal) {
+            // Mapeia tipo de cobertura para PregnancyType
+            const pregnancyTypeMap: Record<string, PregnancyType> = {
+                'natural': PregnancyType.Monta,
+                'ia': PregnancyType.InseminacaoArtificial,
+                'iatf': PregnancyType.InseminacaoArtificial,
+                'te': PregnancyType.TransferenciaEmbriao,
+            };
+
+            const sireName = coverage.bullBrinco || coverage.semenCode || 'Desconhecido';
+
+            const pregnancyRecord: PregnancyRecord = {
+                id: newCoverage.id, // Usa mesmo ID para correlação
+                date: coverageDate,
+                type: pregnancyTypeMap[coverage.type] || PregnancyType.Monta,
+                sireName,
+            };
+
+            const updatedHistoricoPrenhez = [...(animal.historicoPrenhez || []), pregnancyRecord];
+
+            // Atualiza o animal com o novo registro
+            const animalRef = db.collection('animals').doc(coverage.cowId);
+            const dataWithTimestamp = convertDatesToTimestamps({ historicoPrenhez: updatedHistoricoPrenhez });
+            await animalRef.update({ ...dataWithTimestamp, updatedAt: new Date() });
+
+            // Atualização otimista local
+            dispatch({ type: 'LOCAL_UPDATE_ANIMAL', payload: {
+                animalId: coverage.cowId,
+                updatedData: { historicoPrenhez: updatedHistoricoPrenhez }
+            }});
+
+            // Atualiza cache local
+            const updatedAnimals = stateRef.current.animals.map((a: Animal) =>
+                a.id === coverage.cowId
+                    ? { ...a, historicoPrenhez: updatedHistoricoPrenhez }
+                    : a
+            );
+            await updateLocalCache('animals', updatedAnimals);
+        }
+
+        return newCoverage;
+    }, [userId, db, updateBreedingSeason, updateLocalCache]);
+
+    // Atualiza resultado de diagnóstico de prenhez
+    // 🔧 INTEGRAÇÃO: Se resultado for negativo, registra como "perda" no histórico do animal
+    const updatePregnancyDiagnosis = useCallback(async (
+        seasonId: string,
+        coverageId: string,
+        result: 'positive' | 'negative',
+        checkDate: Date
+    ) => {
+        if (!userId || !db) return;
+
+        const season = stateRef.current.breedingSeasons.find((s: BreedingSeason) => s.id === seasonId);
+        if (!season) {
+            throw new Error('Estação de monta não encontrada');
+        }
+
+        // Encontra a cobertura para obter o cowId
+        const coverage = season.coverageRecords.find((c: CoverageRecord) => c.id === coverageId);
+        if (!coverage) {
+            throw new Error('Cobertura não encontrada');
+        }
+
+        const updatedCoverageRecords = season.coverageRecords.map((c: CoverageRecord) =>
+            c.id === coverageId
+                ? { ...c, pregnancyResult: result, pregnancyCheckDate: checkDate }
+                : c
+        );
+
+        await updateBreedingSeason(seasonId, {
+            coverageRecords: updatedCoverageRecords,
+        });
+
+        // 🔧 INTEGRAÇÃO: Se resultado negativo, pode indicar perda/aborto precoce
+        // Adiciona ao histórico de abortos do animal
+        if (result === 'negative') {
+            const animal = stateRef.current.animals.find((a: Animal) => a.id === coverage.cowId);
+            if (animal) {
+                const abortionRecord = {
+                    id: `abort_${coverageId}`,
+                    date: checkDate,
+                };
+
+                const updatedHistoricoAborto = [...(animal.historicoAborto || []), abortionRecord];
+
+                // Atualiza o animal com o registro de aborto/vazia
+                const animalRef = db.collection('animals').doc(coverage.cowId);
+                const dataWithTimestamp = convertDatesToTimestamps({ historicoAborto: updatedHistoricoAborto });
+                await animalRef.update({ ...dataWithTimestamp, updatedAt: new Date() });
+
+                // Atualização otimista local
+                dispatch({ type: 'LOCAL_UPDATE_ANIMAL', payload: {
+                    animalId: coverage.cowId,
+                    updatedData: { historicoAborto: updatedHistoricoAborto }
+                }});
+
+                // Atualiza cache local
+                const updatedAnimals = stateRef.current.animals.map((a: Animal) =>
+                    a.id === coverage.cowId
+                        ? { ...a, historicoAborto: updatedHistoricoAborto }
+                        : a
+                );
+                await updateLocalCache('animals', updatedAnimals);
+            }
+        }
+    }, [userId, db, updateBreedingSeason, updateLocalCache]);
+
     return {
         state,
         db,
@@ -1519,5 +1763,11 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
         updateBatch,
         deleteBatch,
         completeBatch,
+        // Breeding Seasons (Estação de Monta)
+        createBreedingSeason,
+        updateBreedingSeason,
+        deleteBreedingSeason,
+        addCoverageToSeason,
+        updatePregnancyDiagnosis,
     };
 };

@@ -1,10 +1,10 @@
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   Animal,
   BreedingSeason,
   BreedingSeasonStatus,
   CoverageType,
-  Sexo,
+  CoverageRecord,
 } from '../types';
 import {
   calculateBreedingMetrics,
@@ -15,22 +15,17 @@ import {
 } from '../services/breedingSeasonService';
 
 interface BreedingSeasonManagerProps {
-  season: BreedingSeason | null;
   animals: Animal[];
-  onCreateSeason: (season: Omit<BreedingSeason, 'id'>) => Promise<void>;
-  onUpdateSeason: (season: BreedingSeason) => Promise<void>;
+  seasons: BreedingSeason[];
+  onCreateSeason: (season: Omit<BreedingSeason, 'id'>) => Promise<BreedingSeason | undefined>;
+  onUpdateSeason: (seasonId: string, data: Partial<BreedingSeason>) => Promise<void>;
+  onDeleteSeason: (seasonId: string) => Promise<void>;
   onAddCoverage: (
-    cowId: string,
-    cowBrinco: string,
-    bullId: string | undefined,
-    bullBrinco: string | undefined,
-    semenCode: string | undefined,
-    type: CoverageType,
-    date: Date,
-    technician?: string,
-    notes?: string
-  ) => Promise<void>;
-  onUpdatePregnancyResult: (
+    seasonId: string,
+    coverage: Omit<CoverageRecord, 'id' | 'expectedCalvingDate'>
+  ) => Promise<CoverageRecord | undefined>;
+  onUpdateDiagnosis: (
+    seasonId: string,
     coverageId: string,
     result: 'positive' | 'negative',
     checkDate: Date
@@ -104,7 +99,7 @@ const NewSeasonForm: React.FC<{
 
   return (
     <form onSubmit={handleSubmit} className="bg-base-800 rounded-xl p-6 space-y-4">
-      <h3 className="text-lg font-semibold text-white">Nova Estação de Monta</h3>
+      <h3 className="text-lg font-semibold text-white">Nova Estacao de Monta</h3>
 
       <div>
         <label className="block text-sm text-gray-400 mb-1">Nome</label>
@@ -112,7 +107,7 @@ const NewSeasonForm: React.FC<{
           type="text"
           value={name}
           onChange={(e) => setName(e.target.value)}
-          placeholder="Ex: Estação 2024/2025"
+          placeholder="Ex: Estacao 2024/2025"
           className="w-full bg-base-700 border border-base-600 rounded-lg px-3 py-2 text-white"
           required
         />
@@ -120,7 +115,7 @@ const NewSeasonForm: React.FC<{
 
       <div className="grid grid-cols-2 gap-4">
         <div>
-          <label className="block text-sm text-gray-400 mb-1">Início</label>
+          <label className="block text-sm text-gray-400 mb-1">Inicio</label>
           <input
             type="date"
             value={startDate}
@@ -153,7 +148,7 @@ const NewSeasonForm: React.FC<{
           type="submit"
           className="flex-1 px-4 py-2 bg-brand-primary text-white rounded-lg hover:bg-brand-primary-dark"
         >
-          Criar Estação
+          Criar Estacao
         </button>
       </div>
     </form>
@@ -167,17 +162,7 @@ const NewSeasonForm: React.FC<{
 const CoverageForm: React.FC<{
   eligibleCows: Animal[];
   availableBulls: Animal[];
-  onSubmit: (data: {
-    cowId: string;
-    cowBrinco: string;
-    bullId?: string;
-    bullBrinco?: string;
-    semenCode?: string;
-    type: CoverageType;
-    date: Date;
-    technician?: string;
-    notes?: string;
-  }) => void;
+  onSubmit: (data: Omit<CoverageRecord, 'id' | 'expectedCalvingDate'>) => void;
   onCancel: () => void;
 }> = ({ eligibleCows, availableBulls, onSubmit, onCancel }) => {
   const [cowId, setCowId] = useState('');
@@ -204,6 +189,7 @@ const CoverageForm: React.FC<{
         date: new Date(date),
         technician: technician || undefined,
         notes: notes || undefined,
+        pregnancyResult: 'pending',
       });
     }
   };
@@ -268,7 +254,7 @@ const CoverageForm: React.FC<{
         </div>
       ) : (
         <div>
-          <label className="block text-sm text-gray-400 mb-1">Código do Sêmen</label>
+          <label className="block text-sm text-gray-400 mb-1">Codigo do Semen</label>
           <input
             type="text"
             value={semenCode}
@@ -292,23 +278,23 @@ const CoverageForm: React.FC<{
           />
         </div>
         <div>
-          <label className="block text-sm text-gray-400 mb-1">Técnico (opcional)</label>
+          <label className="block text-sm text-gray-400 mb-1">Tecnico (opcional)</label>
           <input
             type="text"
             value={technician}
             onChange={(e) => setTechnician(e.target.value)}
-            placeholder="Nome do técnico"
+            placeholder="Nome do tecnico"
             className="w-full bg-base-700 border border-base-600 rounded-lg px-3 py-2 text-white"
           />
         </div>
       </div>
 
       <div>
-        <label className="block text-sm text-gray-400 mb-1">Observações (opcional)</label>
+        <label className="block text-sm text-gray-400 mb-1">Observacoes (opcional)</label>
         <textarea
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
-          placeholder="Observações sobre a cobertura..."
+          placeholder="Observacoes sobre a cobertura..."
           className="w-full bg-base-700 border border-base-600 rounded-lg px-3 py-2 text-white h-20"
         />
       </div>
@@ -333,17 +319,77 @@ const CoverageForm: React.FC<{
 };
 
 // ============================================
+// LISTA DE ESTAÇÕES
+// ============================================
+
+const SeasonsList: React.FC<{
+  seasons: BreedingSeason[];
+  onSelectSeason: (season: BreedingSeason) => void;
+  onCreateNew: () => void;
+}> = ({ seasons, onSelectSeason, onCreateNew }) => {
+  const sortedSeasons = [...seasons].sort(
+    (a, b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime()
+  );
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h3 className="text-lg font-semibold text-white">Estacoes de Monta</h3>
+        <button
+          onClick={onCreateNew}
+          className="px-4 py-2 bg-brand-primary text-white rounded-lg hover:bg-brand-primary-dark text-sm"
+        >
+          + Nova Estacao
+        </button>
+      </div>
+
+      {sortedSeasons.length === 0 ? (
+        <div className="bg-base-800 rounded-xl p-8 text-center">
+          <div className="text-4xl mb-4">🐄</div>
+          <p className="text-gray-400">Nenhuma estacao de monta cadastrada</p>
+        </div>
+      ) : (
+        <div className="grid gap-4">
+          {sortedSeasons.map((season) => (
+            <div
+              key={season.id}
+              onClick={() => onSelectSeason(season)}
+              className="bg-base-800 rounded-xl p-4 cursor-pointer hover:bg-base-750 transition-colors"
+            >
+              <div className="flex items-center justify-between mb-2">
+                <h4 className="font-semibold text-white">{season.name}</h4>
+                <StatusBadge status={season.status} />
+              </div>
+              <div className="text-sm text-gray-400">
+                {new Date(season.startDate).toLocaleDateString('pt-BR')} -{' '}
+                {new Date(season.endDate).toLocaleDateString('pt-BR')}
+              </div>
+              <div className="flex gap-4 mt-2 text-xs text-gray-500">
+                <span>{season.exposedCowIds?.length || 0} vacas expostas</span>
+                <span>{season.coverageRecords?.length || 0} coberturas</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ============================================
 // COMPONENTE PRINCIPAL
 // ============================================
 
 const BreedingSeasonManager: React.FC<BreedingSeasonManagerProps> = ({
-  season,
   animals,
+  seasons,
   onCreateSeason,
   onUpdateSeason,
+  onDeleteSeason,
   onAddCoverage,
-  onUpdatePregnancyResult,
+  onUpdateDiagnosis,
 }) => {
+  const [selectedSeason, setSelectedSeason] = useState<BreedingSeason | null>(null);
   const [showNewSeasonForm, setShowNewSeasonForm] = useState(false);
   const [showCoverageForm, setShowCoverageForm] = useState(false);
   const [activeTab, setActiveTab] = useState<'overview' | 'coverages' | 'diagnostics' | 'calvings'>(
@@ -354,15 +400,18 @@ const BreedingSeasonManager: React.FC<BreedingSeasonManagerProps> = ({
   const eligibleCows = useMemo(() => getEligibleCows(animals), [animals]);
   const availableBulls = useMemo(() => getAvailableBulls(animals), [animals]);
   const metrics = useMemo(
-    () => (season ? calculateBreedingMetrics(season, animals) : null),
-    [season, animals]
+    () => (selectedSeason ? calculateBreedingMetrics(selectedSeason, animals) : null),
+    [selectedSeason, animals]
   );
-  const expectedCalvings = useMemo(() => (season ? getExpectedCalvings(season) : []), [season]);
+  const expectedCalvings = useMemo(
+    () => (selectedSeason ? getExpectedCalvings(selectedSeason) : []),
+    [selectedSeason]
+  );
 
   // Handlers
   const handleCreateSeason = async (data: { name: string; startDate: Date; endDate: Date }) => {
-    await onCreateSeason({
-      userId: '', // Será preenchido no hook
+    const newSeason = await onCreateSeason({
+      userId: '',
       name: data.name,
       startDate: data.startDate,
       endDate: data.endDate,
@@ -379,42 +428,42 @@ const BreedingSeasonManager: React.FC<BreedingSeasonManagerProps> = ({
       updatedAt: new Date(),
     });
     setShowNewSeasonForm(false);
+    if (newSeason) {
+      setSelectedSeason(newSeason);
+    }
   };
 
-  const handleAddCoverage = async (data: {
-    cowId: string;
-    cowBrinco: string;
-    bullId?: string;
-    bullBrinco?: string;
-    semenCode?: string;
-    type: CoverageType;
-    date: Date;
-    technician?: string;
-    notes?: string;
-  }) => {
-    await onAddCoverage(
-      data.cowId,
-      data.cowBrinco,
-      data.bullId,
-      data.bullBrinco,
-      data.semenCode,
-      data.type,
-      data.date,
-      data.technician,
-      data.notes
-    );
+  const handleAddCoverage = async (data: Omit<CoverageRecord, 'id' | 'expectedCalvingDate'>) => {
+    if (!selectedSeason) return;
+    await onAddCoverage(selectedSeason.id, data);
+    // Atualiza a estacao selecionada com a nova cobertura
+    const updatedSeason = seasons.find((s) => s.id === selectedSeason.id);
+    if (updatedSeason) {
+      setSelectedSeason(updatedSeason);
+    }
     setShowCoverageForm(false);
   };
 
-  // Se não há estação ativa
-  if (!season) {
+  const handleUpdateDiagnosis = async (
+    coverageId: string,
+    result: 'positive' | 'negative'
+  ) => {
+    if (!selectedSeason) return;
+    await onUpdateDiagnosis(selectedSeason.id, coverageId, result, new Date());
+  };
+
+  const handleBack = () => {
+    setSelectedSeason(null);
+    setActiveTab('overview');
+  };
+
+  // Se nenhuma estacao selecionada, mostra lista
+  if (!selectedSeason) {
     return (
       <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-2xl font-bold text-white">Estação de Monta</h2>
-            <p className="text-sm text-gray-400">Gerencie a reprodução do seu rebanho</p>
-          </div>
+        <div>
+          <h2 className="text-2xl font-bold text-white">Estacao de Monta</h2>
+          <p className="text-sm text-gray-400">Gerencie a reproducao do seu rebanho</p>
         </div>
 
         {showNewSeasonForm ? (
@@ -423,39 +472,38 @@ const BreedingSeasonManager: React.FC<BreedingSeasonManagerProps> = ({
             onCancel={() => setShowNewSeasonForm(false)}
           />
         ) : (
-          <div className="bg-base-800 rounded-xl p-8 text-center">
-            <div className="text-6xl mb-4">🐄</div>
-            <h3 className="text-xl font-semibold text-white mb-2">
-              Nenhuma estação de monta ativa
-            </h3>
-            <p className="text-gray-400 mb-6">
-              Crie uma nova estação para começar a gerenciar as coberturas e diagnósticos de gestação.
-            </p>
-            <button
-              onClick={() => setShowNewSeasonForm(true)}
-              className="px-6 py-3 bg-brand-primary text-white rounded-lg hover:bg-brand-primary-dark"
-            >
-              Criar Nova Estação
-            </button>
-          </div>
+          <SeasonsList
+            seasons={seasons}
+            onSelectSeason={setSelectedSeason}
+            onCreateNew={() => setShowNewSeasonForm(true)}
+          />
         )}
       </div>
     );
   }
 
-  // Estação ativa
+  // Atualiza selectedSeason quando seasons muda
+  const currentSeason = seasons.find((s) => s.id === selectedSeason.id) || selectedSeason;
+
+  // Estacao selecionada
   return (
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
+          <button
+            onClick={handleBack}
+            className="text-sm text-gray-400 hover:text-white mb-2 flex items-center gap-1"
+          >
+            ← Voltar para lista
+          </button>
           <div className="flex items-center gap-3">
-            <h2 className="text-2xl font-bold text-white">{season.name}</h2>
-            <StatusBadge status={season.status} />
+            <h2 className="text-2xl font-bold text-white">{currentSeason.name}</h2>
+            <StatusBadge status={currentSeason.status} />
           </div>
           <p className="text-sm text-gray-400">
-            {new Date(season.startDate).toLocaleDateString('pt-BR')} -{' '}
-            {new Date(season.endDate).toLocaleDateString('pt-BR')}
+            {new Date(currentSeason.startDate).toLocaleDateString('pt-BR')} -{' '}
+            {new Date(currentSeason.endDate).toLocaleDateString('pt-BR')}
           </p>
         </div>
         <button
@@ -476,7 +524,7 @@ const BreedingSeasonManager: React.FC<BreedingSeasonManagerProps> = ({
         />
       )}
 
-      {/* Métricas principais */}
+      {/* Metricas principais */}
       {metrics && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <MetricCard
@@ -519,39 +567,33 @@ const BreedingSeasonManager: React.FC<BreedingSeasonManagerProps> = ({
                 : 'text-gray-400 hover:text-white'
             }`}
           >
-            {tab === 'overview' && 'Visão Geral'}
+            {tab === 'overview' && 'Visao Geral'}
             {tab === 'coverages' && 'Coberturas'}
-            {tab === 'diagnostics' && 'Diagnósticos'}
+            {tab === 'diagnostics' && 'Diagnosticos'}
             {tab === 'calvings' && 'Partos Previstos'}
           </button>
         ))}
       </div>
 
-      {/* Conteúdo das tabs */}
+      {/* Conteudo das tabs */}
       {activeTab === 'overview' && metrics && (
         <div className="space-y-6">
           {/* Taxas */}
           <div className="bg-base-800 rounded-xl p-6">
-            <h3 className="text-lg font-semibold text-white mb-4">Indicadores de Eficiência</h3>
+            <h3 className="text-lg font-semibold text-white mb-4">Indicadores de Eficiencia</h3>
             <div className="grid grid-cols-3 gap-6">
               <div className="text-center">
-                <div className="text-3xl font-bold text-emerald-400">
-                  {metrics.serviceRate}%
-                </div>
-                <div className="text-sm text-gray-400">Taxa de Serviço</div>
+                <div className="text-3xl font-bold text-emerald-400">{metrics.serviceRate}%</div>
+                <div className="text-sm text-gray-400">Taxa de Servico</div>
                 <div className="text-xs text-gray-500">Cobertas / Expostas</div>
               </div>
               <div className="text-center">
-                <div className="text-3xl font-bold text-blue-400">
-                  {metrics.conceptionRate}%
-                </div>
-                <div className="text-sm text-gray-400">Taxa de Concepção</div>
+                <div className="text-3xl font-bold text-blue-400">{metrics.conceptionRate}%</div>
+                <div className="text-sm text-gray-400">Taxa de Concepcao</div>
                 <div className="text-xs text-gray-500">Prenhes / Cobertas</div>
               </div>
               <div className="text-center">
-                <div className="text-3xl font-bold text-purple-400">
-                  {metrics.pregnancyRate}%
-                </div>
+                <div className="text-3xl font-bold text-purple-400">{metrics.pregnancyRate}%</div>
                 <div className="text-sm text-gray-400">Taxa de Prenhez</div>
                 <div className="text-xs text-gray-500">Prenhes / Expostas</div>
               </div>
@@ -563,9 +605,7 @@ const BreedingSeasonManager: React.FC<BreedingSeasonManagerProps> = ({
             <h3 className="text-lg font-semibold text-white mb-4">Coberturas por Tipo</h3>
             <div className="grid grid-cols-4 gap-4">
               <div className="text-center p-4 bg-base-700 rounded-lg">
-                <div className="text-2xl font-bold text-white">
-                  {metrics.coveragesByType.natural}
-                </div>
+                <div className="text-2xl font-bold text-white">{metrics.coveragesByType.natural}</div>
                 <div className="text-sm text-gray-400">Natural</div>
               </div>
               <div className="text-center p-4 bg-base-700 rounded-lg">
@@ -586,7 +626,7 @@ const BreedingSeasonManager: React.FC<BreedingSeasonManagerProps> = ({
           {/* Performance por touro */}
           {metrics.coveragesByBull.length > 0 && (
             <div className="bg-base-800 rounded-xl p-6">
-              <h3 className="text-lg font-semibold text-white mb-4">Performance por Touro/Sêmen</h3>
+              <h3 className="text-lg font-semibold text-white mb-4">Performance por Touro/Semen</h3>
               <div className="space-y-3">
                 {metrics.coveragesByBull.map((bull) => (
                   <div
@@ -599,14 +639,9 @@ const BreedingSeasonManager: React.FC<BreedingSeasonManagerProps> = ({
                     </div>
                     <div className="text-right">
                       <div className="text-lg font-bold text-emerald-400">
-                        {bull.count > 0
-                          ? Math.round((bull.pregnancies / bull.count) * 100)
-                          : 0}
-                        %
+                        {bull.count > 0 ? Math.round((bull.pregnancies / bull.count) * 100) : 0}%
                       </div>
-                      <div className="text-xs text-gray-400">
-                        {bull.pregnancies} prenhes
-                      </div>
+                      <div className="text-xs text-gray-400">{bull.pregnancies} prenhes</div>
                     </div>
                   </div>
                 ))}
@@ -619,13 +654,13 @@ const BreedingSeasonManager: React.FC<BreedingSeasonManagerProps> = ({
       {activeTab === 'coverages' && (
         <div className="bg-base-800 rounded-xl p-6">
           <h3 className="text-lg font-semibold text-white mb-4">
-            Histórico de Coberturas ({season.coverageRecords.length})
+            Historico de Coberturas ({currentSeason.coverageRecords?.length || 0})
           </h3>
-          {season.coverageRecords.length === 0 ? (
+          {!currentSeason.coverageRecords?.length ? (
             <p className="text-gray-400 text-center py-8">Nenhuma cobertura registrada</p>
           ) : (
             <div className="space-y-3">
-              {season.coverageRecords
+              {[...currentSeason.coverageRecords]
                 .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
                 .map((coverage) => (
                   <div
@@ -669,12 +704,10 @@ const BreedingSeasonManager: React.FC<BreedingSeasonManagerProps> = ({
       {activeTab === 'diagnostics' && metrics && (
         <div className="bg-base-800 rounded-xl p-6">
           <h3 className="text-lg font-semibold text-white mb-4">
-            Diagnósticos Pendentes ({metrics.pregnancyChecksDue.length})
+            Diagnosticos Pendentes ({metrics.pregnancyChecksDue.length})
           </h3>
           {metrics.pregnancyChecksDue.length === 0 ? (
-            <p className="text-gray-400 text-center py-8">
-              Nenhum diagnóstico pendente no momento
-            </p>
+            <p className="text-gray-400 text-center py-8">Nenhum diagnostico pendente no momento</p>
           ) : (
             <div className="space-y-3">
               {metrics.pregnancyChecksDue.map((check) => (
@@ -691,11 +724,11 @@ const BreedingSeasonManager: React.FC<BreedingSeasonManagerProps> = ({
                   <div className="flex gap-2">
                     <button
                       onClick={() => {
-                        const coverage = season.coverageRecords.find(
+                        const coverage = currentSeason.coverageRecords?.find(
                           (c) => c.cowId === check.cowId && c.pregnancyResult === 'pending'
                         );
                         if (coverage) {
-                          onUpdatePregnancyResult(coverage.id, 'positive', new Date());
+                          handleUpdateDiagnosis(coverage.id, 'positive');
                         }
                       }}
                       className="px-3 py-1 bg-emerald-600 text-white text-sm rounded-lg hover:bg-emerald-700"
@@ -704,11 +737,11 @@ const BreedingSeasonManager: React.FC<BreedingSeasonManagerProps> = ({
                     </button>
                     <button
                       onClick={() => {
-                        const coverage = season.coverageRecords.find(
+                        const coverage = currentSeason.coverageRecords?.find(
                           (c) => c.cowId === check.cowId && c.pregnancyResult === 'pending'
                         );
                         if (coverage) {
-                          onUpdatePregnancyResult(coverage.id, 'negative', new Date());
+                          handleUpdateDiagnosis(coverage.id, 'negative');
                         }
                       }}
                       className="px-3 py-1 bg-red-600 text-white text-sm rounded-lg hover:bg-red-700"
@@ -729,9 +762,7 @@ const BreedingSeasonManager: React.FC<BreedingSeasonManagerProps> = ({
             Partos Previstos ({expectedCalvings.length})
           </h3>
           {expectedCalvings.length === 0 ? (
-            <p className="text-gray-400 text-center py-8">
-              Nenhum parto previsto ainda
-            </p>
+            <p className="text-gray-400 text-center py-8">Nenhum parto previsto ainda</p>
           ) : (
             <div className="space-y-3">
               {expectedCalvings.map((calving, index) => (
@@ -749,8 +780,7 @@ const BreedingSeasonManager: React.FC<BreedingSeasonManagerProps> = ({
                     </div>
                     <div className="text-xs text-gray-400">
                       {Math.ceil(
-                        (new Date(calving.expectedDate).getTime() - Date.now()) /
-                          (1000 * 60 * 60 * 24)
+                        (new Date(calving.expectedDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24)
                       )}{' '}
                       dias
                     </div>

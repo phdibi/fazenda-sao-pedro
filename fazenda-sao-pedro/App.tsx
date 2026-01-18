@@ -62,7 +62,7 @@ const InnerApp = ({ user, firebaseReady }: AppProps) => {
     const { config, toggleWidget, setWidgetSize, resetToDefault } = dashboardConfig;
 
     const [showRoleSelector, setShowRoleSelector] = useState(false);
-    const [currentView, setCurrentView] = useState<'dashboard' | 'reports' | 'calendar' | 'tasks' | 'management' | 'batches'>('dashboard');
+    const [currentView, setCurrentView] = useState<'dashboard' | 'reports' | 'calendar' | 'tasks' | 'management' | 'batches' | 'breeding'>('dashboard');
     const [selectedAnimalId, setSelectedAnimalId] = useState<string | null>(null);
     const [isAddAnimalModalOpen, setIsAddAnimalModalOpen] = useState(false);
     const [showDashboardSettings, setShowDashboardSettings] = useState(false);
@@ -140,7 +140,7 @@ const InnerApp = ({ user, firebaseReady }: AppProps) => {
         };
     }, [forceSync, syncDelta, dbInstance]);
 
-    const isAppLoading = state.loading.animals || state.loading.calendar || state.loading.tasks || state.loading.areas;
+    const isAppLoading = state.loading.animals || state.loading.calendar || state.loading.tasks || state.loading.areas || state.loading.breedingSeasons;
 
     if (isAppLoading) {
         return (

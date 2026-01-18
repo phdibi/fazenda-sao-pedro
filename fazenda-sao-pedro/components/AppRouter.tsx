@@ -13,9 +13,11 @@ const CalendarView = lazy(() => import('./CalendarView'));
 const ReportsView = lazy(() => import('./ReportsView'));
 const ManagementView = lazy(() => import('./ManagementView'));
 const BatchManagement = lazy(() => import('./BatchManagement'));
+// 🔧 NOVO: Estação de Monta
+const BreedingSeasonManager = lazy(() => import('./BreedingSeasonManager'));
 
 interface AppRouterProps {
-    currentView: 'dashboard' | 'reports' | 'calendar' | 'tasks' | 'management' | 'batches';
+    currentView: 'dashboard' | 'reports' | 'calendar' | 'tasks' | 'management' | 'batches' | 'breeding';
     costlyActionsEnabled: boolean;
 
     // UI State Handlers (Managed in MainLayout/App)
@@ -53,7 +55,13 @@ const AppRouter: React.FC<AppRouterProps> = ({
         createBatch,
         updateBatch,
         deleteBatch,
-        completeBatch
+        completeBatch,
+        // Breeding Seasons
+        createBreedingSeason,
+        updateBreedingSeason,
+        deleteBreedingSeason,
+        addCoverageToSeason,
+        updatePregnancyDiagnosis,
     } = firestore;
 
     const {
@@ -258,6 +266,22 @@ const AppRouter: React.FC<AppRouterProps> = ({
                     onUpdateBatch={updateBatch}
                     onDeleteBatch={deleteBatch}
                     onCompleteBatch={completeBatch}
+                />
+            </Suspense>
+        );
+    }
+
+    if (currentView === 'breeding') {
+        return (
+            <Suspense fallback={<div className="flex justify-center p-8"><Spinner size="lg" /></div>}>
+                <BreedingSeasonManager
+                    animals={state.animals}
+                    seasons={state.breedingSeasons}
+                    onCreateSeason={createBreedingSeason}
+                    onUpdateSeason={updateBreedingSeason}
+                    onDeleteSeason={deleteBreedingSeason}
+                    onAddCoverage={addCoverageToSeason}
+                    onUpdateDiagnosis={updatePregnancyDiagnosis}
                 />
             </Suspense>
         );

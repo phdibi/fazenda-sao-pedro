@@ -1,6 +1,6 @@
 import React from 'react';
 import { CalendarDaysIcon, ClipboardDocumentCheckIcon, MapPinIcon, PlusIcon, ScaleIcon } from './common/Icons';
-type ViewType = 'dashboard' | 'reports' | 'calendar' | 'tasks' | 'management' | 'batches';
+type ViewType = 'dashboard' | 'reports' | 'calendar' | 'tasks' | 'management' | 'batches' | 'breeding';
 
 interface MobileNavBarProps {
     currentView: ViewType;
@@ -54,6 +54,13 @@ const HomeIcon = ({ className }: { className?: string }) => (
     </svg>
 );
 
+// Ícone de Estação de Monta (coração com símbolo de reprodução)
+const BreedingIcon = ({ className }: { className?: string }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" className={className || "h-5 w-5"} viewBox="0 0 20 20" fill="currentColor">
+        <path fillRule="evenodd" d="M3.172 5.172a4 4 0 015.656 0L10 6.343l1.172-1.171a4 4 0 115.656 5.656L10 17.657l-6.828-6.829a4 4 0 010-5.656z" clipRule="evenodd" />
+    </svg>
+);
+
 const MobileNavBar = ({ currentView, setCurrentView, onAddAnimalClick }: MobileNavBarProps) => {
     return (
         <div className="fixed bottom-0 left-0 right-0 z-50 md:hidden">
@@ -84,6 +91,9 @@ const MobileNavBar = ({ currentView, setCurrentView, onAddAnimalClick }: MobileN
                         <ClipboardDocumentCheckIcon className="w-5 h-5" />
                     </NavButton>
 
+                    <NavButton view="breeding" label="Monta" isActive={currentView === 'breeding'} onClick={setCurrentView}>
+                        <BreedingIcon className="w-5 h-5" />
+                    </NavButton>
 
                 </div>
 
