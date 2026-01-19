@@ -166,8 +166,10 @@ const CoverageForm: React.FC<{
   onCancel: () => void;
 }> = ({ eligibleCows, availableBulls, onSubmit, onCancel }) => {
   const [cowId, setCowId] = useState('');
+  const [cowSearch, setCowSearch] = useState('');
   const [type, setType] = useState<CoverageType>('natural');
   const [bullId, setBullId] = useState('');
+  const [bullSearch, setBullSearch] = useState('');
   const [semenCode, setSemenCode] = useState('');
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [technician, setTechnician] = useState('');
@@ -175,6 +177,28 @@ const CoverageForm: React.FC<{
 
   const selectedCow = eligibleCows.find((c) => c.id === cowId);
   const selectedBull = availableBulls.find((b) => b.id === bullId);
+
+  // Filtra vacas pela busca
+  const filteredCows = useMemo(() => {
+    if (!cowSearch.trim()) return eligibleCows;
+    const search = cowSearch.toLowerCase();
+    return eligibleCows.filter(
+      (cow) =>
+        cow.brinco.toLowerCase().includes(search) ||
+        cow.nome?.toLowerCase().includes(search)
+    );
+  }, [eligibleCows, cowSearch]);
+
+  // Filtra touros pela busca
+  const filteredBulls = useMemo(() => {
+    if (!bullSearch.trim()) return availableBulls;
+    const search = bullSearch.toLowerCase();
+    return availableBulls.filter(
+      (bull) =>
+        bull.brinco.toLowerCase().includes(search) ||
+        bull.nome?.toLowerCase().includes(search)
+    );
+  }, [availableBulls, bullSearch]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -199,20 +223,35 @@ const CoverageForm: React.FC<{
       <h3 className="text-lg font-semibold text-white">Registrar Cobertura</h3>
 
       <div>
-        <label className="block text-sm text-gray-400 mb-1">Vaca</label>
+        <label className="block text-sm text-gray-400 mb-1">
+          Vaca ({eligibleCows.length} disponiveis)
+        </label>
+        <input
+          type="text"
+          value={cowSearch}
+          onChange={(e) => setCowSearch(e.target.value)}
+          placeholder="Buscar por brinco ou nome..."
+          className="w-full bg-base-700 border border-base-600 rounded-lg px-3 py-2 text-white mb-2"
+        />
         <select
           value={cowId}
           onChange={(e) => setCowId(e.target.value)}
           className="w-full bg-base-700 border border-base-600 rounded-lg px-3 py-2 text-white"
           required
+          size={5}
         >
           <option value="">Selecione...</option>
-          {eligibleCows.map((cow) => (
+          {filteredCows.map((cow) => (
             <option key={cow.id} value={cow.id}>
               {cow.brinco} - {cow.nome || 'Sem nome'}
             </option>
           ))}
         </select>
+        {cowId && selectedCow && (
+          <div className="mt-2 text-sm text-emerald-400">
+            Selecionada: {selectedCow.brinco} - {selectedCow.nome || 'Sem nome'}
+          </div>
+        )}
       </div>
 
       <div>
@@ -237,20 +276,35 @@ const CoverageForm: React.FC<{
 
       {type === 'natural' ? (
         <div>
-          <label className="block text-sm text-gray-400 mb-1">Touro</label>
+          <label className="block text-sm text-gray-400 mb-1">
+            Touro ({availableBulls.length} disponiveis)
+          </label>
+          <input
+            type="text"
+            value={bullSearch}
+            onChange={(e) => setBullSearch(e.target.value)}
+            placeholder="Buscar por brinco ou nome..."
+            className="w-full bg-base-700 border border-base-600 rounded-lg px-3 py-2 text-white mb-2"
+          />
           <select
             value={bullId}
             onChange={(e) => setBullId(e.target.value)}
             className="w-full bg-base-700 border border-base-600 rounded-lg px-3 py-2 text-white"
             required
+            size={5}
           >
             <option value="">Selecione...</option>
-            {availableBulls.map((bull) => (
+            {filteredBulls.map((bull) => (
               <option key={bull.id} value={bull.id}>
                 {bull.brinco} - {bull.nome || 'Sem nome'}
               </option>
             ))}
           </select>
+          {bullId && selectedBull && (
+            <div className="mt-2 text-sm text-emerald-400">
+              Selecionado: {selectedBull.brinco} - {selectedBull.nome || 'Sem nome'}
+            </div>
+          )}
         </div>
       ) : (
         <div>
@@ -326,7 +380,8 @@ const SeasonsList: React.FC<{
   seasons: BreedingSeason[];
   onSelectSeason: (season: BreedingSeason) => void;
   onCreateNew: () => void;
-}> = ({ seasons, onSelectSeason, onCreateNew }) => {
+  onDeleteSeason: (seasonId: string) => void;
+}> = ({ seasons, onSelectSeason, onCreateNew, onDeleteSeason }) => {
   const sortedSeasons = [...seasons].sort(
     (a, b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime()
   );
@@ -353,20 +408,45 @@ const SeasonsList: React.FC<{
           {sortedSeasons.map((season) => (
             <div
               key={season.id}
-              onClick={() => onSelectSeason(season)}
-              className="bg-base-800 rounded-xl p-4 cursor-pointer hover:bg-base-750 transition-colors"
+              className="bg-base-800 rounded-xl p-4 hover:bg-base-750 transition-colors"
             >
               <div className="flex items-center justify-between mb-2">
-                <h4 className="font-semibold text-white">{season.name}</h4>
-                <StatusBadge status={season.status} />
+                <div
+                  className="flex-1 cursor-pointer"
+                  onClick={() => onSelectSeason(season)}
+                >
+                  <h4 className="font-semibold text-white">{season.name}</h4>
+                </div>
+                <div className="flex items-center gap-2">
+                  <StatusBadge status={season.status} />
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (confirm(`Deseja excluir a estacao "${season.name}"?`)) {
+                        onDeleteSeason(season.id);
+                      }
+                    }}
+                    className="p-1.5 text-gray-400 hover:text-red-400 hover:bg-red-900/30 rounded-lg transition-colors"
+                    title="Excluir estacao"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                      <path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" />
+                    </svg>
+                  </button>
+                </div>
               </div>
-              <div className="text-sm text-gray-400">
-                {new Date(season.startDate).toLocaleDateString('pt-BR')} -{' '}
-                {new Date(season.endDate).toLocaleDateString('pt-BR')}
-              </div>
-              <div className="flex gap-4 mt-2 text-xs text-gray-500">
-                <span>{season.exposedCowIds?.length || 0} vacas expostas</span>
-                <span>{season.coverageRecords?.length || 0} coberturas</span>
+              <div
+                className="cursor-pointer"
+                onClick={() => onSelectSeason(season)}
+              >
+                <div className="text-sm text-gray-400">
+                  {new Date(season.startDate).toLocaleDateString('pt-BR')} -{' '}
+                  {new Date(season.endDate).toLocaleDateString('pt-BR')}
+                </div>
+                <div className="flex gap-4 mt-2 text-xs text-gray-500">
+                  <span>{season.exposedCowIds?.length || 0} vacas expostas</span>
+                  <span>{season.coverageRecords?.length || 0} coberturas</span>
+                </div>
               </div>
             </div>
           ))}
@@ -476,6 +556,7 @@ const BreedingSeasonManager: React.FC<BreedingSeasonManagerProps> = ({
             seasons={seasons}
             onSelectSeason={setSelectedSeason}
             onCreateNew={() => setShowNewSeasonForm(true)}
+            onDeleteSeason={onDeleteSeason}
           />
         )}
       </div>

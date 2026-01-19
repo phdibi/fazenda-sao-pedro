@@ -13,6 +13,7 @@ import {
   CoverageType,
   Animal,
   Sexo,
+  AnimalStatus,
 } from '../types';
 
 // ============================================
@@ -233,7 +234,7 @@ export const getEligibleCows = (animals: Animal[], minAgeMonths: number = 18): A
 
   return animals.filter((animal) => {
     // Deve ser fêmea ativa
-    if (animal.sexo !== Sexo.Femea || animal.status !== 'Ativo') {
+    if (animal.sexo !== Sexo.Femea || animal.status !== AnimalStatus.Ativo) {
       return false;
     }
 
@@ -254,7 +255,7 @@ export const getAvailableBulls = (animals: Animal[], minAgeMonths: number = 18):
 
   return animals.filter((animal) => {
     // Deve ser macho ativo
-    if (animal.sexo !== Sexo.Macho || animal.status !== 'Ativo') {
+    if (animal.sexo !== Sexo.Macho || animal.status !== AnimalStatus.Ativo) {
       return false;
     }
 
