@@ -228,6 +228,7 @@ export const addBull = (
 
 /**
  * Filtra vacas elegíveis para exposição
+ * Se não tiver data de nascimento, assume que é elegível (animal antigo sem dados completos)
  */
 export const getEligibleCows = (animals: Animal[], minAgeMonths: number = 18): Animal[] => {
   const now = new Date();
@@ -238,8 +239,19 @@ export const getEligibleCows = (animals: Animal[], minAgeMonths: number = 18): A
       return false;
     }
 
+    // Se não tem data de nascimento, assume que é elegível (animal antigo)
+    if (!animal.dataNascimento) {
+      return true;
+    }
+
     // Deve ter idade mínima
     const birthDate = new Date(animal.dataNascimento);
+
+    // Se a data é inválida, assume que é elegível
+    if (isNaN(birthDate.getTime())) {
+      return true;
+    }
+
     const ageMonths =
       (now.getFullYear() - birthDate.getFullYear()) * 12 + (now.getMonth() - birthDate.getMonth());
 
@@ -249,6 +261,7 @@ export const getEligibleCows = (animals: Animal[], minAgeMonths: number = 18): A
 
 /**
  * Filtra touros disponíveis
+ * Se não tiver data de nascimento, assume que é elegível (animal antigo sem dados completos)
  */
 export const getAvailableBulls = (animals: Animal[], minAgeMonths: number = 18): Animal[] => {
   const now = new Date();
@@ -259,8 +272,19 @@ export const getAvailableBulls = (animals: Animal[], minAgeMonths: number = 18):
       return false;
     }
 
+    // Se não tem data de nascimento, assume que é elegível (animal antigo)
+    if (!animal.dataNascimento) {
+      return true;
+    }
+
     // Deve ter idade mínima
     const birthDate = new Date(animal.dataNascimento);
+
+    // Se a data é inválida, assume que é elegível
+    if (isNaN(birthDate.getTime())) {
+      return true;
+    }
+
     const ageMonths =
       (now.getFullYear() - birthDate.getFullYear()) * 12 + (now.getMonth() - birthDate.getMonth());
 
