@@ -140,10 +140,18 @@ export const calculateZootechnicalKPIs = (animals: Animal[]): KPICalculationResu
   // ============================================
   // 4. TAXA DE PRENHEZ
   // ============================================
-  // Vacas com histórico de prenhez positivo / vacas expostas
-  const pregnantCows = activeFemales.filter(
-    (a) => a.historicoPrenhez && a.historicoPrenhez.some((p) => p.type === 'positive')
-  );
+  // Vacas com histórico de prenhez (qualquer registro indica que foi coberta)
+  // Consideramos prenhe se tem registro de prenhez e NÃO tem aborto correspondente
+  const pregnantCows = activeFemales.filter((a) => {
+    if (!a.historicoPrenhez || a.historicoPrenhez.length === 0) return false;
+    // Pega o último registro de prenhez
+    const lastPregnancy = a.historicoPrenhez[a.historicoPrenhez.length - 1];
+    // Verifica se não há aborto após esta prenhez
+    const hasAbortionAfter = a.historicoAborto?.some(
+      (ab) => new Date(ab.date) >= new Date(lastPregnancy.date)
+    );
+    return !hasAbortionAfter;
+  });
   const pregnancyRate = breedingAgeFemales.length > 0 ? (pregnantCows.length / breedingAgeFemales.length) * 100 : 0;
 
   // ============================================

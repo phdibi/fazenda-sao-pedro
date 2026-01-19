@@ -191,6 +191,10 @@ const firestoreReducer = (state: FirestoreState, action: FirestoreAction): Fires
         // TASKS - ATUALIZAÇÃO OTIMISTA
         // ============================================
         case 'LOCAL_ADD_TASK':
+            // 🔧 FIX: Evita duplicação verificando se já existe
+            if (state.tasks.some(t => t.id === action.payload.id)) {
+                return state;
+            }
             return {
                 ...state,
                 tasks: [...state.tasks, action.payload]

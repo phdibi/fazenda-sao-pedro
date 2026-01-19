@@ -10,8 +10,6 @@
 
 import {
   BreedingSeason,
-  BreedingSeasonStatus,
-  CoverageRecord,
   CoverageType,
   Animal,
   Sexo,
@@ -37,13 +35,6 @@ export const calculateGestationDays = (coverageDate: Date): number => {
   const now = new Date();
   const coverage = new Date(coverageDate);
   return Math.floor((now.getTime() - coverage.getTime()) / (1000 * 60 * 60 * 24));
-};
-
-/**
- * Gera ID único
- */
-const generateId = (): string => {
-  return `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 };
 
 // ============================================
@@ -176,41 +167,13 @@ export const calculateBreedingMetrics = (
 };
 
 // ============================================
-// OPERAÇÕES DA ESTAÇÃO DE MONTA
+// HELPERS DE TRANSFORMAÇÃO LOCAL
 // ============================================
+// Nota: As operações CRUD completas estão em useFirestoreOptimized.ts
+// Estas funções são para transformações locais sem persistência
 
 /**
- * Cria uma nova estação de monta
- */
-export const createBreedingSeason = (
-  userId: string,
-  name: string,
-  startDate: Date,
-  endDate: Date,
-  config?: Partial<BreedingSeason['config']>
-): Omit<BreedingSeason, 'id'> => {
-  return {
-    userId,
-    name,
-    startDate,
-    endDate,
-    status: 'planning',
-    bulls: [],
-    exposedCowIds: [],
-    coverageRecords: [],
-    config: {
-      useIATF: false,
-      pregnancyCheckDays: 60,
-      targetPregnancyRate: 85,
-      ...config,
-    },
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  };
-};
-
-/**
- * Adiciona vacas expostas à estação
+ * Adiciona vacas expostas à estação (transformação local)
  */
 export const addExposedCows = (
   season: BreedingSeason,
@@ -227,7 +190,7 @@ export const addExposedCows = (
 };
 
 /**
- * Remove vacas expostas da estação
+ * Remove vacas expostas da estação (transformação local)
  */
 export const removeExposedCows = (
   season: BreedingSeason,
@@ -243,7 +206,7 @@ export const removeExposedCows = (
 };
 
 /**
- * Adiciona touro à estação
+ * Adiciona touro à estação (transformação local)
  */
 export const addBull = (
   season: BreedingSeason,
@@ -258,65 +221,6 @@ export const addBull = (
   return {
     ...season,
     bulls: [...season.bulls, bull],
-    updatedAt: new Date(),
-  };
-};
-
-/**
- * Registra cobertura
- */
-export const addCoverageRecord = (
-  season: BreedingSeason,
-  coverage: Omit<CoverageRecord, 'id' | 'expectedCalvingDate'>
-): BreedingSeason => {
-  const newCoverage: CoverageRecord = {
-    ...coverage,
-    id: generateId(),
-    expectedCalvingDate: calculateExpectedCalvingDate(coverage.date),
-    pregnancyResult: 'pending',
-  };
-
-  return {
-    ...season,
-    coverageRecords: [...season.coverageRecords, newCoverage],
-    updatedAt: new Date(),
-  };
-};
-
-/**
- * Atualiza resultado do diagnóstico de gestação
- */
-export const updatePregnancyResult = (
-  season: BreedingSeason,
-  coverageId: string,
-  result: 'positive' | 'negative',
-  checkDate: Date
-): BreedingSeason => {
-  return {
-    ...season,
-    coverageRecords: season.coverageRecords.map((c) =>
-      c.id === coverageId
-        ? {
-            ...c,
-            pregnancyResult: result,
-            pregnancyCheckDate: checkDate,
-          }
-        : c
-    ),
-    updatedAt: new Date(),
-  };
-};
-
-/**
- * Atualiza status da estação
- */
-export const updateSeasonStatus = (
-  season: BreedingSeason,
-  status: BreedingSeasonStatus
-): BreedingSeason => {
-  return {
-    ...season,
-    status,
     updatedAt: new Date(),
   };
 };
