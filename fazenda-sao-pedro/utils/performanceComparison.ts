@@ -1,10 +1,11 @@
-import { 
-  Animal, 
-  PerformanceComparison, 
-  BullProgenyComparison, 
+import {
+  Animal,
+  PerformanceComparison,
+  BullProgenyComparison,
   RaceBenchmark,
   Raca,
-  Sexo 
+  Sexo,
+  WeighingType
 } from '../types';
 import { calcularGMDAnimal, calcularIdadeMeses } from './gmdCalculations';
 
@@ -85,12 +86,12 @@ export const compareBullProgeny = (animals: Animal[]): BullProgenyComparison[] =
       .filter(g => g > 0);
 
     const weaningWeights = offspring
-      .flatMap(a => a.historicoPesagens?.filter(p => p.type === 'Desmame') || [])
+      .flatMap(a => a.historicoPesagens?.filter(p => p.type === WeighingType.Weaning) || [])
       .map(p => p.weightKg)
       .filter(w => w > 0);
 
     const yearlingWeights = offspring
-      .flatMap(a => a.historicoPesagens?.filter(p => p.type === 'Sobreano') || [])
+      .flatMap(a => a.historicoPesagens?.filter(p => p.type === WeighingType.Yearling) || [])
       .map(p => p.weightKg)
       .filter(w => w > 0);
 

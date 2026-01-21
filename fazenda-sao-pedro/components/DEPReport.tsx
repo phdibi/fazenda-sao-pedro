@@ -6,10 +6,13 @@ import {
   getEliteAnimals,
   getCullAnimals,
 } from '../services/depCalculator';
+import { useFarmData } from '../contexts/FarmContext';
 
 interface DEPReportProps {
   animals: Animal[];
   onSelectAnimal?: (animalId: string) => void;
+  // Permite passar DEPs pré-calculados (do contexto centralizado)
+  preCalculatedDEPs?: DEPReportType[];
 }
 
 // ============================================
@@ -140,14 +143,31 @@ const AnimalDEPCard: React.FC<{
 // COMPONENTE PRINCIPAL
 // ============================================
 
-const DEPReportComponent: React.FC<DEPReportProps> = ({ animals, onSelectAnimal }) => {
+const DEPReportComponent: React.FC<DEPReportProps> = ({ animals, onSelectAnimal, preCalculatedDEPs }) => {
   const [sortBy, setSortBy] = useState<keyof DEPValues>('weaningWeight');
   const [filterSex, setFilterSex] = useState<'all' | 'Macho' | 'Fêmea'>('all');
   const [showOnlyElite, setShowOnlyElite] = useState(false);
   const [showOnlyCull, setShowOnlyCull] = useState(false);
 
-  // Calcula DEPs
-  const allReports = useMemo(() => calculateAllDEPs(animals), [animals]);
+  // Tenta usar métricas centralizadas do contexto
+  const farmContext = useFarmData();
+
+  // Usa DEPs pré-calculados se disponíveis (props > contexto > cálculo local)
+  const allReports = useMemo(() => {
+    // 1. Prioridade: DEPs passados via props
+    if (preCalculatedDEPs && preCalculatedDEPs.length > 0) {
+      return preCalculatedDEPs;
+    }
+
+    // 2. Tenta usar do contexto centralizado
+    const contextDEPs = farmContext?.metrics?.allDEPs;
+    if (contextDEPs && contextDEPs.length > 0) {
+      return contextDEPs;
+    }
+
+    // 3. Fallback: calcula localmente
+    return calculateAllDEPs(animals);
+  }, [animals, preCalculatedDEPs, farmContext?.metrics?.allDEPs]);
 
   // Estatísticas
   const stats = useMemo(() => {

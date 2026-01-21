@@ -11,15 +11,19 @@ import {
   SearchField,
   FilteredStats,
   AnimalStatus,
-  Sexo
+  Sexo,
+  GainMetrics
 } from '../types';
 import { debounce, DebouncedFunction } from '../utils/helpers';
 import { calcularGMDAnimal } from '../utils/gmdCalculations';
 import { DEBOUNCE_DELAY_MS, GMD_THRESHOLDS } from '../constants/app';
+import { AnimalDerivedData } from '../services/animalMetricsService';
 
 interface UseAdvancedFiltersProps {
   animals: Animal[];
   areas: ManagementArea[];
+  // NOVO: Métricas pré-calculadas do contexto
+  preCalculatedMetrics?: Map<string, AnimalDerivedData>;
 }
 
 interface UseAdvancedFiltersReturn {
@@ -51,9 +55,10 @@ const getAgeInMonths = (birthDate: Date): number => {
   return Math.max(0, months);
 };
 
-export const useAdvancedFilters = ({ 
-  animals, 
-  areas 
+export const useAdvancedFilters = ({
+  animals,
+  areas,
+  preCalculatedMetrics
 }: UseAdvancedFiltersProps): UseAdvancedFiltersReturn => {
   const [filters, setFilters] = useState<AdvancedFilters>(DEFAULT_ADVANCED_FILTERS);
   const [debouncedSearch, setDebouncedSearch] = useState('');
@@ -118,15 +123,24 @@ export const useAdvancedFilters = ({
   }, [animals]);
 
   // ============================================
-  // 🔧 OTIMIZAÇÃO #3: Memoizar GMD por animal
-  // Calcula GMD uma vez quando animals muda, não em cada filtro
+  // OTIMIZAÇÃO: Usa métricas pré-calculadas do contexto se disponíveis
+  // Senão, calcula GMD localmente (fallback)
   // ============================================
   const animalsWithCachedGMD = useMemo(() => {
-    return animals.map(animal => ({
-      ...animal,
-      _cachedGMD: calcularGMDAnimal(animal)
-    }));
-  }, [animals]);
+    return animals.map(animal => {
+      // Usa GMD pré-calculado se disponível
+      const preCalc = preCalculatedMetrics?.get(animal.id);
+      const gmd = preCalc?.gmd || calcularGMDAnimal(animal);
+
+      return {
+        ...animal,
+        _cachedGMD: {
+          gmdTotal: gmd.gmdTotal ?? null,
+          gmdRecente: gmd.gmdUltimos30Dias ?? null
+        }
+      };
+    });
+  }, [animals, preCalculatedMetrics]);
 
   const filteredAnimals = useMemo(() => {
     let result = animalsWithCachedGMD.filter(animal => {

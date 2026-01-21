@@ -1,14 +1,17 @@
 import React, { useMemo } from 'react';
-import { Animal, ZootechnicalKPIs, DEFAULT_KPI_TARGETS } from '../types';
+import { Animal, ZootechnicalKPIs, DEFAULT_KPI_TARGETS, BreedingSeason } from '../types';
 import {
   calculateZootechnicalKPIs,
   evaluateAllKPIs,
   KPIEvaluation,
   KPIStatus,
 } from '../services/kpiCalculator';
+import { useFarmData } from '../contexts/FarmContext';
 
 interface KPIDashboardProps {
   animals: Animal[];
+  // Opcional: permite passar KPIs pré-calculados
+  preCalculatedKPIs?: ZootechnicalKPIs;
 }
 
 // ============================================
@@ -205,9 +208,46 @@ const HerdDetails: React.FC<{
 // COMPONENTE PRINCIPAL
 // ============================================
 
-const KPIDashboard: React.FC<KPIDashboardProps> = ({ animals }) => {
-  // Calcula KPIs
-  const result = useMemo(() => calculateZootechnicalKPIs(animals), [animals]);
+const KPIDashboard: React.FC<KPIDashboardProps> = ({ animals, preCalculatedKPIs }) => {
+  // Tenta usar métricas centralizadas do contexto
+  const farmContext = useFarmData();
+  const breedingSeasons = farmContext?.firestore?.state?.breedingSeasons || [];
+
+  // Usa KPIs pré-calculados se disponíveis (do contexto ou props)
+  const result = useMemo(() => {
+    // Se KPIs foram passados via props, usa diretamente (fallback mínimo)
+    if (preCalculatedKPIs) {
+      return {
+        kpis: preCalculatedKPIs,
+        details: {
+          totalAnimals: animals.length,
+          totalFemales: 0,
+          totalMales: 0,
+          totalActive: 0,
+          totalDeaths: 0,
+          totalSold: 0,
+          calvesWeaned: 0,
+          exposedCows: 0,
+          pregnantCows: 0,
+          births: 0,
+          pregnantFromBreedingSeason: 0,
+          pregnantFromManualRecord: 0,
+        },
+        warnings: [],
+        calculatedAt: new Date(),
+      };
+    }
+
+    // PRIORIDADE: Tenta usar resultado COMPLETO do contexto centralizado
+    const contextKPIResult = farmContext?.metrics?.kpiResult;
+    if (contextKPIResult) {
+      return contextKPIResult;
+    }
+
+    // Fallback: calcula localmente (com integração de breeding seasons)
+    return calculateZootechnicalKPIs(animals, { breedingSeasons });
+  }, [animals, preCalculatedKPIs, farmContext?.metrics?.kpiResult, breedingSeasons]);
+
   const evaluations = useMemo(() => evaluateAllKPIs(result.kpis), [result.kpis]);
 
   // Agrupa KPIs por categoria

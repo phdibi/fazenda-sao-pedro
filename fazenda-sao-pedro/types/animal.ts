@@ -87,6 +87,10 @@ export interface Animal {
   historicoPrenhez?: PregnancyRecord[];
   historicoAborto?: AbortionRecord[];
   historicoProgenie?: OffspringWeightRecord[];
+  // Vínculos genealógicos por ID (mais confiável - preferência)
+  paiId?: string;
+  maeId?: string;
+  // Nomes mantidos para compatibilidade, display e fallback
   paiNome?: string;
   maeNome?: string;
   maeRaca?: Raca;

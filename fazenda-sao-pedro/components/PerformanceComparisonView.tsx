@@ -1,18 +1,22 @@
 import React, { useState, useMemo } from 'react';
 import { Animal, Raca } from '../types';
-import { 
-  generatePerformanceComparison, 
-  compareBullProgeny, 
+import {
+  generatePerformanceComparison,
+  compareBullProgeny,
   generateRaceBenchmarks,
   identifyTopPerformers,
   identifyUnderperformers,
   compareAnimals
 } from '../utils/performanceComparison';
 import { formatarGMD, classificarGMD } from '../utils/gmdCalculations';
+import { useFarmData } from '../contexts/FarmContext';
+import { AnimalDerivedData } from '../services/animalMetricsService';
 
 interface PerformanceComparisonViewProps {
   animals: Animal[];
   onSelectAnimal: (animal: Animal) => void;
+  // Permite passar métricas pré-calculadas
+  preCalculatedMetrics?: Map<string, AnimalDerivedData>;
 }
 
 type TabType = 'ranking' | 'bulls' | 'breeds' | 'compare';
@@ -20,13 +24,39 @@ type TabType = 'ranking' | 'bulls' | 'breeds' | 'compare';
 const PerformanceComparisonView: React.FC<PerformanceComparisonViewProps> = ({
   animals,
   onSelectAnimal,
+  preCalculatedMetrics,
 }) => {
   const [activeTab, setActiveTab] = useState<TabType>('ranking');
   const [compareAnimal1, setCompareAnimal1] = useState<string>('');
   const [compareAnimal2, setCompareAnimal2] = useState<string>('');
 
-  // Rankings
-  const topPerformers = useMemo(() => identifyTopPerformers(animals, 20), [animals]);
+  // Tenta usar métricas centralizadas do contexto
+  const farmContext = useFarmData();
+  const metricsData = preCalculatedMetrics || farmContext?.metrics?.derivedData;
+
+  // Rankings - usa GMD pré-calculado se disponível
+  const topPerformers = useMemo(() => {
+    // Se temos métricas pré-calculadas, podemos usar rankings já computados
+    if (metricsData && metricsData.size > 0) {
+      const animalsWithGMD = animals
+        .map(animal => {
+          const derived = metricsData.get(animal.id);
+          return {
+            ...animal,
+            gmd: derived?.gmd?.gmdTotal || 0,
+            ranking: derived?.rankings?.gmdGeral || 0,
+          };
+        })
+        .filter(a => a.gmd > 0)
+        .sort((a, b) => b.gmd - a.gmd)
+        .slice(0, 20)
+        .map((a, index) => ({ ...a, ranking: index + 1 }));
+      return animalsWithGMD;
+    }
+    // Fallback: cálculo local
+    return identifyTopPerformers(animals, 20);
+  }, [animals, metricsData]);
+
   const underperformers = useMemo(() => identifyUnderperformers(animals), [animals]);
   const bullProgeny = useMemo(() => compareBullProgeny(animals), [animals]);
   const raceBenchmarks = useMemo(() => generateRaceBenchmarks(animals), [animals]);
