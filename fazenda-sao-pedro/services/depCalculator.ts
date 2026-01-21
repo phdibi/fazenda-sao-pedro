@@ -54,6 +54,9 @@ interface DEPIndices {
   byBrinco: Map<string, Animal>;
   byPaiNome: Map<string, Animal[]>;
   byMaeNome: Map<string, Animal[]>;
+  // Índices por ID (mais confiáveis que por nome)
+  byPaiId: Map<string, Animal[]>;
+  byMaeId: Map<string, Animal[]>;
   byRaca: Map<string, Animal[]>;
 }
 
@@ -65,24 +68,38 @@ const buildIndices = (animals: Animal[]): DEPIndices => {
   const byBrinco = new Map<string, Animal>();
   const byPaiNome = new Map<string, Animal[]>();
   const byMaeNome = new Map<string, Animal[]>();
+  const byPaiId = new Map<string, Animal[]>();
+  const byMaeId = new Map<string, Animal[]>();
   const byRaca = new Map<string, Animal[]>();
 
   for (const animal of animals) {
     byId.set(animal.id, animal);
     byBrinco.set(animal.brinco.toLowerCase().trim(), animal);
 
-    // Por pai
+    // Por paiNome
     if (animal.paiNome) {
       const key = animal.paiNome.toLowerCase().trim();
       if (!byPaiNome.has(key)) byPaiNome.set(key, []);
       byPaiNome.get(key)!.push(animal);
     }
 
-    // Por mãe
+    // Por maeNome
     if (animal.maeNome) {
       const key = animal.maeNome.toLowerCase().trim();
       if (!byMaeNome.has(key)) byMaeNome.set(key, []);
       byMaeNome.get(key)!.push(animal);
+    }
+
+    // Por paiId (mais confiável)
+    if (animal.paiId) {
+      if (!byPaiId.has(animal.paiId)) byPaiId.set(animal.paiId, []);
+      byPaiId.get(animal.paiId)!.push(animal);
+    }
+
+    // Por maeId (mais confiável)
+    if (animal.maeId) {
+      if (!byMaeId.has(animal.maeId)) byMaeId.set(animal.maeId, []);
+      byMaeId.get(animal.maeId)!.push(animal);
     }
 
     // Por raça
@@ -91,7 +108,7 @@ const buildIndices = (animals: Animal[]): DEPIndices => {
     byRaca.get(raca)!.push(animal);
   }
 
-  return { byId, byBrinco, byPaiNome, byMaeNome, byRaca };
+  return { byId, byBrinco, byPaiNome, byMaeNome, byPaiId, byMaeId, byRaca };
 };
 
 // ============================================
@@ -140,14 +157,14 @@ const calculatePercentile = (value: number, allValues: number[]): number => {
 // ============================================
 
 /**
- * Obtém progênie de um animal unificando duas fontes:
+ * Obtém progênie de um animal unificando três fontes:
  * 1. historicoProgenie (registro manual)
- * 2. paiNome/maeNome/paiId/maeId dos outros animais (busca reversa)
+ * 2. paiNome/maeNome (busca reversa por índices)
+ * 3. paiId/maeId (busca reversa por índices - mais confiável)
  */
 const getUnifiedProgeny = (
   animal: Animal,
-  indices: DEPIndices,
-  allAnimals: Animal[]
+  indices: DEPIndices
 ): Animal[] => {
   const progenySet = new Set<string>();
   const result: Animal[] = [];
@@ -166,7 +183,7 @@ const getUnifiedProgeny = (
     }
   }
 
-  // Fonte 2: Busca reversa usando índices
+  // Fonte 2: Busca reversa por paiNome/maeNome usando índices
   const animalNames = [
     animal.nome?.toLowerCase().trim(),
     animal.brinco.toLowerCase().trim(),
@@ -198,20 +215,25 @@ const getUnifiedProgeny = (
     }
   }
 
-  // Fonte 3: Busca por paiId/maeId (mais confiável se disponível)
-  for (const a of allAnimals) {
-    if (animal.sexo === Sexo.Macho && a.paiId === animal.id) {
-      const key = a.brinco.toLowerCase().trim();
+  // Fonte 3: Busca por paiId/maeId usando índices (O(1) lookup - mais confiável)
+  if (animal.sexo === Sexo.Macho) {
+    const childrenByPaiId = indices.byPaiId.get(animal.id) || [];
+    for (const child of childrenByPaiId) {
+      const key = child.brinco.toLowerCase().trim();
       if (!progenySet.has(key)) {
         progenySet.add(key);
-        result.push(a);
+        result.push(child);
       }
     }
-    if (animal.sexo === Sexo.Femea && a.maeId === animal.id) {
-      const key = a.brinco.toLowerCase().trim();
+  }
+
+  if (animal.sexo === Sexo.Femea) {
+    const childrenByMaeId = indices.byMaeId.get(animal.id) || [];
+    for (const child of childrenByMaeId) {
+      const key = child.brinco.toLowerCase().trim();
       if (!progenySet.has(key)) {
         progenySet.add(key);
-        result.push(a);
+        result.push(child);
       }
     }
   }
@@ -221,12 +243,13 @@ const getUnifiedProgeny = (
 
 /**
  * Obtém irmãos de um animal usando índices
+ * ATUALIZADO: Usa índices byPaiId/byMaeId para O(1) lookup
  */
 const getSiblings = (animal: Animal, indices: DEPIndices): Animal[] => {
   const siblingSet = new Set<string>();
   const result: Animal[] = [];
 
-  // Irmãos por pai
+  // Irmãos por paiNome
   if (animal.paiNome) {
     const siblings = indices.byPaiNome.get(animal.paiNome.toLowerCase().trim()) || [];
     for (const sib of siblings) {
@@ -237,10 +260,32 @@ const getSiblings = (animal: Animal, indices: DEPIndices): Animal[] => {
     }
   }
 
-  // Irmãos por mãe
+  // Irmãos por maeNome
   if (animal.maeNome) {
     const siblings = indices.byMaeNome.get(animal.maeNome.toLowerCase().trim()) || [];
     for (const sib of siblings) {
+      if (sib.id !== animal.id && !siblingSet.has(sib.id)) {
+        siblingSet.add(sib.id);
+        result.push(sib);
+      }
+    }
+  }
+
+  // Irmãos por paiId usando índice (O(1) lookup)
+  if (animal.paiId) {
+    const siblingsByPaiId = indices.byPaiId.get(animal.paiId) || [];
+    for (const sib of siblingsByPaiId) {
+      if (sib.id !== animal.id && !siblingSet.has(sib.id)) {
+        siblingSet.add(sib.id);
+        result.push(sib);
+      }
+    }
+  }
+
+  // Irmãos por maeId usando índice (O(1) lookup)
+  if (animal.maeId) {
+    const siblingsByMaeId = indices.byMaeId.get(animal.maeId) || [];
+    for (const sib of siblingsByMaeId) {
       if (sib.id !== animal.id && !siblingSet.has(sib.id)) {
         siblingSet.add(sib.id);
         result.push(sib);
@@ -296,18 +341,16 @@ export const calculateHerdBaseline = (animals: Animal[], indices?: DEPIndices): 
 
 interface DEPCalculationInput {
   animal: Animal;
-  allAnimals: Animal[];
   baseline: HerdDEPBaseline;
   indices: DEPIndices;
 }
 
 /**
  * Calcula DEP para um animal específico
- * OTIMIZADO: Usa progênie unificada e índices
+ * OTIMIZADO: Usa progênie unificada e índices (byPaiId/byMaeId)
  */
 export const calculateAnimalDEP = ({
   animal,
-  allAnimals,
   baseline,
   indices,
 }: DEPCalculationInput): DEPReport => {
@@ -317,7 +360,7 @@ export const calculateAnimalDEP = ({
   const ownYearlingWeight = getWeightByType(animal, WeighingType.Yearling);
 
   // Coleta dados de progênie (USANDO FUNÇÃO UNIFICADA)
-  const progeny = getUnifiedProgeny(animal, indices, allAnimals);
+  const progeny = getUnifiedProgeny(animal, indices);
 
   const progenyBirthWeights = progeny
     .map((p) => getWeightByType(p, WeighingType.Birth))
@@ -331,7 +374,7 @@ export const calculateAnimalDEP = ({
     .map((p) => getWeightByType(p, WeighingType.Yearling))
     .filter((w): w is number => w !== null && w > 0);
 
-  // Coleta dados de irmãos (USANDO ÍNDICES)
+  // Coleta dados de irmãos (USANDO ÍNDICES + paiId/maeId)
   const siblings = getSiblings(animal, indices);
 
   // Contagem de registros para acurácia
@@ -556,7 +599,6 @@ export const calculateAllDEPs = (animals: Animal[]): DEPReport[] => {
 
     return calculateAnimalDEP({
       animal,
-      allAnimals: animals,
       baseline,
       indices,
     });
