@@ -250,9 +250,16 @@ export const generateComprehensiveReport = async (
   // 4. Assemble the final report object
   const report: ComprehensiveReport = {
     sanitary: sanitaryReport,
-    reproductive: reproductiveReport
+    reproductive: reproductiveReport,
+    turnWeight: {
+      averageWeight: 0,
+      totalAnimals: 0,
+      topPerformers: [],
+      breedAnalysis: [],
+      recommendations: 'Sem dados de peso de virada disponíveis.'
+    }
   };
-  
+
   return mockApiCall(report, 2500);
 };
 

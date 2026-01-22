@@ -69,7 +69,6 @@ const PhenotypicAnalysisView: React.FC<PhenotypicAnalysisViewProps> = ({ animals
 
             // Construir string de traits baseada em dados disponíveis
             const traits = [
-                animal.observacoes,
                 `Sexo: ${animal.sexo}`,
                 animal.maeNome ? `Mãe: ${animal.maeNome}` : '',
                 animal.paiNome ? `Pai: ${animal.paiNome}` : '',

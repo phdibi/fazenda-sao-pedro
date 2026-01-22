@@ -179,7 +179,7 @@ export const DEFAULT_KPI_TARGETS: KPITarget[] = [
 // ============================================
 
 export type BreedingSeasonStatus = 'planning' | 'active' | 'finished' | 'cancelled';
-export type CoverageType = 'natural' | 'ia' | 'iatf' | 'te';
+export type CoverageType = 'natural' | 'ia' | 'iatf' | 'fiv';
 
 export interface CoverageRecord {
   id: string;
@@ -187,7 +187,10 @@ export interface CoverageRecord {
   cowBrinco: string;
   bullId?: string;
   bullBrinco?: string;
-  semenCode?: string; // Para IA/IATF
+  semenCode?: string; // Para IA/IATF/FIV - usado como nome do pai
+  // Campos específicos para FIV (receptora vs doadora)
+  donorCowId?: string; // ID da doadora (mãe biológica) para FIV
+  donorCowBrinco?: string; // Brinco da doadora para FIV
   date: Date;
   type: CoverageType;
   technician?: string;

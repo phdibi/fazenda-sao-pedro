@@ -48,9 +48,11 @@ interface UseAdvancedFiltersReturn {
   isFiltering: boolean; // 🔧 Novo: indica se está processando filtros
 }
 
-const getAgeInMonths = (birthDate: Date): number => {
+const getAgeInMonths = (birthDate: Date | undefined): number => {
+  if (!birthDate) return 0;
   const now = new Date();
   const birth = new Date(birthDate);
+  if (isNaN(birth.getTime())) return 0;
   const months = (now.getFullYear() - birth.getFullYear()) * 12 + (now.getMonth() - birth.getMonth());
   return Math.max(0, months);
 };
@@ -270,7 +272,9 @@ export const useAdvancedFilters = ({
           comparison = a.pesoKg - b.pesoKg;
           break;
         case 'dataNascimento':
-          comparison = new Date(a.dataNascimento).getTime() - new Date(b.dataNascimento).getTime();
+          const dateA = a.dataNascimento ? new Date(a.dataNascimento).getTime() : 0;
+          const dateB = b.dataNascimento ? new Date(b.dataNascimento).getTime() : 0;
+          comparison = dateA - dateB;
           break;
         case 'raca':
           comparison = a.raca.localeCompare(b.raca);

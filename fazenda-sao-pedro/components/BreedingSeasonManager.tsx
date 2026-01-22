@@ -162,15 +162,20 @@ const NewSeasonForm: React.FC<{
 const CoverageForm: React.FC<{
   eligibleCows: Animal[];
   availableBulls: Animal[];
+  allAnimals: Animal[];
   onSubmit: (data: Omit<CoverageRecord, 'id' | 'expectedCalvingDate'>) => void;
   onCancel: () => void;
-}> = ({ eligibleCows, availableBulls, onSubmit, onCancel }) => {
+}> = ({ eligibleCows, availableBulls, allAnimals, onSubmit, onCancel }) => {
   const [cowId, setCowId] = useState('');
   const [cowSearch, setCowSearch] = useState('');
   const [type, setType] = useState<CoverageType>('natural');
   const [bullId, setBullId] = useState('');
   const [bullSearch, setBullSearch] = useState('');
   const [semenCode, setSemenCode] = useState('');
+  // Campos específicos para FIV (doadora/mãe biológica)
+  const [donorCowBrinco, setDonorCowBrinco] = useState('');
+  const [donorCowSearch, setDonorCowSearch] = useState('');
+  const [donorCowId, setDonorCowId] = useState('');
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [technician, setTechnician] = useState('');
   const [notes, setNotes] = useState('');
@@ -200,6 +205,38 @@ const CoverageForm: React.FC<{
     );
   }, [availableBulls, bullSearch]);
 
+  // Filtra doadoras para FIV (todas as fêmeas do plantel)
+  const eligibleDonors = useMemo(() => {
+    return allAnimals.filter((a) => a.sexo === 'Fêmea');
+  }, [allAnimals]);
+
+  const filteredDonors = useMemo(() => {
+    if (!donorCowSearch.trim()) return eligibleDonors.slice(0, 50); // Limita para performance
+    const search = donorCowSearch.toLowerCase();
+    return eligibleDonors.filter(
+      (cow) =>
+        cow.brinco.toLowerCase().includes(search) ||
+        cow.nome?.toLowerCase().includes(search)
+    );
+  }, [eligibleDonors, donorCowSearch]);
+
+  // Quando o brinco da doadora é digitado, tenta encontrar no plantel
+  const selectedDonor = useMemo(() => {
+    if (!donorCowBrinco.trim()) return null;
+    return allAnimals.find(
+      (a) => a.brinco.toLowerCase() === donorCowBrinco.toLowerCase() && a.sexo === 'Fêmea'
+    );
+  }, [allAnimals, donorCowBrinco]);
+
+  // Auto-preenche o ID quando encontra a doadora no plantel
+  React.useEffect(() => {
+    if (selectedDonor) {
+      setDonorCowId(selectedDonor.id);
+    } else {
+      setDonorCowId('');
+    }
+  }, [selectedDonor]);
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (cowId && date) {
@@ -209,6 +246,9 @@ const CoverageForm: React.FC<{
         bullId: type === 'natural' ? bullId : undefined,
         bullBrinco: type === 'natural' ? selectedBull?.brinco : undefined,
         semenCode: type !== 'natural' ? semenCode : undefined,
+        // Campos específicos para FIV (doadora/mãe biológica)
+        donorCowId: type === 'fiv' && donorCowId ? donorCowId : undefined,
+        donorCowBrinco: type === 'fiv' && donorCowBrinco ? donorCowBrinco : undefined,
         type,
         date: new Date(date),
         technician: technician || undefined,
@@ -257,7 +297,7 @@ const CoverageForm: React.FC<{
       <div>
         <label className="block text-sm text-gray-400 mb-1">Tipo de Cobertura</label>
         <div className="grid grid-cols-4 gap-2">
-          {(['natural', 'ia', 'iatf', 'te'] as CoverageType[]).map((t) => (
+          {(['natural', 'ia', 'iatf', 'fiv'] as CoverageType[]).map((t) => (
             <button
               key={t}
               type="button"
@@ -307,16 +347,95 @@ const CoverageForm: React.FC<{
           )}
         </div>
       ) : (
-        <div>
-          <label className="block text-sm text-gray-400 mb-1">Codigo do Semen</label>
-          <input
-            type="text"
-            value={semenCode}
-            onChange={(e) => setSemenCode(e.target.value)}
-            placeholder="Ex: NETUNO TE DA ESTIVA"
-            className="w-full bg-base-700 border border-base-600 rounded-lg px-3 py-2 text-white"
-            required
-          />
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm text-gray-400 mb-1">
+              Codigo do Semen (Nome do Pai)
+            </label>
+            <input
+              type="text"
+              value={semenCode}
+              onChange={(e) => setSemenCode(e.target.value)}
+              placeholder="Ex: NETUNO FIV DA ESTIVA"
+              className="w-full bg-base-700 border border-base-600 rounded-lg px-3 py-2 text-white"
+              required
+            />
+            <p className="text-xs text-gray-500 mt-1">Este codigo sera registrado como nome do pai na genealogia</p>
+          </div>
+
+          {/* Campo de doadora apenas para FIV */}
+          {type === 'fiv' && (
+            <div>
+              <label className="block text-sm text-gray-400 mb-1">
+                Brinco da Mae (Doadora do Embriao)
+              </label>
+              <input
+                type="text"
+                value={donorCowBrinco}
+                onChange={(e) => setDonorCowBrinco(e.target.value)}
+                placeholder="Digite o brinco da doadora..."
+                className="w-full bg-base-700 border border-base-600 rounded-lg px-3 py-2 text-white mb-2"
+              />
+              {selectedDonor ? (
+                <div className="p-3 bg-emerald-900/30 border border-emerald-600 rounded-lg">
+                  <div className="flex items-center gap-2">
+                    <span className="text-emerald-400">✓</span>
+                    <span className="text-emerald-400 font-medium">Doadora encontrada no plantel</span>
+                  </div>
+                  <div className="text-sm text-gray-300 mt-1">
+                    {selectedDonor.brinco} - {selectedDonor.nome || 'Sem nome'} ({selectedDonor.raca})
+                  </div>
+                  <p className="text-xs text-emerald-500 mt-1">
+                    Os dados de genealogia serao vinculados automaticamente
+                  </p>
+                </div>
+              ) : donorCowBrinco ? (
+                <div className="p-3 bg-amber-900/30 border border-amber-600 rounded-lg">
+                  <div className="flex items-center gap-2">
+                    <span className="text-amber-400">!</span>
+                    <span className="text-amber-400 font-medium">Doadora nao encontrada no plantel</span>
+                  </div>
+                  <p className="text-xs text-amber-500 mt-1">
+                    O brinco sera salvo, mas sem vinculo automatico de genealogia
+                  </p>
+                </div>
+              ) : null}
+              {!donorCowBrinco && (
+                <div>
+                  <p className="text-xs text-gray-500 mb-2">Ou selecione da lista:</p>
+                  <input
+                    type="text"
+                    value={donorCowSearch}
+                    onChange={(e) => setDonorCowSearch(e.target.value)}
+                    placeholder="Buscar doadora por brinco ou nome..."
+                    className="w-full bg-base-700 border border-base-600 rounded-lg px-3 py-2 text-white mb-2"
+                  />
+                  <select
+                    value={donorCowId}
+                    onChange={(e) => {
+                      const donor = eligibleDonors.find((d) => d.id === e.target.value);
+                      if (donor) {
+                        setDonorCowId(donor.id);
+                        setDonorCowBrinco(donor.brinco);
+                      }
+                    }}
+                    className="w-full bg-base-700 border border-base-600 rounded-lg px-3 py-2 text-white"
+                    size={4}
+                  >
+                    <option value="">Selecione uma doadora...</option>
+                    {filteredDonors.map((donor) => (
+                      <option key={donor.id} value={donor.id}>
+                        {donor.brinco} - {donor.nome || 'Sem nome'}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+              <p className="text-xs text-gray-500 mt-2">
+                A vaca selecionada acima ({selectedCow?.brinco || 'receptora'}) sera a receptora do embriao
+              </p>
+            </div>
+          )}
         </div>
       )}
 
@@ -600,6 +719,7 @@ const BreedingSeasonManager: React.FC<BreedingSeasonManagerProps> = ({
         <CoverageForm
           eligibleCows={eligibleCows}
           availableBulls={availableBulls}
+          allAnimals={animals}
           onSubmit={handleAddCoverage}
           onCancel={() => setShowCoverageForm(false)}
         />
@@ -698,8 +818,8 @@ const BreedingSeasonManager: React.FC<BreedingSeasonManagerProps> = ({
                 <div className="text-sm text-gray-400">IATF</div>
               </div>
               <div className="text-center p-4 bg-base-700 rounded-lg">
-                <div className="text-2xl font-bold text-white">{metrics.coveragesByType.te}</div>
-                <div className="text-sm text-gray-400">TE</div>
+                <div className="text-2xl font-bold text-white">{metrics.coveragesByType.fiv}</div>
+                <div className="text-sm text-gray-400">FIV</div>
               </div>
             </div>
           </div>
@@ -749,11 +869,22 @@ const BreedingSeasonManager: React.FC<BreedingSeasonManagerProps> = ({
                     className="flex items-center justify-between p-4 bg-base-700 rounded-lg"
                   >
                     <div>
-                      <div className="font-medium text-white">{coverage.cowBrinco}</div>
+                      <div className="font-medium text-white">
+                        {coverage.type === 'fiv' ? (
+                          <span>Receptora: {coverage.cowBrinco}</span>
+                        ) : (
+                          coverage.cowBrinco
+                        )}
+                      </div>
                       <div className="text-sm text-gray-400">
-                        {coverage.type.toUpperCase()} •{' '}
+                        {coverage.type.toUpperCase()} • Pai:{' '}
                         {coverage.bullBrinco || coverage.semenCode || 'Desconhecido'}
                       </div>
+                      {coverage.type === 'fiv' && coverage.donorCowBrinco && (
+                        <div className="text-sm text-purple-400">
+                          Mae (Doadora): {coverage.donorCowBrinco}
+                        </div>
+                      )}
                       <div className="text-xs text-gray-500">
                         {new Date(coverage.date).toLocaleDateString('pt-BR')}
                       </div>
@@ -852,8 +983,22 @@ const BreedingSeasonManager: React.FC<BreedingSeasonManagerProps> = ({
                   className="flex items-center justify-between p-4 bg-base-700 rounded-lg"
                 >
                   <div>
-                    <div className="font-medium text-white">{calving.cowBrinco}</div>
+                    <div className="font-medium text-white">
+                      {calving.isFIV ? (
+                        <span>Receptora: {calving.cowBrinco}</span>
+                      ) : (
+                        calving.cowBrinco
+                      )}
+                    </div>
                     <div className="text-sm text-gray-400">Pai: {calving.bullInfo}</div>
+                    {calving.isFIV && calving.donorInfo && (
+                      <div className="text-sm text-purple-400">Mae (Doadora): {calving.donorInfo}</div>
+                    )}
+                    {calving.isFIV && (
+                      <span className="inline-block mt-1 px-2 py-0.5 bg-purple-500/20 text-purple-400 text-xs rounded">
+                        FIV
+                      </span>
+                    )}
                   </div>
                   <div className="text-right">
                     <div className="font-medium text-white">

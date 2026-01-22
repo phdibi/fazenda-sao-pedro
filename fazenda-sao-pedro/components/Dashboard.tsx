@@ -27,8 +27,8 @@ interface DashboardProps {
 // 🔧 HOOK: Calcular colunas responsivas
 // ============================================
 const useResponsiveColumns = () => {
-  const [columns, setColumns] = useState(GRID_COLUMNS.default);
-  
+  const [columns, setColumns] = useState<number>(GRID_COLUMNS.default);
+
   useEffect(() => {
     const updateColumns = () => {
       const width = window.innerWidth;
@@ -39,12 +39,12 @@ const useResponsiveColumns = () => {
       else if (width >= BREAKPOINTS.sm) setColumns(GRID_COLUMNS.sm);
       else setColumns(GRID_COLUMNS.default);
     };
-    
+
     updateColumns();
     window.addEventListener('resize', updateColumns);
     return () => window.removeEventListener('resize', updateColumns);
   }, []);
-  
+
   return columns;
 };
 

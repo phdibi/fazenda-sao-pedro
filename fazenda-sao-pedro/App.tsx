@@ -167,7 +167,7 @@ const InnerApp = ({ user, firebaseReady }: AppProps) => {
                         onAddTask={addTask}
                         onToggleTask={toggleTaskCompletion}
                         onDeleteTask={deleteTask}
-                        onAddCalendarEvent={addOrUpdateCalendarEvent}
+                        onSaveCalendarEvent={addOrUpdateCalendarEvent}
                         onDeleteCalendarEvent={deleteCalendarEvent}
                     />
                     {/* Botão para trocar perfil */}

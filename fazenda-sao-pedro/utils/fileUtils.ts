@@ -45,7 +45,8 @@ interface PDFExportOptions {
   includeDate?: boolean;
 }
 
-const formatDateBR = (date: Date): string => {
+const formatDateBR = (date: Date | undefined): string => {
+  if (!date) return '-';
   return new Date(date).toLocaleDateString('pt-BR');
 };
 

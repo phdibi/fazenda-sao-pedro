@@ -626,12 +626,12 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
                         if (change.type === 'added') {
                             const exists = stateRef.current.tasks.some(t => t.id === task.id);
                             if (!exists) {
-                                console.log(`🟢 [REALTIME] Tarefa adicionada: ${task.title}`);
+                                console.log(`🟢 [REALTIME] Tarefa adicionada: ${task.description}`);
                                 dispatch({ type: 'LOCAL_ADD_TASK', payload: task });
                             }
                         }
                         if (change.type === 'modified') {
-                            console.log(`🟡 [REALTIME] Tarefa modificada: ${task.title}`);
+                            console.log(`🟡 [REALTIME] Tarefa modificada: ${task.description}`);
                             dispatch({ type: 'LOCAL_UPDATE_TASK', payload: { taskId: task.id, updatedData: task } });
                         }
                         if (change.type === 'removed') {
@@ -1637,9 +1637,10 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
                 'natural': PregnancyType.Monta,
                 'ia': PregnancyType.InseminacaoArtificial,
                 'iatf': PregnancyType.InseminacaoArtificial,
-                'te': PregnancyType.TransferenciaEmbriao,
+                'fiv': PregnancyType.FIV,
             };
 
+            // Para FIV, o código do sêmen é o nome do pai
             const sireName = coverage.bullBrinco || coverage.semenCode || 'Desconhecido';
 
             const pregnancyRecord: PregnancyRecord = {
@@ -1669,6 +1670,31 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
                     : a
             );
             await updateLocalCache('animals', updatedAnimals);
+
+            // 🔧 FIV: Se for FIV e tiver doadora no plantel, atualiza o histórico de progênie da doadora
+            if (coverage.type === 'fiv' && coverage.donorCowId) {
+                const donorAnimal = stateRef.current.animals.find((a: Animal) => a.id === coverage.donorCowId);
+                if (donorAnimal) {
+                    // Registra na progênie da doadora que ela tem um embrião em gestação
+                    const offspringRecord = {
+                        id: `fiv_${newCoverage.id}`,
+                        offspringBrinco: `Embriao (receptora: ${coverage.cowBrinco})`,
+                        // Pesos serão preenchidos quando o bezerro nascer
+                    };
+
+                    const updatedHistoricoProgenie = [...(donorAnimal.historicoProgenie || []), offspringRecord];
+
+                    const donorRef = db.collection('animals').doc(coverage.donorCowId);
+                    const donorDataWithTimestamp = convertDatesToTimestamps({ historicoProgenie: updatedHistoricoProgenie });
+                    await donorRef.update({ ...donorDataWithTimestamp, updatedAt: new Date() });
+
+                    // Atualização otimista local para doadora
+                    dispatch({ type: 'LOCAL_UPDATE_ANIMAL', payload: {
+                        animalId: coverage.donorCowId,
+                        updatedData: { historicoProgenie: updatedHistoricoProgenie }
+                    }});
+                }
+            }
         }
 
         return newCoverage;

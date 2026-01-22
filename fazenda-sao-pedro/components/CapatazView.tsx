@@ -9,10 +9,10 @@ interface CapatazViewProps {
   user: UserProfile;
   tasks: Task[];
   calendarEvents: CalendarEvent[];
-  onAddTask: (task: Omit<Task, 'id'>) => void;
+  onAddTask: (task: Omit<Task, 'id' | 'isCompleted'>) => void;
   onToggleTask: (task: Task) => void;
   onDeleteTask: (taskId: string) => void;
-  onAddCalendarEvent: (event: Omit<CalendarEvent, 'id'>) => void;
+  onSaveCalendarEvent: (event: Omit<CalendarEvent, 'id'> & { id?: string }) => void;
   onDeleteCalendarEvent: (eventId: string) => void;
 }
 
@@ -25,7 +25,7 @@ const CapatazView: React.FC<CapatazViewProps> = ({
   onAddTask,
   onToggleTask,
   onDeleteTask,
-  onAddCalendarEvent,
+  onSaveCalendarEvent,
   onDeleteCalendarEvent,
 }) => {
   const [activeTab, setActiveTab] = useState<CapatazTab>('tarefas');
@@ -122,8 +122,8 @@ const CapatazView: React.FC<CapatazViewProps> = ({
           {activeTab === 'calendario' && (
             <CalendarView
               events={calendarEvents}
-              onAddEvent={onAddCalendarEvent}
-              onDeleteEvent={onDeleteCalendarEvent}
+              onSave={onSaveCalendarEvent}
+              onDelete={onDeleteCalendarEvent}
             />
           )}
         </Suspense>

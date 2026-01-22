@@ -29,7 +29,7 @@ export enum WeighingType {
 }
 
 export enum PregnancyType {
-  TransferenciaEmbriao = 'Transferência de Embrião',
+  FIV = 'FIV (Fertilização In Vitro)',
   InseminacaoArtificial = 'Inseminação Artificial',
   Monta = 'Monta Natural',
 }

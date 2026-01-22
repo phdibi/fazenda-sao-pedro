@@ -646,7 +646,7 @@ export const startChat = async (animals: Animal[]) => {
         const idades = animals
             .filter(a => a.dataNascimento)
             .map(a => {
-                const nasc = new Date(a.dataNascimento);
+                const nasc = new Date(a.dataNascimento!);
                 return (hoje.getTime() - nasc.getTime()) / (1000 * 60 * 60 * 24 * 30); // meses
             });
         return idades.length > 0 ? idades.reduce((a, b) => a + b, 0) / idades.length : 0;

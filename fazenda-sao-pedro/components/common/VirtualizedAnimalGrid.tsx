@@ -5,8 +5,8 @@
 
 import React, { useMemo, useCallback, useRef, useEffect, useState } from 'react';
 import { FixedSizeGrid, GridChildComponentProps } from 'react-window';
-import { Animal } from '../types';
-import { VIRTUALIZATION_THRESHOLD, CARD_HEIGHT, CARD_GAP, GRID_OVERSCAN_ROWS, BREAKPOINTS, GRID_COLUMNS } from '../constants/app';
+import { Animal } from '../../types';
+import { VIRTUALIZATION_THRESHOLD, CARD_HEIGHT, CARD_GAP, GRID_OVERSCAN_ROWS, BREAKPOINTS, GRID_COLUMNS } from '../../constants/app';
 
 interface VirtualizedAnimalGridProps {
     animals: Animal[];

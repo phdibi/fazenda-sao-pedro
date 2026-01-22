@@ -260,7 +260,7 @@ export const compressDocument = async <T extends Record<string, any>>(
     } = options;
 
     const originalSize = JSON.stringify(doc).length;
-    let compressed = { ...doc };
+    let compressed: Record<string, any> = { ...doc };
 
     // 1. Limita históricos se configurado
     if (trimHistories > 0) {
@@ -275,7 +275,7 @@ export const compressDocument = async <T extends Record<string, any>>(
 
     // 2. Abrevia chaves
     if (abbreviateKeys) {
-        compressed = compressObject(compressed) as any;
+        compressed = compressObject(compressed);
     }
 
     // 3. Comprime strings longas (opcional)
@@ -316,7 +316,7 @@ export const expandDocument = async <T extends Record<string, any>>(
         decompressStrings = true,
     } = options;
 
-    let expanded = { ...doc };
+    let expanded: Record<string, any> = { ...doc };
 
     // 1. Descomprime strings
     if (decompressStrings) {
@@ -329,7 +329,7 @@ export const expandDocument = async <T extends Record<string, any>>(
 
     // 2. Expande chaves
     if (expandKeys) {
-        expanded = expandObject(expanded) as any;
+        expanded = expandObject(expanded);
     }
 
     return expanded;

@@ -97,7 +97,7 @@ export const calculateBreedingMetrics = (
     natural: 0,
     ia: 0,
     iatf: 0,
-    te: 0,
+    fiv: 0,
   };
   coverages.forEach((c) => {
     coveragesByType[c.type]++;
@@ -297,7 +297,14 @@ export const getAvailableBulls = (animals: Animal[], minAgeMonths: number = 18):
  */
 export const getExpectedCalvings = (
   season: BreedingSeason
-): { cowId: string; cowBrinco: string; expectedDate: Date; bullInfo: string }[] => {
+): {
+  cowId: string;
+  cowBrinco: string;
+  expectedDate: Date;
+  bullInfo: string;
+  isFIV: boolean;
+  donorInfo?: string;
+}[] => {
   return season.coverageRecords
     .filter((c) => c.pregnancyResult === 'positive' && c.expectedCalvingDate)
     .map((c) => ({
@@ -305,6 +312,8 @@ export const getExpectedCalvings = (
       cowBrinco: c.cowBrinco,
       expectedDate: new Date(c.expectedCalvingDate!),
       bullInfo: c.bullBrinco || c.semenCode || 'Desconhecido',
+      isFIV: c.type === 'fiv',
+      donorInfo: c.donorCowBrinco,
     }))
     .sort((a, b) => a.expectedDate.getTime() - b.expectedDate.getTime());
 };
