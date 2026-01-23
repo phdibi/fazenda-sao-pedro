@@ -7,6 +7,7 @@ import {
   KPIStatus,
 } from '../services/kpiCalculator';
 import { useFarmData } from '../contexts/FarmContext';
+import DataMigrationPanel from './DataMigrationPanel';
 
 interface KPIDashboardProps {
   animals: Animal[];
@@ -265,6 +266,9 @@ const KPIDashboard: React.FC<KPIDashboardProps> = ({ animals, preCalculatedKPIs 
 
   return (
     <div className="space-y-6">
+      {/* Painel de Migração de Dados - aparece se houver dados inconsistentes */}
+      <DataMigrationPanel />
+
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>

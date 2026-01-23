@@ -932,8 +932,15 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
             const batch = db.batch();
             const newAnimalRef = db.collection('animals').doc();
 
+            // Se tem data de nascimento E peso, considera peso de nascimento (Birth)
+            // Senão, se só tem peso sem data de nascimento, é um peso inicial sem tipo definido
             const initialWeightHistory = animalData.pesoKg > 0
-                ? [{ id: `initial-${newAnimalRef.id}`, date: animalData.dataNascimento || new Date(), weightKg: animalData.pesoKg, type: WeighingType.None }]
+                ? [{
+                    id: `initial-${newAnimalRef.id}`,
+                    date: animalData.dataNascimento || new Date(),
+                    weightKg: animalData.pesoKg,
+                    type: animalData.dataNascimento ? WeighingType.Birth : WeighingType.None
+                  }]
                 : [];
 
             const fullAnimalData: Omit<Animal, 'id'> = {
