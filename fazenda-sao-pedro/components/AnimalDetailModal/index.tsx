@@ -44,6 +44,7 @@ const AnimalDetailModal: React.FC<AnimalDetailModalProps> = ({
     animal,
     isOpen,
     onUpdateAnimal,
+    animals, // Passa lista de animais para buscar raça da mãe
   });
 
   const {

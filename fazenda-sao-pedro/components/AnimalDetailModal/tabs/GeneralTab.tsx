@@ -171,7 +171,15 @@ const GeneralTab: React.FC<GeneralTabProps> = ({
                 disabled={!isEditing}
                 placeholder="Ex: 2024"
               />
-              <p className="text-xs text-gray-500 mt-1">A raça será puxada automaticamente</p>
+              {editableAnimal.maeRaca ? (
+                <p className="text-xs text-emerald-400 mt-1">
+                  Raça da mãe: <strong>{editableAnimal.maeRaca}</strong>
+                </p>
+              ) : editableAnimal.maeNome ? (
+                <p className="text-xs text-amber-400 mt-1">Mãe não encontrada no rebanho</p>
+              ) : (
+                <p className="text-xs text-gray-500 mt-1">A raça será puxada automaticamente</p>
+              )}
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-400">Pai (Brinco ou Nome)</label>

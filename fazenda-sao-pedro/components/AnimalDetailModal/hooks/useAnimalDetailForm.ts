@@ -11,12 +11,14 @@ import {
   EditableAnimalState,
   MedicationFormState,
   OffspringFormState,
+  Sexo,
 } from '../../../types';
 
 export interface UseAnimalDetailFormProps {
   animal: Animal | null;
   isOpen: boolean;
   onUpdateAnimal: (animalId: string, updatedData: Partial<Omit<Animal, 'id'>>) => void;
+  animals?: Animal[]; // Lista de animais para buscar raça da mãe
 }
 
 export interface UseAnimalDetailFormReturn {
@@ -75,6 +77,7 @@ export const useAnimalDetailForm = ({
   animal,
   isOpen,
   onUpdateAnimal,
+  animals = [],
 }: UseAnimalDetailFormProps): UseAnimalDetailFormReturn => {
   // Estados principais
   const [isEditing, setIsEditing] = useState(false);
@@ -178,10 +181,34 @@ export const useAnimalDetailForm = ({
       } else {
         setEditableAnimal((prev) => (prev ? { ...prev, dataNascimento: undefined } : null));
       }
+    } else if (name === 'maeNome') {
+      // Busca a raça da mãe automaticamente quando o brinco é informado
+      const motherBrinco = value.toLowerCase().trim();
+      const mother = animals.find(
+        (a) => a.brinco.toLowerCase().trim() === motherBrinco && a.sexo === Sexo.Femea
+      );
+
+      if (mother) {
+        // Encontrou a mãe - atualiza o brinco, ID e raça
+        setEditableAnimal((prev) => prev ? {
+          ...prev,
+          maeNome: value,
+          maeId: mother.id,
+          maeRaca: mother.raca
+        } : null);
+      } else {
+        // Não encontrou - atualiza apenas o brinco e limpa o ID/raça
+        setEditableAnimal((prev) => prev ? {
+          ...prev,
+          maeNome: value,
+          maeId: undefined,
+          maeRaca: undefined
+        } : null);
+      }
     } else {
       setEditableAnimal((prev) => (prev ? { ...prev, [name]: value } : null));
     }
-  }, []);
+  }, [animals]);
 
   const handleUploadComplete = useCallback((newUrl: string, thumbnailUrl?: string) => {
     if (!editableAnimal) return;

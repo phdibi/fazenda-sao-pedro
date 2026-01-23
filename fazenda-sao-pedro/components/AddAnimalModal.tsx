@@ -115,11 +115,17 @@ const initialFormData: AnimalFormData = {
 const AddAnimalModal = ({ isOpen, onClose, onAddAnimal, animals }: AddAnimalModalProps) => {
     const [formData, setFormData] = useState<AnimalFormData>(initialFormData);
     const [errors, setErrors] = useState<{ brinco?: string; pesoKg?: string }>({});
+    const [motherFound, setMotherFound] = useState<boolean | null>(null); // null = não digitou, true = encontrou, false = não encontrou
+    const [donorFound, setDonorFound] = useState<{ found: boolean | null; raca?: string }>({ found: null });
+    const [recipientFound, setRecipientFound] = useState<boolean | null>(null);
     
     useEffect(() => {
         if (!isOpen) {
             setFormData(initialFormData);
             setErrors({});
+            setMotherFound(null);
+            setDonorFound({ found: null });
+            setRecipientFound(null);
         }
     }, [isOpen]);
 
@@ -151,9 +157,50 @@ const AddAnimalModal = ({ isOpen, onClose, onAddAnimal, animals }: AddAnimalModa
             };
 
             if (name === 'maeNome') {
-                const mother = animals.find(a => a.brinco.toLowerCase() === value.trim().toLowerCase());
-                if (mother) {
-                    updatedData.maeRaca = mother.raca;
+                if (value.trim()) {
+                    const mother = animals.find(a =>
+                        a.brinco.toLowerCase() === value.trim().toLowerCase() &&
+                        a.sexo === Sexo.Femea
+                    );
+                    if (mother) {
+                        updatedData.maeRaca = mother.raca;
+                        setMotherFound(true);
+                    } else {
+                        setMotherFound(false);
+                    }
+                } else {
+                    setMotherFound(null);
+                }
+            }
+
+            // Busca doadora (mãe biológica) para FIV
+            if (name === 'maeBiologicaNome') {
+                if (value.trim()) {
+                    const donor = animals.find(a =>
+                        a.brinco.toLowerCase() === value.trim().toLowerCase() &&
+                        a.sexo === Sexo.Femea
+                    );
+                    if (donor) {
+                        updatedData.maeRaca = donor.raca;
+                        setDonorFound({ found: true, raca: donor.raca });
+                    } else {
+                        setDonorFound({ found: false });
+                    }
+                } else {
+                    setDonorFound({ found: null });
+                }
+            }
+
+            // Busca receptora para FIV
+            if (name === 'maeReceptoraNome') {
+                if (value.trim()) {
+                    const recipient = animals.find(a =>
+                        a.brinco.toLowerCase() === value.trim().toLowerCase() &&
+                        a.sexo === Sexo.Femea
+                    );
+                    setRecipientFound(recipient ? true : false);
+                } else {
+                    setRecipientFound(null);
                 }
             }
 
@@ -332,7 +379,15 @@ const AddAnimalModal = ({ isOpen, onClose, onAddAnimal, animals }: AddAnimalModa
                                     className="mt-1 block w-full bg-base-700 border-base-600 rounded-md shadow-sm focus:ring-brand-primary focus:border-brand-primary sm:text-sm p-2"
                                     placeholder="Ex: 2024"
                                 />
-                                <p className="text-xs text-gray-500 mt-1">A raça será puxada automaticamente</p>
+                                {motherFound === true ? (
+                                    <p className="text-xs text-emerald-400 mt-1">
+                                        Raça da mãe: <strong>{formData.maeRaca}</strong>
+                                    </p>
+                                ) : motherFound === false ? (
+                                    <p className="text-xs text-amber-400 mt-1">Mãe não encontrada no rebanho</p>
+                                ) : (
+                                    <p className="text-xs text-gray-500 mt-1">A raça será puxada automaticamente</p>
+                                )}
                             </div>
                         )}
 
@@ -352,7 +407,15 @@ const AddAnimalModal = ({ isOpen, onClose, onAddAnimal, animals }: AddAnimalModa
                                         className="mt-1 block w-full bg-base-700 border-purple-600 rounded-md shadow-sm focus:ring-purple-500 focus:border-purple-500 sm:text-sm p-2"
                                         placeholder="Brinco da doadora"
                                     />
-                                    <p className="text-xs text-purple-400 mt-1">Mãe genética - progênie registrada aqui</p>
+                                    {donorFound.found === true ? (
+                                        <p className="text-xs text-emerald-400 mt-1">
+                                            Doadora encontrada - Raça: <strong>{donorFound.raca}</strong>
+                                        </p>
+                                    ) : donorFound.found === false ? (
+                                        <p className="text-xs text-amber-400 mt-1">Doadora não encontrada no rebanho</p>
+                                    ) : (
+                                        <p className="text-xs text-purple-400 mt-1">Mãe genética - progênie registrada aqui</p>
+                                    )}
                                 </div>
                                 <div>
                                     <label htmlFor="maeReceptoraNome" className="block text-sm font-medium text-pink-300">
@@ -367,7 +430,13 @@ const AddAnimalModal = ({ isOpen, onClose, onAddAnimal, animals }: AddAnimalModa
                                         className="mt-1 block w-full bg-base-700 border-pink-600 rounded-md shadow-sm focus:ring-pink-500 focus:border-pink-500 sm:text-sm p-2"
                                         placeholder="Brinco da receptora"
                                     />
-                                    <p className="text-xs text-pink-400 mt-1">Quem gestou o embrião</p>
+                                    {recipientFound === true ? (
+                                        <p className="text-xs text-emerald-400 mt-1">Receptora encontrada no rebanho</p>
+                                    ) : recipientFound === false ? (
+                                        <p className="text-xs text-amber-400 mt-1">Receptora não encontrada no rebanho</p>
+                                    ) : (
+                                        <p className="text-xs text-pink-400 mt-1">Quem gestou o embrião</p>
+                                    )}
                                 </div>
                             </>
                         )}
