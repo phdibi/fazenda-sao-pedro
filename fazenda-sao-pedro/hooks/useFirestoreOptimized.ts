@@ -962,42 +962,89 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
             // 🔧 OTIMIZAÇÃO: Adiciona updatedAt para suportar sync delta
             batch.set(newAnimalRef, { ...dataWithTimestamp, userId, updatedAt: new Date() });
 
-            if (animalData.maeNome) {
-                const motherBrinco = animalData.maeNome.toLowerCase().trim();
+            // 🔧 FIV: Se for animal de FIV, registra progênie na mãe biológica (doadora)
+            // Para animais normais, registra na mãe indicada no campo maeNome
+            const biologicalMotherBrinco = animalData.isFIV && animalData.maeBiologicaNome
+                ? animalData.maeBiologicaNome.toLowerCase().trim()
+                : animalData.maeNome?.toLowerCase().trim();
 
+            if (biologicalMotherBrinco) {
                 // 🔧 OTIMIZAÇÃO: Usa stateRef para evitar dependência de state.animals
                 const currentAnimals = stateRef.current.animals;
                 const motherLocal = currentAnimals.find(a =>
-                    a.brinco.toLowerCase().trim() === motherBrinco &&
+                    a.brinco.toLowerCase().trim() === biologicalMotherBrinco &&
                     a.sexo === Sexo.Femea
                 );
 
                 if (motherLocal) {
                     const motherRef = db.collection('animals').doc(motherLocal.id);
-                    const newOffspringRecord: any = {
-                        id: `prog_${newAnimalRef.id}`,
-                        offspringBrinco: animalData.brinco,
-                    };
 
-                    if (animalData.pesoKg > 0) {
-                        newOffspringRecord.birthWeightKg = animalData.pesoKg;
+                    // 🔧 FIV: Verifica se já existe um registro de embrião pendente para atualizar
+                    let existingEmbryo = null;
+                    if (animalData.isFIV) {
+                        const receptoraBrinco = animalData.maeReceptoraNome || animalData.maeNome;
+                        if (receptoraBrinco) {
+                            existingEmbryo = motherLocal.historicoProgenie?.find(p =>
+                                p.offspringBrinco.includes('Embriao') &&
+                                p.offspringBrinco.includes(receptoraBrinco)
+                            );
+                        }
                     }
 
-                    // 🔧 OTIMIZAÇÃO: Adiciona updatedAt para suportar sync delta
-                    batch.update(motherRef, {
-                        historicoProgenie: FieldValue.arrayUnion(newOffspringRecord),
-                        updatedAt: new Date()
-                    });
+                    if (existingEmbryo) {
+                        // 🔧 FIV: Atualiza o registro de embrião existente com o brinco real do bezerro
+                        const updatedProgenie = motherLocal.historicoProgenie?.map(p => {
+                            if (p.id === existingEmbryo!.id) {
+                                return {
+                                    ...p,
+                                    offspringBrinco: animalData.brinco,
+                                    birthWeightKg: animalData.pesoKg > 0 ? animalData.pesoKg : p.birthWeightKg,
+                                };
+                            }
+                            return p;
+                        }) || [];
 
-                    // Atualização otimista da mãe também!
-                    const updatedMotherProgenie = [...(motherLocal.historicoProgenie || []), newOffspringRecord];
-                    dispatch({
-                        type: 'LOCAL_UPDATE_ANIMAL',
-                        payload: {
-                            animalId: motherLocal.id,
-                            updatedData: { historicoProgenie: updatedMotherProgenie }
+                        // Atualiza no Firestore (substitui todo o array)
+                        batch.update(motherRef, {
+                            historicoProgenie: updatedProgenie,
+                            updatedAt: new Date()
+                        });
+
+                        // Atualização otimista
+                        dispatch({
+                            type: 'LOCAL_UPDATE_ANIMAL',
+                            payload: {
+                                animalId: motherLocal.id,
+                                updatedData: { historicoProgenie: updatedProgenie }
+                            }
+                        });
+                    } else {
+                        // Não é FIV ou não tem embrião pendente - cria novo registro
+                        const newOffspringRecord: any = {
+                            id: `prog_${newAnimalRef.id}`,
+                            offspringBrinco: animalData.brinco,
+                        };
+
+                        if (animalData.pesoKg > 0) {
+                            newOffspringRecord.birthWeightKg = animalData.pesoKg;
                         }
-                    });
+
+                        // 🔧 OTIMIZAÇÃO: Adiciona updatedAt para suportar sync delta
+                        batch.update(motherRef, {
+                            historicoProgenie: FieldValue.arrayUnion(newOffspringRecord),
+                            updatedAt: new Date()
+                        });
+
+                        // Atualização otimista da mãe também!
+                        const updatedMotherProgenie = [...(motherLocal.historicoProgenie || []), newOffspringRecord];
+                        dispatch({
+                            type: 'LOCAL_UPDATE_ANIMAL',
+                            payload: {
+                                animalId: motherLocal.id,
+                                updatedData: { historicoProgenie: updatedMotherProgenie }
+                            }
+                        });
+                    }
                 }
             }
 

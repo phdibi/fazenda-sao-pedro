@@ -105,7 +105,11 @@ const initialFormData: AnimalFormData = {
     status: AnimalStatus.Ativo,
     paiNome: '',
     maeNome: '',
-    maeRaca: Raca.Braford
+    maeRaca: Raca.Braford,
+    // Campos FIV
+    isFIV: false,
+    maeBiologicaNome: '',
+    maeReceptoraNome: '',
 };
 
 const AddAnimalModal = ({ isOpen, onClose, onAddAnimal, animals }: AddAnimalModalProps) => {
@@ -193,19 +197,35 @@ const AddAnimalModal = ({ isOpen, onClose, onAddAnimal, animals }: AddAnimalModa
         
         setErrors({});
         
-        const finalData = {
+        // Se for FIV, ajusta os campos de mãe
+        // maeNome será a receptora (para exibição), mas maeBiologicaNome é quem recebe a progênie
+        const finalData: any = {
             brinco: formData.brinco,
             nome: formData.nome,
             raca: formData.raca,
             sexo: formData.sexo,
             status: formData.status,
             paiNome: formData.paiNome,
-            maeNome: formData.maeNome,
-            maeRaca: formData.maeRaca,
             pesoKg: finalPeso,
             dataNascimento: finalDataNascimento,
         };
-        
+
+        if (formData.isFIV) {
+            // FIV: mãe biológica é a doadora, maeNome mostra a receptora
+            finalData.isFIV = true;
+            finalData.maeBiologicaNome = formData.maeBiologicaNome;
+            finalData.maeReceptoraNome = formData.maeReceptoraNome;
+            // maeNome = receptora (para exibição no sistema)
+            finalData.maeNome = formData.maeReceptoraNome;
+            // Busca raça da doadora para cálculos genéticos
+            const donor = animals.find(a => a.brinco.toLowerCase() === (formData.maeBiologicaNome || '').toLowerCase());
+            finalData.maeRaca = donor?.raca || formData.maeRaca;
+        } else {
+            // Normal: maeNome é a mãe biológica
+            finalData.maeNome = formData.maeNome;
+            finalData.maeRaca = formData.maeRaca;
+        }
+
         onAddAnimal(finalData);
     };
 
@@ -272,28 +292,95 @@ const AddAnimalModal = ({ isOpen, onClose, onAddAnimal, animals }: AddAnimalModa
                 <div className="relative border border-base-700 p-4 rounded-lg">
                     <h3 className="absolute -top-3 left-4 bg-base-800 px-2 text-md font-semibold text-brand-primary-light">Filiação</h3>
                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
-                        <div>
-                            <label htmlFor="maeNome" className="block text-sm font-medium text-gray-300">Brinco da Mãe</label>
-                            <input 
-                                type="text" 
-                                name="maeNome" 
-                                id="maeNome" 
-                                value={formData.maeNome} 
-                                onChange={handleChange} 
-                                className="mt-1 block w-full bg-base-700 border-base-600 rounded-md shadow-sm focus:ring-brand-primary focus:border-brand-primary sm:text-sm p-2" 
-                                placeholder="Ex: 2024"
-                            />
-                            <p className="text-xs text-gray-500 mt-1">A raça será puxada automaticamente</p>
-                        </div>
+                        {/* Checkbox FIV */}
                         <div className="md:col-span-2">
+                            <label className="flex items-center gap-2 cursor-pointer">
+                                <input
+                                    type="checkbox"
+                                    name="isFIV"
+                                    checked={formData.isFIV || false}
+                                    onChange={(e) => setFormData(prev => ({
+                                        ...prev,
+                                        isFIV: e.target.checked,
+                                        // Se desmarcar FIV, limpa os campos específicos
+                                        maeBiologicaNome: e.target.checked ? prev.maeBiologicaNome : '',
+                                        maeReceptoraNome: e.target.checked ? prev.maeReceptoraNome : '',
+                                    }))}
+                                    className="w-4 h-4 rounded border-base-600 bg-base-700 text-brand-primary focus:ring-brand-primary"
+                                />
+                                <span className="text-sm font-medium text-gray-300">
+                                    Animal nascido de FIV (Fertilização In Vitro)
+                                </span>
+                            </label>
+                            {formData.isFIV && (
+                                <p className="text-xs text-purple-400 mt-1 ml-6">
+                                    Em FIV, a <strong>Doadora</strong> é a mãe biológica (genética) e a <strong>Receptora</strong> é quem gestou o embrião.
+                                </p>
+                            )}
+                        </div>
+
+                        {/* Campos normais quando NÃO é FIV */}
+                        {!formData.isFIV && (
+                            <div>
+                                <label htmlFor="maeNome" className="block text-sm font-medium text-gray-300">Brinco da Mãe</label>
+                                <input
+                                    type="text"
+                                    name="maeNome"
+                                    id="maeNome"
+                                    value={formData.maeNome}
+                                    onChange={handleChange}
+                                    className="mt-1 block w-full bg-base-700 border-base-600 rounded-md shadow-sm focus:ring-brand-primary focus:border-brand-primary sm:text-sm p-2"
+                                    placeholder="Ex: 2024"
+                                />
+                                <p className="text-xs text-gray-500 mt-1">A raça será puxada automaticamente</p>
+                            </div>
+                        )}
+
+                        {/* Campos específicos FIV */}
+                        {formData.isFIV && (
+                            <>
+                                <div>
+                                    <label htmlFor="maeBiologicaNome" className="block text-sm font-medium text-purple-300">
+                                        Doadora (Mãe Biológica)
+                                    </label>
+                                    <input
+                                        type="text"
+                                        name="maeBiologicaNome"
+                                        id="maeBiologicaNome"
+                                        value={formData.maeBiologicaNome || ''}
+                                        onChange={handleChange}
+                                        className="mt-1 block w-full bg-base-700 border-purple-600 rounded-md shadow-sm focus:ring-purple-500 focus:border-purple-500 sm:text-sm p-2"
+                                        placeholder="Brinco da doadora"
+                                    />
+                                    <p className="text-xs text-purple-400 mt-1">Mãe genética - progênie registrada aqui</p>
+                                </div>
+                                <div>
+                                    <label htmlFor="maeReceptoraNome" className="block text-sm font-medium text-pink-300">
+                                        Receptora (Mãe Gestante)
+                                    </label>
+                                    <input
+                                        type="text"
+                                        name="maeReceptoraNome"
+                                        id="maeReceptoraNome"
+                                        value={formData.maeReceptoraNome || ''}
+                                        onChange={handleChange}
+                                        className="mt-1 block w-full bg-base-700 border-pink-600 rounded-md shadow-sm focus:ring-pink-500 focus:border-pink-500 sm:text-sm p-2"
+                                        placeholder="Brinco da receptora"
+                                    />
+                                    <p className="text-xs text-pink-400 mt-1">Quem gestou o embrião</p>
+                                </div>
+                            </>
+                        )}
+
+                        <div className={formData.isFIV ? 'md:col-span-2' : ''}>
                             <label htmlFor="paiNome" className="block text-sm font-medium text-gray-300">Pai (Brinco ou Nome)</label>
-                            <input 
-                                type="text" 
-                                name="paiNome" 
-                                id="paiNome" 
-                                value={formData.paiNome} 
-                                onChange={handleChange} 
-                                className="mt-1 block w-full bg-base-700 border-base-600 rounded-md shadow-sm focus:ring-brand-primary focus:border-brand-primary sm:text-sm p-2" 
+                            <input
+                                type="text"
+                                name="paiNome"
+                                id="paiNome"
+                                value={formData.paiNome}
+                                onChange={handleChange}
+                                className="mt-1 block w-full bg-base-700 border-base-600 rounded-md shadow-sm focus:ring-brand-primary focus:border-brand-primary sm:text-sm p-2"
                                 placeholder="Ex: Touro 001"
                             />
                         </div>

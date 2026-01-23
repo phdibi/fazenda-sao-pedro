@@ -332,6 +332,13 @@ const AnimalCard: React.FC<AnimalCardProps> = ({
             {animal.status}
           </div>
 
+          {/* Badge FIV */}
+          {animal.isFIV && (
+            <div className="absolute top-2 right-[70px] px-1.5 py-0.5 text-[9px] font-bold rounded bg-purple-600/90 text-white backdrop-blur-sm">
+              FIV
+            </div>
+          )}
+
           {/* GMD badge */}
           {gmdClass && gmd?.gmdTotal && gmd.gmdTotal > 0 && (
             <div className={`absolute bottom-2 right-2 px-2 py-0.5 text-[10px] font-medium rounded-full bg-base-900/80 backdrop-blur-sm ${gmdClass.color}`}>

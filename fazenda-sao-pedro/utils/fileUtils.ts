@@ -1,4 +1,4 @@
-import { Animal, AnimalStatus, FilteredStats, ManagementArea, Sexo, WeighingType } from '../types';
+import { Animal, AnimalStatus, FilteredStats, ManagementArea, Sexo, WeighingType, BreedingSeason, CoverageRecord } from '../types';
 
 // ============================================
 // CSV EXPORT
@@ -620,4 +620,339 @@ export const CSV_HEADERS = {
   numPrenhez: 'Nº Prenhez',
   numAbortos: 'Nº Abortos',
   numProgenie: 'Nº Crias',
+};
+
+// ============================================
+// ESTAÇÃO DE MONTA - EXPORT
+// ============================================
+
+const getCoverageTypeLabel = (type: string): string => {
+  const labels: Record<string, string> = {
+    natural: 'Monta Natural',
+    ia: 'Inseminação Artificial',
+    iatf: 'IATF',
+    fiv: 'FIV (Fertilização In Vitro)',
+  };
+  return labels[type] || type;
+};
+
+const getPregnancyResultLabel = (result?: string): string => {
+  const labels: Record<string, string> = {
+    positive: 'Prenhe',
+    negative: 'Vazia',
+    pending: 'Aguardando',
+  };
+  return result ? labels[result] || result : 'Aguardando';
+};
+
+export const BREEDING_SEASON_HEADERS: Record<string, string> = {
+  cowBrinco: 'Brinco Vaca',
+  coverageDate: 'Data Cobertura',
+  coverageType: 'Tipo',
+  sire: 'Touro/Sêmen',
+  donorInfo: 'Doadora (FIV)',
+  recipientInfo: 'Receptora (FIV)',
+  technician: 'Técnico',
+  pregnancyResult: 'Resultado',
+  pregnancyCheckDate: 'Data Diagnóstico',
+  expectedCalvingDate: 'Previsão Parto',
+  notes: 'Observações',
+};
+
+export interface BreedingSeasonExportData {
+  cowBrinco: string;
+  coverageDate: string;
+  coverageType: string;
+  sire: string;
+  donorInfo: string;
+  recipientInfo: string;
+  technician: string;
+  pregnancyResult: string;
+  pregnancyCheckDate: string;
+  expectedCalvingDate: string;
+  notes: string;
+}
+
+export const prepareBreedingSeasonDataForExport = (
+  season: BreedingSeason,
+  animals: Animal[]
+): BreedingSeasonExportData[] => {
+  const getAnimalName = (id?: string, brinco?: string): string => {
+    if (id) {
+      const animal = animals.find(a => a.id === id);
+      if (animal) {
+        return animal.nome ? `${animal.brinco} (${animal.nome})` : animal.brinco;
+      }
+    }
+    return brinco || '';
+  };
+
+  return (season.coverageRecords || []).map(coverage => {
+    // Para FIV: mostra doadora e receptora separadamente
+    const isFIV = coverage.type === 'fiv';
+    const donorInfo = isFIV && coverage.donorCowBrinco
+      ? getAnimalName(coverage.donorCowId, coverage.donorCowBrinco)
+      : '';
+    const recipientInfo = isFIV ? getAnimalName(coverage.cowId, coverage.cowBrinco) : '';
+
+    // Nome do touro/sêmen
+    const sire = coverage.bullBrinco
+      ? getAnimalName(coverage.bullId, coverage.bullBrinco)
+      : coverage.semenCode || '';
+
+    return {
+      cowBrinco: isFIV ? `${coverage.cowBrinco} (Receptora)` : coverage.cowBrinco,
+      coverageDate: coverage.date ? formatDateBR(new Date(coverage.date)) : '',
+      coverageType: getCoverageTypeLabel(coverage.type),
+      sire,
+      donorInfo,
+      recipientInfo,
+      technician: coverage.technician || '',
+      pregnancyResult: getPregnancyResultLabel(coverage.pregnancyResult),
+      pregnancyCheckDate: coverage.pregnancyCheckDate
+        ? formatDateBR(new Date(coverage.pregnancyCheckDate))
+        : '',
+      expectedCalvingDate: coverage.expectedCalvingDate
+        ? formatDateBR(new Date(coverage.expectedCalvingDate))
+        : '',
+      notes: coverage.notes || '',
+    };
+  }).sort((a, b) => a.coverageDate.localeCompare(b.coverageDate));
+};
+
+export const exportBreedingSeasonToCSV = (
+  season: BreedingSeason,
+  animals: Animal[],
+  filename?: string
+) => {
+  const data = prepareBreedingSeasonDataForExport(season, animals);
+  if (data.length === 0) {
+    alert('Nenhuma cobertura registrada nesta estação de monta.');
+    return;
+  }
+
+  const safeName = season.name.replace(/[^a-zA-Z0-9]/g, '_');
+  const finalFilename = filename || `estacao_monta_${safeName}_${new Date().toISOString().slice(0, 10)}.csv`;
+
+  exportToCSV(data, BREEDING_SEASON_HEADERS, finalFilename);
+};
+
+export const exportBreedingSeasonToPDF = (
+  season: BreedingSeason,
+  animals: Animal[]
+) => {
+  const data = prepareBreedingSeasonDataForExport(season, animals);
+
+  const startDate = season.startDate ? formatDateBR(new Date(season.startDate)) : '';
+  const endDate = season.endDate ? formatDateBR(new Date(season.endDate)) : '';
+  const currentDate = new Date().toLocaleDateString('pt-BR');
+
+  // Estatísticas
+  const totalCoverages = data.length;
+  const pregnantCount = data.filter(d => d.pregnancyResult === 'Prenhe').length;
+  const emptyCount = data.filter(d => d.pregnancyResult === 'Vazia').length;
+  const pendingCount = data.filter(d => d.pregnancyResult === 'Aguardando').length;
+
+  // Contagem por tipo
+  const typeCounts: Record<string, number> = {};
+  data.forEach(d => {
+    typeCounts[d.coverageType] = (typeCounts[d.coverageType] || 0) + 1;
+  });
+
+  // FIV específico
+  const fivCount = data.filter(d => d.coverageType === 'FIV (Fertilização In Vitro)').length;
+  const fivRecords = data.filter(d => d.coverageType === 'FIV (Fertilização In Vitro)');
+
+  const styles = `
+    <style>
+      @page { size: A4 landscape; margin: 1.5cm; }
+      body { font-family: 'Segoe UI', Arial, sans-serif; font-size: 9px; color: #222; margin: 0; }
+      h1 { margin: 0; color: #381b18; font-size: 18px; }
+      h2 { color: #381b18; font-size: 14px; margin: 16px 0 8px 0; border-bottom: 2px solid #381b18; padding-bottom: 4px; }
+      .header { text-align: center; margin-bottom: 16px; }
+      .subtitle { color: #666; margin-top: 4px; font-size: 11px; }
+      .date { color: #999; font-size: 10px; margin-top: 2px; }
+      .stats-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-bottom: 20px; }
+      .stat-card { background: #f8f9fa; border-radius: 8px; padding: 12px; text-align: center; border-left: 4px solid #381b18; }
+      .stat-card.success { border-left-color: #10b981; }
+      .stat-card.warning { border-left-color: #f59e0b; }
+      .stat-card.danger { border-left-color: #ef4444; }
+      .stat-card.info { border-left-color: #3b82f6; }
+      .stat-card .value { font-size: 20px; font-weight: bold; color: #381b18; }
+      .stat-card .label { font-size: 10px; color: #666; margin-top: 4px; }
+      .type-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 16px; }
+      .type-card { background: #f0f4f8; padding: 8px; border-radius: 6px; text-align: center; }
+      .type-card .value { font-weight: bold; color: #1f2937; }
+      .type-card .label { font-size: 9px; color: #6b7280; }
+      table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 8px; }
+      th { background: #381b18; color: white; padding: 6px 4px; text-align: left; font-weight: 600; }
+      td { border-bottom: 1px solid #eee; padding: 5px 4px; }
+      tr:nth-child(even) { background: #fafafa; }
+      .badge { padding: 2px 6px; border-radius: 10px; font-size: 8px; font-weight: 500; }
+      .badge-success { background: #d1fae5; color: #065f46; }
+      .badge-danger { background: #fee2e2; color: #991b1b; }
+      .badge-warning { background: #fef3c7; color: #92400e; }
+      .badge-info { background: #dbeafe; color: #1e40af; }
+      .fiv-section { background: #fdf4ff; border: 1px solid #e879f9; border-radius: 8px; padding: 12px; margin-bottom: 16px; }
+      .fiv-title { color: #a21caf; font-weight: bold; margin-bottom: 8px; }
+      .legend { margin-top: 16px; padding: 12px; background: #f3f4f6; border-radius: 8px; }
+      .legend h4 { margin: 0 0 8px 0; color: #374151; }
+      .legend-item { display: inline-block; margin-right: 16px; font-size: 9px; }
+      .footer { margin-top: 16px; text-align: center; color: #888; font-size: 8px; }
+      @media print {
+        .no-print { display: none; }
+        body { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+      }
+    </style>
+  `;
+
+  let html = `
+    <!DOCTYPE html>
+    <html lang="pt-BR">
+    <head>
+      <meta charset="UTF-8">
+      <title>Estação de Monta - ${season.name}</title>
+      ${styles}
+    </head>
+    <body>
+      <div class="header">
+        <h1>Estação de Monta: ${season.name}</h1>
+        <div class="subtitle">Período: ${startDate} a ${endDate}</div>
+        <div class="date">Relatório gerado em: ${currentDate}</div>
+      </div>
+
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="value">${totalCoverages}</div>
+          <div class="label">Total Coberturas</div>
+        </div>
+        <div class="stat-card success">
+          <div class="value">${pregnantCount}</div>
+          <div class="label">Prenhes</div>
+        </div>
+        <div class="stat-card danger">
+          <div class="value">${emptyCount}</div>
+          <div class="label">Vazias</div>
+        </div>
+        <div class="stat-card warning">
+          <div class="value">${pendingCount}</div>
+          <div class="label">Aguardando</div>
+        </div>
+        <div class="stat-card info">
+          <div class="value">${totalCoverages > 0 ? ((pregnantCount / totalCoverages) * 100).toFixed(1) : 0}%</div>
+          <div class="label">Taxa Prenhez</div>
+        </div>
+      </div>
+
+      <div class="type-grid">
+        ${Object.entries(typeCounts).map(([type, count]) => `
+          <div class="type-card">
+            <div class="value">${count}</div>
+            <div class="label">${type}</div>
+          </div>
+        `).join('')}
+      </div>
+  `;
+
+  // Seção especial para FIV
+  if (fivCount > 0) {
+    html += `
+      <div class="fiv-section">
+        <div class="fiv-title">🧬 Detalhamento FIV (${fivCount} registros)</div>
+        <p style="font-size: 9px; color: #6b21a8; margin: 0 0 8px 0;">
+          <strong>Importante:</strong> Em FIV, a <em>Doadora</em> é a mãe biológica (genética) e a <em>Receptora</em> é quem gestará o embrião.
+          Os dados de progênie são registrados na <strong>Doadora</strong> para fins de DEP e seleção genética.
+        </p>
+        <table>
+          <thead>
+            <tr>
+              <th>Data</th>
+              <th>Doadora (Mãe Biológica)</th>
+              <th>Receptora (Gestante)</th>
+              <th>Touro/Sêmen</th>
+              <th>Resultado</th>
+              <th>Previsão Parto</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${fivRecords.map(r => `
+              <tr>
+                <td>${r.coverageDate}</td>
+                <td><strong>${r.donorInfo || '-'}</strong></td>
+                <td>${r.recipientInfo || r.cowBrinco}</td>
+                <td>${r.sire}</td>
+                <td><span class="badge ${r.pregnancyResult === 'Prenhe' ? 'badge-success' : r.pregnancyResult === 'Vazia' ? 'badge-danger' : 'badge-warning'}">${r.pregnancyResult}</span></td>
+                <td>${r.expectedCalvingDate || '-'}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+    `;
+  }
+
+  // Tabela geral de coberturas
+  html += `
+      <h2>Registro Completo de Coberturas</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Vaca</th>
+            <th>Data</th>
+            <th>Tipo</th>
+            <th>Touro/Sêmen</th>
+            <th>Doadora (FIV)</th>
+            <th>Técnico</th>
+            <th>Resultado</th>
+            <th>Data Diag.</th>
+            <th>Prev. Parto</th>
+            <th>Obs.</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${data.map(r => `
+            <tr>
+              <td>${r.cowBrinco}</td>
+              <td>${r.coverageDate}</td>
+              <td>${r.coverageType}</td>
+              <td>${r.sire}</td>
+              <td>${r.donorInfo || '-'}</td>
+              <td>${r.technician || '-'}</td>
+              <td><span class="badge ${r.pregnancyResult === 'Prenhe' ? 'badge-success' : r.pregnancyResult === 'Vazia' ? 'badge-danger' : 'badge-warning'}">${r.pregnancyResult}</span></td>
+              <td>${r.pregnancyCheckDate || '-'}</td>
+              <td>${r.expectedCalvingDate || '-'}</td>
+              <td>${r.notes || '-'}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+
+      <div class="legend">
+        <h4>Legenda</h4>
+        <div class="legend-item"><span class="badge badge-success">Prenhe</span> Diagnóstico positivo</div>
+        <div class="legend-item"><span class="badge badge-danger">Vazia</span> Diagnóstico negativo</div>
+        <div class="legend-item"><span class="badge badge-warning">Aguardando</span> Pendente de diagnóstico</div>
+        <div class="legend-item"><strong>FIV:</strong> Doadora = mãe biológica | Receptora = gestante</div>
+      </div>
+
+      <div class="footer">
+        Fazenda+ • Relatório de Estação de Monta gerado automaticamente
+      </div>
+    </body>
+    </html>
+  `;
+
+  const printWindow = window.open('', '_blank');
+  if (!printWindow) {
+    alert('Popup bloqueado! Permita popups para gerar o PDF.');
+    return;
+  }
+
+  printWindow.document.write(html);
+  printWindow.document.close();
+  printWindow.onload = () => {
+    setTimeout(() => {
+      printWindow.print();
+    }, 250);
+  };
 };

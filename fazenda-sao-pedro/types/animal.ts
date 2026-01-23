@@ -95,6 +95,13 @@ export interface Animal {
   maeNome?: string;
   maeRaca?: Raca;
   managementAreaId?: string;
+  // Campos específicos para FIV (Fertilização In Vitro)
+  // Se o animal nasceu de FIV, a mãe biológica (doadora) é diferente da gestante (receptora)
+  isFIV?: boolean;                    // True se o animal nasceu de FIV
+  maeBiologicaId?: string;            // ID da doadora (mãe genética) - para FIV
+  maeBiologicaNome?: string;          // Brinco da doadora - para FIV
+  maeReceptoraId?: string;            // ID da receptora (quem gestou) - para FIV
+  maeReceptoraNome?: string;          // Brinco da receptora - para FIV
 }
 
 // GMD - Ganho Médio Diário
