@@ -10,36 +10,42 @@ interface GenealogyTreeProps {
 interface NodeProps {
     animal?: Animal;
     name?: string;
-    gender: 'M' | 'F';
+    gender: 'M' | 'F' | '?';
     level: number;
     isOffspring?: boolean;
+    generationLabel?: string;
     isFIV?: boolean;
     compact?: boolean;
 }
 
-const Node = ({ animal, name, gender, level, isOffspring, isFIV, compact = false }: NodeProps) => {
-    const bgColor = level === 0
-        ? 'bg-brand-primary'
-        : level === 1
-            ? 'bg-base-700'
-            : level === 2
-                ? 'bg-base-800/70'
-                : isOffspring
-                    ? 'bg-green-900/50'
-                    : 'bg-base-800/40';
+const Node = ({ animal, name, gender, level, isOffspring, generationLabel, isFIV, compact = false }: NodeProps) => {
+    // Cores baseadas no nível e se é descendente
+    const getBgColor = () => {
+        if (level === 0) return 'bg-brand-primary';
+        if (isOffspring) {
+            if (level === 1) return 'bg-green-900/60';
+            if (level === 2) return 'bg-green-900/40';
+            return 'bg-green-900/25';
+        }
+        if (level === 1) return 'bg-base-700';
+        if (level === 2) return 'bg-base-800/70';
+        return 'bg-base-800/40';
+    };
+
+    const bgColor = getBgColor();
     const textColor = level === 0 ? 'text-white' : 'text-gray-300';
-    const genderColor = gender === 'M' ? 'border-blue-400' : 'border-pink-400';
-    const sizeClass = compact ? 'min-w-[80px] p-1' : 'min-w-[100px] p-2';
+    const genderColor = gender === 'M' ? 'border-blue-400' : gender === 'F' ? 'border-pink-400' : 'border-gray-400';
+    const sizeClass = compact ? 'min-w-[70px] p-1' : 'min-w-[100px] p-2';
 
     return (
         <div className={`flex-1 ${sizeClass} rounded-lg text-center ${bgColor} border-b-2 ${genderColor} shadow-md`}>
             <UserIcon className={`${compact ? 'w-3 h-3' : 'w-4 h-4'} mx-auto text-gray-400 mb-0.5`} />
-            <p className={`font-bold ${compact ? 'text-xs' : 'text-sm'} ${textColor} truncate`}>
+            <p className={`font-bold ${compact ? 'text-[10px]' : 'text-sm'} ${textColor} truncate`}>
                 {animal?.nome || name || 'Desconhecido'}
             </p>
-            {animal?.brinco && <p className={`${compact ? 'text-[10px]' : 'text-xs'} text-gray-400 truncate`}>{animal.brinco}</p>}
-            {isOffspring && <p className="text-[10px] text-green-400 mt-0.5">Filho(a)</p>}
-            {isFIV && <span className="inline-block bg-purple-600/50 text-purple-200 text-[9px] px-1 rounded mt-0.5">FIV</span>}
+            {animal?.brinco && <p className={`${compact ? 'text-[9px]' : 'text-xs'} text-gray-400 truncate`}>{animal.brinco}</p>}
+            {generationLabel && <p className={`${compact ? 'text-[8px]' : 'text-[10px]'} text-green-400 mt-0.5`}>{generationLabel}</p>}
+            {isFIV && <span className="inline-block bg-purple-600/50 text-purple-200 text-[8px] px-1 rounded mt-0.5">FIV</span>}
         </div>
     );
 };
@@ -64,7 +70,6 @@ const HorizontalConnector = () => (
 // Função auxiliar para obter a mãe correta (considera FIV)
 // ============================================
 const getMaeNome = (animal: Animal): string | undefined => {
-    // Se for FIV, usa a mãe biológica (doadora)
     if (animal.isFIV && animal.maeBiologicaNome) {
         return animal.maeBiologicaNome;
     }
@@ -84,98 +89,116 @@ const GenealogyTree = ({ animal, allAnimals }: GenealogyTreeProps) => {
     };
 
     // ============================================
-    // Busca os filhos do animal (considera FIV)
+    // Busca os filhos de um animal (considera FIV)
     // ============================================
-    const findOffspring = useMemo(() => {
-        const activeOffspring = allAnimals.filter(a => {
-            if (a.id === animal.id) return false;
+    const findOffspringOf = (parentAnimal: Animal): Animal[] => {
+        return allAnimals.filter(a => {
+            if (a.id === parentAnimal.id) return false;
 
-            const animalBrinco = animal.brinco.toLowerCase().trim();
-            const animalNome = animal.nome?.toLowerCase().trim();
+            const parentBrinco = parentAnimal.brinco.toLowerCase().trim();
+            const parentNome = parentAnimal.nome?.toLowerCase().trim();
 
-            // Verifica se é filho através de FIV (mãe biológica/doadora)
+            // Verifica mãe biológica (FIV)
             if (a.isFIV && a.maeBiologicaNome) {
                 const maeBiologica = a.maeBiologicaNome.toLowerCase().trim();
-                if (maeBiologica === animalBrinco || (animalNome && maeBiologica === animalNome)) return true;
+                if (maeBiologica === parentBrinco || (parentNome && maeBiologica === parentNome)) return true;
             }
 
-            // Verifica mãe normal (não-FIV)
-            if (a.maeNome && !a.isFIV) {
-                const maeBrinco = a.maeNome.toLowerCase().trim();
-                if (maeBrinco === animalBrinco || (animalNome && maeBrinco === animalNome)) return true;
+            // Verifica mãe normal
+            if (a.maeNome) {
+                const maeNome = a.maeNome.toLowerCase().trim();
+                if (maeNome === parentBrinco || (parentNome && maeNome === parentNome)) return true;
             }
 
             // Verifica pai
             if (a.paiNome) {
-                const paiBrinco = a.paiNome.toLowerCase().trim();
-                if (paiBrinco === animalBrinco || (animalNome && paiBrinco === animalNome)) return true;
+                const paiNome = a.paiNome.toLowerCase().trim();
+                if (paiNome === parentBrinco || (parentNome && paiNome === parentNome)) return true;
             }
+
+            // Verifica por ID
+            if (a.maeId === parentAnimal.id || a.paiId === parentAnimal.id) return true;
 
             return false;
         });
-
-        // Se for fêmea, inclui registros de progênie histórico
-        if (animal.sexo === Sexo.Femea && animal.historicoProgenie) {
-            const historicalOffspring = animal.historicoProgenie
-                .filter(record => !activeOffspring.find(a => a.brinco.toLowerCase() === record.offspringBrinco.toLowerCase()))
-                .map(record => ({
-                    id: record.id,
-                    brinco: record.offspringBrinco,
-                    nome: record.offspringBrinco,
-                    sexo: '?',
-                    isGhost: true
-                }));
-            return [...activeOffspring, ...historicalOffspring];
-        }
-
-        return activeOffspring;
-    }, [animal, allAnimals]);
+    };
 
     // ============================================
-    // Monta a árvore genealógica com até 3 gerações
+    // GERAÇÕES ANTERIORES (Ancestrais)
     // ============================================
 
-    // Pais (Geração 1)
+    // Pais (Geração -1)
     const pai = findParent(animal.paiNome);
     const maeNomeParaGenealogia = getMaeNome(animal);
     const mae = findParent(maeNomeParaGenealogia);
 
-    // Avós Paternos (Geração 2)
+    // Avós (Geração -2)
     const avoPaterno = pai ? findParent(pai.paiNome) : undefined;
     const avoPaternaNome = pai ? getMaeNome(pai) : undefined;
     const avoPaterna = avoPaternaNome ? findParent(avoPaternaNome) : undefined;
 
-    // Avós Maternos (Geração 2)
     const avoMaterno = mae ? findParent(mae.paiNome) : undefined;
     const avoMaternaNome = mae ? getMaeNome(mae) : undefined;
     const avoMaterna = avoMaternaNome ? findParent(avoMaternaNome) : undefined;
 
-    // Bisavós Paternos-Paterno (Geração 3) - Pai do Avô Paterno
+    // Bisavós (Geração -3)
     const bisavoPaternoPaterno = avoPaterno ? findParent(avoPaterno.paiNome) : undefined;
     const bisavoPaternoPaternaNome = avoPaterno ? getMaeNome(avoPaterno) : undefined;
     const bisavoPaternoPaterna = bisavoPaternoPaternaNome ? findParent(bisavoPaternoPaternaNome) : undefined;
 
-    // Bisavós Paternos-Materno (Geração 3) - Pai da Avó Paterna
     const bisavoPaternoMaterno = avoPaterna ? findParent(avoPaterna.paiNome) : undefined;
     const bisavoPaternoMaternaNome = avoPaterna ? getMaeNome(avoPaterna) : undefined;
     const bisavoPaternoMaterna = bisavoPaternoMaternaNome ? findParent(bisavoPaternoMaternaNome) : undefined;
 
-    // Bisavós Maternos-Paterno (Geração 3) - Pai do Avô Materno
     const bisavoMaternoPaterno = avoMaterno ? findParent(avoMaterno.paiNome) : undefined;
     const bisavoMaternoPaternaNome = avoMaterno ? getMaeNome(avoMaterno) : undefined;
     const bisavoMaternoPaterna = bisavoMaternoPaternaNome ? findParent(bisavoMaternoPaternaNome) : undefined;
 
-    // Bisavós Maternos-Materno (Geração 3) - Pai da Avó Materna
     const bisavoMaternoMaterno = avoMaterna ? findParent(avoMaterna.paiNome) : undefined;
     const bisavoMaternoMaternaNome = avoMaterna ? getMaeNome(avoMaterna) : undefined;
     const bisavoMaternoMaterna = bisavoMaternoMaternaNome ? findParent(bisavoMaternoMaternaNome) : undefined;
+
+    // ============================================
+    // GERAÇÕES POSTERIORES (Descendentes)
+    // ============================================
+
+    // Filhos (Geração +1)
+    const filhos = useMemo(() => findOffspringOf(animal), [animal, allAnimals]);
+
+    // Netos (Geração +2) - filhos dos filhos
+    const netos = useMemo(() => {
+        const allNetos: Animal[] = [];
+        for (const filho of filhos) {
+            const netosDoFilho = findOffspringOf(filho);
+            for (const neto of netosDoFilho) {
+                if (!allNetos.find(n => n.id === neto.id)) {
+                    allNetos.push(neto);
+                }
+            }
+        }
+        return allNetos;
+    }, [filhos, allAnimals]);
+
+    // Bisnetos (Geração +3) - filhos dos netos
+    const bisnetos = useMemo(() => {
+        const allBisnetos: Animal[] = [];
+        for (const neto of netos) {
+            const bisnetosDoNeto = findOffspringOf(neto);
+            for (const bisneto of bisnetosDoNeto) {
+                if (!allBisnetos.find(b => b.id === bisneto.id)) {
+                    allBisnetos.push(bisneto);
+                }
+            }
+        }
+        return allBisnetos;
+    }, [netos, allAnimals]);
 
     // Receptora (para FIV)
     const receptora = animal.isFIV && animal.maeReceptoraNome
         ? findParent(animal.maeReceptoraNome)
         : undefined;
 
-    // Verifica se há dados em cada nível
+    // Flags de verificação
     const hasBisavos = bisavoPaternoPaterno || bisavoPaternoPaterna ||
                        bisavoPaternoMaterno || bisavoPaternoMaterna ||
                        bisavoMaternoPaterno || bisavoMaternoPaterna ||
@@ -183,82 +206,83 @@ const GenealogyTree = ({ animal, allAnimals }: GenealogyTreeProps) => {
 
     const hasAvos = avoPaterno || avoPaterna || avoMaterno || avoMaterna;
     const hasPais = pai || mae || animal.paiNome || maeNomeParaGenealogia;
+    const hasFilhos = filhos.length > 0;
+    const hasNetos = netos.length > 0;
+    const hasBisnetos = bisnetos.length > 0;
+
+    // Contagem de gerações
+    const geracoesAnteriores = (hasBisavos ? 3 : hasAvos ? 2 : hasPais ? 1 : 0);
+    const geracoesPosteriores = (hasBisnetos ? 3 : hasNetos ? 2 : hasFilhos ? 1 : 0);
 
     return (
         <div className="mt-6 p-4 bg-base-900 rounded-lg overflow-x-auto">
             <h3 className="text-lg font-semibold text-white mb-4 text-center">
                 Árvore Genealógica
-                {hasBisavos && <span className="text-xs text-gray-400 ml-2">(3 gerações)</span>}
+                {(geracoesAnteriores > 0 || geracoesPosteriores > 0) && (
+                    <span className="text-xs text-gray-400 ml-2">
+                        ({geracoesAnteriores > 0 && `${geracoesAnteriores} anterior${geracoesAnteriores > 1 ? 'es' : ''}`}
+                        {geracoesAnteriores > 0 && geracoesPosteriores > 0 && ' + '}
+                        {geracoesPosteriores > 0 && `${geracoesPosteriores} posterior${geracoesPosteriores > 1 ? 'es' : ''}`})
+                    </span>
+                )}
             </h3>
 
             <div className="flex flex-col items-center gap-2 min-w-[600px]">
 
                 {/* ============================================ */}
-                {/* Geração 3: Bisavós */}
+                {/* Geração -3: Bisavós */}
                 {/* ============================================ */}
                 {hasBisavos && (
                     <>
                         <p className="text-xs text-gray-500 mb-1">Bisavós</p>
                         <div className="w-full flex justify-center gap-1">
-                            {/* Bisavós do lado Paterno */}
                             <div className="flex-1 flex justify-center gap-1">
-                                {/* Pais do Avô Paterno */}
                                 <div className="flex gap-1">
                                     {bisavoPaternoPaterno && <Node animal={bisavoPaternoPaterno} gender="M" level={3} compact isFIV={bisavoPaternoPaterno?.isFIV} />}
                                     {bisavoPaternoPaterna && <Node animal={bisavoPaternoPaterna} gender="F" level={3} compact isFIV={bisavoPaternoPaterna?.isFIV} />}
                                 </div>
-                                {/* Pais da Avó Paterna */}
                                 <div className="flex gap-1">
                                     {bisavoPaternoMaterno && <Node animal={bisavoPaternoMaterno} gender="M" level={3} compact isFIV={bisavoPaternoMaterno?.isFIV} />}
                                     {bisavoPaternoMaterna && <Node animal={bisavoPaternoMaterna} gender="F" level={3} compact isFIV={bisavoPaternoMaterna?.isFIV} />}
                                 </div>
                             </div>
-                            {/* Bisavós do lado Materno */}
                             <div className="flex-1 flex justify-center gap-1">
-                                {/* Pais do Avô Materno */}
                                 <div className="flex gap-1">
                                     {bisavoMaternoPaterno && <Node animal={bisavoMaternoPaterno} gender="M" level={3} compact isFIV={bisavoMaternoPaterno?.isFIV} />}
                                     {bisavoMaternoPaterna && <Node animal={bisavoMaternoPaterna} gender="F" level={3} compact isFIV={bisavoMaternoPaterna?.isFIV} />}
                                 </div>
-                                {/* Pais da Avó Materna */}
                                 <div className="flex gap-1">
                                     {bisavoMaternoMaterno && <Node animal={bisavoMaternoMaterno} gender="M" level={3} compact isFIV={bisavoMaternoMaterno?.isFIV} />}
                                     {bisavoMaternoMaterna && <Node animal={bisavoMaternoMaterna} gender="F" level={3} compact isFIV={bisavoMaternoMaterna?.isFIV} />}
                                 </div>
                             </div>
                         </div>
-                        <div className="w-full flex justify-center">
-                            <VerticalConnector />
-                        </div>
+                        <VerticalConnector />
                     </>
                 )}
 
                 {/* ============================================ */}
-                {/* Geração 2: Avós */}
+                {/* Geração -2: Avós */}
                 {/* ============================================ */}
                 {hasAvos && (
                     <>
                         <p className="text-xs text-gray-500 mb-1">Avós</p>
                         <div className="w-full flex justify-center gap-2 md:gap-4">
-                            {/* Avós Paternos */}
                             <div className="flex-1 flex justify-center gap-2">
                                 {avoPaterno && <Node animal={avoPaterno} gender="M" level={2} isFIV={avoPaterno?.isFIV} />}
                                 {avoPaterna && <Node animal={avoPaterna} gender="F" level={2} isFIV={avoPaterna?.isFIV} />}
                             </div>
-                            {/* Avós Maternos */}
                             <div className="flex-1 flex justify-center gap-2">
                                 {avoMaterno && <Node animal={avoMaterno} gender="M" level={2} isFIV={avoMaterno?.isFIV} />}
                                 {avoMaterna && <Node animal={avoMaterna} gender="F" level={2} isFIV={avoMaterna?.isFIV} />}
                             </div>
                         </div>
-                        <div className="w-full flex justify-center">
-                            <VerticalConnector />
-                        </div>
+                        <VerticalConnector />
                     </>
                 )}
 
                 {/* ============================================ */}
-                {/* Geração 1: Pais */}
+                {/* Geração -1: Pais */}
                 {/* ============================================ */}
                 {hasPais && (
                     <>
@@ -274,7 +298,6 @@ const GenealogyTree = ({ animal, allAnimals }: GenealogyTreeProps) => {
                             }
                         </div>
 
-                        {/* Indicador FIV */}
                         {animal.isFIV && (
                             <div className="text-center mt-1">
                                 <span className="inline-block bg-purple-900/50 text-purple-300 text-xs px-2 py-1 rounded-full border border-purple-600">
@@ -316,29 +339,91 @@ const GenealogyTree = ({ animal, allAnimals }: GenealogyTreeProps) => {
                 </div>
 
                 {/* ============================================ */}
-                {/* Filhos */}
+                {/* Geração +1: Filhos */}
                 {/* ============================================ */}
-                {findOffspring.length > 0 && (
+                {hasFilhos && (
                     <>
                         <HorizontalConnector />
                         <div className="w-full">
-                            <p className="text-center text-xs text-gray-500 mb-2">Filhos ({findOffspring.length})</p>
+                            <p className="text-center text-xs text-gray-500 mb-2">Filhos ({filhos.length})</p>
                             <div className="flex flex-wrap justify-center gap-2">
-                                {findOffspring.slice(0, 10).map((filho: any) => (
+                                {filhos.slice(0, 12).map((filho) => (
                                     <Node
                                         key={filho.id}
-                                        animal={filho as Animal}
+                                        animal={filho}
                                         name={filho.nome || filho.brinco}
-                                        gender={filho.sexo === Sexo.Macho || filho.sexo === 'M' ? 'M' : filho.sexo === Sexo.Femea || filho.sexo === 'F' ? 'F' : 'M'}
-                                        level={2}
+                                        gender={filho.sexo === Sexo.Macho ? 'M' : filho.sexo === Sexo.Femea ? 'F' : '?'}
+                                        level={1}
                                         isOffspring={true}
                                         isFIV={filho.isFIV}
                                         compact
                                     />
                                 ))}
-                                {findOffspring.length > 10 && (
+                                {filhos.length > 12 && (
                                     <div className="flex items-center text-xs text-gray-400">
-                                        +{findOffspring.length - 10} mais
+                                        +{filhos.length - 12} mais
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </>
+                )}
+
+                {/* ============================================ */}
+                {/* Geração +2: Netos */}
+                {/* ============================================ */}
+                {hasNetos && (
+                    <>
+                        <VerticalConnector />
+                        <div className="w-full">
+                            <p className="text-center text-xs text-gray-500 mb-2">Netos ({netos.length})</p>
+                            <div className="flex flex-wrap justify-center gap-1">
+                                {netos.slice(0, 15).map((neto) => (
+                                    <Node
+                                        key={neto.id}
+                                        animal={neto}
+                                        name={neto.nome || neto.brinco}
+                                        gender={neto.sexo === Sexo.Macho ? 'M' : neto.sexo === Sexo.Femea ? 'F' : '?'}
+                                        level={2}
+                                        isOffspring={true}
+                                        isFIV={neto.isFIV}
+                                        compact
+                                    />
+                                ))}
+                                {netos.length > 15 && (
+                                    <div className="flex items-center text-xs text-gray-400">
+                                        +{netos.length - 15} mais
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </>
+                )}
+
+                {/* ============================================ */}
+                {/* Geração +3: Bisnetos */}
+                {/* ============================================ */}
+                {hasBisnetos && (
+                    <>
+                        <VerticalConnector />
+                        <div className="w-full">
+                            <p className="text-center text-xs text-gray-500 mb-2">Bisnetos ({bisnetos.length})</p>
+                            <div className="flex flex-wrap justify-center gap-1">
+                                {bisnetos.slice(0, 18).map((bisneto) => (
+                                    <Node
+                                        key={bisneto.id}
+                                        animal={bisneto}
+                                        name={bisneto.nome || bisneto.brinco}
+                                        gender={bisneto.sexo === Sexo.Macho ? 'M' : bisneto.sexo === Sexo.Femea ? 'F' : '?'}
+                                        level={3}
+                                        isOffspring={true}
+                                        isFIV={bisneto.isFIV}
+                                        compact
+                                    />
+                                ))}
+                                {bisnetos.length > 18 && (
+                                    <div className="flex items-center text-xs text-gray-400">
+                                        +{bisnetos.length - 18} mais
                                     </div>
                                 )}
                             </div>
@@ -361,6 +446,12 @@ const GenealogyTree = ({ animal, allAnimals }: GenealogyTreeProps) => {
                     <div className="flex items-center gap-1">
                         <span className="bg-purple-600/50 text-purple-200 px-1 rounded">FIV</span>
                         <span>Fertilização In Vitro</span>
+                    </div>
+                )}
+                {(hasFilhos || hasNetos || hasBisnetos) && (
+                    <div className="flex items-center gap-1">
+                        <div className="w-3 h-3 bg-green-900/50 rounded" />
+                        <span>Descendentes</span>
                     </div>
                 )}
             </div>
