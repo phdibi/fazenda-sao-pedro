@@ -15,6 +15,7 @@ import DEPReportComponent from './DEPReport';
 
 interface ReportsViewProps {
   animals: Animal[];
+  onUpdateAnimal?: (animalId: string, updates: Partial<Animal>) => void;
 }
 
 type TabName = 'sanitary' | 'reproductive' | 'performance' | 'comparatives' | 'turnWeight' | 'phenotypic' | 'kpis' | 'dep';
@@ -25,7 +26,7 @@ interface TabButtonProps {
   disabled?: boolean;
 }
 
-const ReportsView = ({ animals }: ReportsViewProps) => {
+const ReportsView = ({ animals, onUpdateAnimal }: ReportsViewProps) => {
   const [reportData, setReportData] = useState<ComprehensiveReport | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string>('');
@@ -141,7 +142,7 @@ const ReportsView = ({ animals }: ReportsViewProps) => {
             </div>
 
             {/* 🔧 NOVOS: KPIs e DEP - Funcionam sem gerar relatório */}
-            {activeTab === 'kpis' && <KPIDashboard animals={animals} />}
+            {activeTab === 'kpis' && <KPIDashboard animals={animals} onUpdateAnimal={onUpdateAnimal} />}
 
             {activeTab === 'dep' && <DEPReportComponent animals={animals} />}
 

@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Animal, ZootechnicalKPIs, DEFAULT_KPI_TARGETS, BreedingSeason } from '../types';
 import {
   calculateZootechnicalKPIs,
@@ -8,11 +8,15 @@ import {
 } from '../services/kpiCalculator';
 import { useFarmData } from '../contexts/FarmContext';
 import DataMigrationPanel from './DataMigrationPanel';
+import FIVMigrationModal from './FIVMigrationModal';
+import { WrenchScrewdriverIcon } from './common/Icons';
 
 interface KPIDashboardProps {
   animals: Animal[];
   // Opcional: permite passar KPIs pré-calculados
   preCalculatedKPIs?: ZootechnicalKPIs;
+  // Callback para atualizar animais (usado na migração FIV)
+  onUpdateAnimal?: (animalId: string, updates: Partial<Animal>) => void;
 }
 
 // ============================================
@@ -209,7 +213,13 @@ const HerdDetails: React.FC<{
 // COMPONENTE PRINCIPAL
 // ============================================
 
-const KPIDashboard: React.FC<KPIDashboardProps> = ({ animals, preCalculatedKPIs }) => {
+const KPIDashboard: React.FC<KPIDashboardProps> = ({ animals, preCalculatedKPIs, onUpdateAnimal }) => {
+  // Modal de migração FIV
+  const [isFIVModalOpen, setIsFIVModalOpen] = useState(false);
+
+  // Conta animais FIV para exibir badge
+  const fivCount = useMemo(() => animals.filter(a => a.isFIV).length, [animals]);
+
   // Tenta usar métricas centralizadas do contexto
   const farmContext = useFarmData();
   const breedingSeasons = farmContext?.firestore?.state?.breedingSeasons || [];
@@ -278,7 +288,29 @@ const KPIDashboard: React.FC<KPIDashboardProps> = ({ animals, preCalculatedKPIs 
             {result.calculatedAt.toLocaleString('pt-BR')}
           </p>
         </div>
+        {/* Botão de Ferramentas FIV */}
+        {onUpdateAnimal && fivCount > 0 && (
+          <button
+            onClick={() => setIsFIVModalOpen(true)}
+            className="flex items-center gap-2 bg-purple-700 hover:bg-purple-600 text-white text-sm font-medium py-2 px-3 rounded-lg transition-colors"
+            title="Corrigir genealogia de animais FIV"
+          >
+            <WrenchScrewdriverIcon className="w-4 h-4" />
+            Correção FIV
+            <span className="bg-purple-500 text-xs px-1.5 py-0.5 rounded-full">{fivCount}</span>
+          </button>
+        )}
       </div>
+
+      {/* Modal de Migração FIV */}
+      {onUpdateAnimal && (
+        <FIVMigrationModal
+          isOpen={isFIVModalOpen}
+          onClose={() => setIsFIVModalOpen(false)}
+          animals={animals}
+          onUpdateAnimal={onUpdateAnimal}
+        />
+      )}
 
       {/* Alertas */}
       {result.warnings.length > 0 && (

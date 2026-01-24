@@ -13,6 +13,9 @@ interface GeneralTabProps {
   onUploadComplete: (newUrl: string, thumbnailUrl?: string) => void;
   setEditableAnimal: React.Dispatch<React.SetStateAction<EditableAnimalState | null>>;
   animals?: Animal[]; // Lista de animais para verificar se mãe existe
+  // Props para deleção de foto
+  onDeletePhoto?: () => Promise<{ success: boolean; error?: string; freedSpace?: number }>;
+  isDeletingPhoto?: boolean;
 }
 
 const GeneralTab: React.FC<GeneralTabProps> = ({
@@ -25,6 +28,8 @@ const GeneralTab: React.FC<GeneralTabProps> = ({
   onUploadComplete,
   setEditableAnimal,
   animals = [],
+  onDeletePhoto,
+  isDeletingPhoto = false,
 }) => {
   // Verifica se a mãe existe no rebanho atual
   const motherExists = useMemo(() => {
@@ -34,6 +39,28 @@ const GeneralTab: React.FC<GeneralTabProps> = ({
       (a) => a.brinco.toLowerCase().trim() === motherBrinco && a.sexo === Sexo.Femea
     );
   }, [editableAnimal.maeNome, animals]);
+
+  // Verifica se a doadora (mãe biológica) existe no rebanho
+  const donorExists = useMemo(() => {
+    if (!editableAnimal.maeBiologicaNome) return { found: null as boolean | null, raca: undefined as string | undefined };
+    const donorBrinco = editableAnimal.maeBiologicaNome.toLowerCase().trim();
+    const donor = animals.find(
+      (a) => a.brinco.toLowerCase().trim() === donorBrinco && a.sexo === Sexo.Femea
+    );
+    if (donor) {
+      return { found: true, raca: donor.raca };
+    }
+    return { found: false, raca: undefined };
+  }, [editableAnimal.maeBiologicaNome, animals]);
+
+  // Verifica se a receptora existe no rebanho
+  const recipientExists = useMemo(() => {
+    if (!editableAnimal.maeReceptoraNome) return null;
+    const recipientBrinco = editableAnimal.maeReceptoraNome.toLowerCase().trim();
+    return animals.some(
+      (a) => a.brinco.toLowerCase().trim() === recipientBrinco && a.sexo === Sexo.Femea
+    );
+  }, [editableAnimal.maeReceptoraNome, animals]);
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
       <div>
@@ -43,6 +70,9 @@ const GeneralTab: React.FC<GeneralTabProps> = ({
             onUploadComplete={onUploadComplete}
             animalId={animal.id}
             userId={user.uid}
+            onDeletePhoto={onDeletePhoto}
+            isDeletingPhoto={isDeletingPhoto}
+            isEditing={isEditing}
           />
         ) : (
           <div className="rounded-lg border border-yellow-700 bg-yellow-900/30 p-4 text-sm text-yellow-200">
@@ -169,39 +199,124 @@ const GeneralTab: React.FC<GeneralTabProps> = ({
             </select>
           </div>
 
-          <div className="sm:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-400">Brinco da Mãe</label>
+          {/* Seção de Filiação */}
+          <div className="sm:col-span-2 space-y-4">
+            {/* Checkbox FIV */}
+            <div className="flex items-center gap-2">
               <input
-                type="text"
-                name="maeNome"
-                value={editableAnimal.maeNome || ''}
-                onChange={onAnimalFormChange}
-                className="bg-base-700 w-full p-1 rounded border border-base-600"
+                type="checkbox"
+                id="isFIV"
+                checked={editableAnimal.isFIV || false}
+                onChange={(e) => {
+                  setEditableAnimal((prev) => prev ? {
+                    ...prev,
+                    isFIV: e.target.checked,
+                    // Se desmarcar FIV, limpa os campos específicos
+                    maeBiologicaNome: e.target.checked ? prev.maeBiologicaNome : undefined,
+                    maeReceptoraNome: e.target.checked ? prev.maeReceptoraNome : undefined,
+                  } : null);
+                }}
                 disabled={!isEditing}
-                placeholder="Ex: 2024"
+                className="w-4 h-4 rounded border-base-600 bg-base-700 text-purple-500 focus:ring-purple-500"
               />
-              {motherExists === true && editableAnimal.maeRaca ? (
-                <p className="text-xs text-emerald-400 mt-1">
-                  Raça da mãe: <strong>{editableAnimal.maeRaca}</strong>
-                </p>
-              ) : motherExists === false ? (
-                <p className="text-xs text-amber-400 mt-1">Mãe não encontrada no rebanho</p>
-              ) : (
-                <p className="text-xs text-gray-500 mt-1">A raça será puxada automaticamente</p>
-              )}
+              <label htmlFor="isFIV" className="text-sm font-medium text-gray-300 cursor-pointer">
+                Animal nascido de FIV (Fertilização In Vitro)
+              </label>
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-400">Pai (Brinco ou Nome)</label>
-              <input
-                type="text"
-                name="paiNome"
-                value={editableAnimal.paiNome || ''}
-                onChange={onAnimalFormChange}
-                className="bg-base-700 w-full p-1 rounded border border-base-600"
-                disabled={!isEditing}
-                placeholder="Ex: Touro 001"
-              />
+            {editableAnimal.isFIV && (
+              <p className="text-xs text-purple-400 ml-6 -mt-2">
+                Em FIV, a <strong>Doadora</strong> é a mãe biológica (genética) e a <strong>Receptora</strong> é quem gestou o embrião.
+              </p>
+            )}
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {/* Campos normais quando NÃO é FIV */}
+              {!editableAnimal.isFIV && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-400">Brinco da Mãe</label>
+                  <input
+                    type="text"
+                    name="maeNome"
+                    value={editableAnimal.maeNome || ''}
+                    onChange={onAnimalFormChange}
+                    className="bg-base-700 w-full p-1 rounded border border-base-600"
+                    disabled={!isEditing}
+                    placeholder="Ex: 2024"
+                  />
+                  {motherExists === true && editableAnimal.maeRaca ? (
+                    <p className="text-xs text-emerald-400 mt-1">
+                      Raça da mãe: <strong>{editableAnimal.maeRaca}</strong>
+                    </p>
+                  ) : motherExists === false ? (
+                    <p className="text-xs text-amber-400 mt-1">Mãe não encontrada no rebanho</p>
+                  ) : (
+                    <p className="text-xs text-gray-500 mt-1">A raça será puxada automaticamente</p>
+                  )}
+                </div>
+              )}
+
+              {/* Campos específicos FIV */}
+              {editableAnimal.isFIV && (
+                <>
+                  <div>
+                    <label className="block text-sm font-medium text-purple-300">
+                      Doadora (Mãe Biológica)
+                    </label>
+                    <input
+                      type="text"
+                      name="maeBiologicaNome"
+                      value={editableAnimal.maeBiologicaNome || ''}
+                      onChange={onAnimalFormChange}
+                      className="bg-base-700 w-full p-1 rounded border border-purple-600 focus:ring-purple-500"
+                      disabled={!isEditing}
+                      placeholder="Brinco da doadora"
+                    />
+                    {donorExists.found === true ? (
+                      <p className="text-xs text-emerald-400 mt-1">
+                        Doadora encontrada - Raça: <strong>{donorExists.raca}</strong>
+                      </p>
+                    ) : donorExists.found === false ? (
+                      <p className="text-xs text-amber-400 mt-1">Doadora não encontrada no rebanho</p>
+                    ) : (
+                      <p className="text-xs text-purple-400 mt-1">Mãe genética - usada na genealogia</p>
+                    )}
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-pink-300">
+                      Receptora (Mãe Gestante)
+                    </label>
+                    <input
+                      type="text"
+                      name="maeReceptoraNome"
+                      value={editableAnimal.maeReceptoraNome || ''}
+                      onChange={onAnimalFormChange}
+                      className="bg-base-700 w-full p-1 rounded border border-pink-600 focus:ring-pink-500"
+                      disabled={!isEditing}
+                      placeholder="Brinco da receptora"
+                    />
+                    {recipientExists === true ? (
+                      <p className="text-xs text-emerald-400 mt-1">Receptora encontrada no rebanho</p>
+                    ) : recipientExists === false ? (
+                      <p className="text-xs text-amber-400 mt-1">Receptora não encontrada no rebanho</p>
+                    ) : (
+                      <p className="text-xs text-pink-400 mt-1">Quem gestou o embrião</p>
+                    )}
+                  </div>
+                </>
+              )}
+
+              <div className={editableAnimal.isFIV ? 'sm:col-span-2' : ''}>
+                <label className="block text-sm font-medium text-gray-400">Pai (Brinco ou Nome)</label>
+                <input
+                  type="text"
+                  name="paiNome"
+                  value={editableAnimal.paiNome || ''}
+                  onChange={onAnimalFormChange}
+                  className="bg-base-700 w-full p-1 rounded border border-base-600"
+                  disabled={!isEditing}
+                  placeholder="Ex: Touro 001"
+                />
+              </div>
             </div>
           </div>
         </div>

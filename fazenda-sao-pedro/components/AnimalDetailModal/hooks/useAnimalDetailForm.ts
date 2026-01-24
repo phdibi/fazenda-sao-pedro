@@ -13,6 +13,7 @@ import {
   OffspringFormState,
   Sexo,
 } from '../../../types';
+import { deletePhotoFromStorage, isValidFirebaseStorageUrl } from '../../../services/storageService';
 
 export interface UseAnimalDetailFormProps {
   animal: Animal | null;
@@ -71,6 +72,10 @@ export interface UseAnimalDetailFormReturn {
   // Progênie
   handleAddOrUpdateOffspringSubmit: (e: React.FormEvent) => void;
   handleDeleteOffspringRecord: (recordId: string) => void;
+
+  // Fotos
+  handleDeletePhoto: () => Promise<{ success: boolean; error?: string; freedSpace?: number }>;
+  isDeletingPhoto: boolean;
 }
 
 export const useAnimalDetailForm = ({
@@ -84,6 +89,7 @@ export const useAnimalDetailForm = ({
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [editableAnimal, setEditableAnimal] = useState<EditableAnimalState | null>(null);
+  const [isDeletingPhoto, setIsDeletingPhoto] = useState(false);
 
   // Estados de formulário
   const [medicationForm, setMedicationForm] = useState<MedicationFormState>({
@@ -203,6 +209,47 @@ export const useAnimalDetailForm = ({
           maeNome: value,
           maeId: undefined,
           maeRaca: undefined
+        } : null);
+      }
+    } else if (name === 'maeBiologicaNome') {
+      // FIV: Busca a raça da doadora (mãe biológica)
+      const donorBrinco = value.toLowerCase().trim();
+      const donor = animals.find(
+        (a) => a.brinco.toLowerCase().trim() === donorBrinco && a.sexo === Sexo.Femea
+      );
+
+      if (donor) {
+        setEditableAnimal((prev) => prev ? {
+          ...prev,
+          maeBiologicaNome: value,
+          maeBiologicaId: donor.id,
+          maeRaca: donor.raca // A raça genética vem da doadora
+        } : null);
+      } else {
+        setEditableAnimal((prev) => prev ? {
+          ...prev,
+          maeBiologicaNome: value,
+          maeBiologicaId: undefined
+        } : null);
+      }
+    } else if (name === 'maeReceptoraNome') {
+      // FIV: Busca a receptora
+      const recipientBrinco = value.toLowerCase().trim();
+      const recipient = animals.find(
+        (a) => a.brinco.toLowerCase().trim() === recipientBrinco && a.sexo === Sexo.Femea
+      );
+
+      if (recipient) {
+        setEditableAnimal((prev) => prev ? {
+          ...prev,
+          maeReceptoraNome: value,
+          maeReceptoraId: recipient.id
+        } : null);
+      } else {
+        setEditableAnimal((prev) => prev ? {
+          ...prev,
+          maeReceptoraNome: value,
+          maeReceptoraId: undefined
         } : null);
       }
     } else {
@@ -428,6 +475,62 @@ export const useAnimalDetailForm = ({
     });
   }, []);
 
+  // === HANDLER DE DELEÇÃO DE FOTO ===
+
+  const handleDeletePhoto = useCallback(async (): Promise<{ success: boolean; error?: string; freedSpace?: number }> => {
+    if (!editableAnimal) {
+      return { success: false, error: 'Animal não encontrado' };
+    }
+
+    const currentPhoto = editableAnimal.fotos[0];
+    if (!currentPhoto || !isValidFirebaseStorageUrl(currentPhoto)) {
+      return { success: false, error: 'Nenhuma foto para deletar' };
+    }
+
+    setIsDeletingPhoto(true);
+
+    try {
+      // Deleta a foto do Storage
+      const result = await deletePhotoFromStorage(currentPhoto);
+
+      if (result.success) {
+        // Atualiza o estado local removendo a foto
+        const placeholderUrl = '/cow_placeholder.png';
+        setEditableAnimal((prev) => {
+          if (!prev) return null;
+          return {
+            ...prev,
+            fotos: [placeholderUrl],
+            thumbnailUrl: undefined
+          };
+        });
+
+        // Ativa modo de edição para salvar as alterações
+        setIsEditing(true);
+
+        console.log(`📷 Foto deletada com sucesso. Espaço liberado: ${result.freedSpace ? Math.round(result.freedSpace / 1024) + 'KB' : 'N/A'}`);
+
+        return {
+          success: true,
+          freedSpace: result.freedSpace
+        };
+      } else {
+        return {
+          success: false,
+          error: result.error || 'Erro ao deletar foto'
+        };
+      }
+    } catch (error: any) {
+      console.error('Erro ao deletar foto:', error);
+      return {
+        success: false,
+        error: error.message || 'Erro desconhecido'
+      };
+    } finally {
+      setIsDeletingPhoto(false);
+    }
+  }, [editableAnimal]);
+
   return {
     // Estado
     editableAnimal,
@@ -478,5 +581,9 @@ export const useAnimalDetailForm = ({
     // Progênie
     handleAddOrUpdateOffspringSubmit,
     handleDeleteOffspringRecord,
+
+    // Fotos
+    handleDeletePhoto,
+    isDeletingPhoto,
   };
 };

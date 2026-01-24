@@ -81,6 +81,8 @@ const AnimalDetailModal: React.FC<AnimalDetailModalProps> = ({
     handleDeleteAbortionRecord,
     handleAddOrUpdateOffspringSubmit,
     handleDeleteOffspringRecord,
+    handleDeletePhoto,
+    isDeletingPhoto,
   } = form;
 
   // Handlers de delete
@@ -123,9 +125,7 @@ const AnimalDetailModal: React.FC<AnimalDetailModalProps> = ({
             {animal.sexo === Sexo.Femea && (
               <TabButton tabName="reproduction" label="Reprodução" activeTab={activeTab} onClick={setActiveTab} />
             )}
-            {animal.sexo === Sexo.Femea && (
-              <TabButton tabName="progeny" label="Progênie" activeTab={activeTab} onClick={setActiveTab} />
-            )}
+            <TabButton tabName="progeny" label="Progênie" activeTab={activeTab} onClick={setActiveTab} />
             <TabButton tabName="genealogy" label="Genealogia" activeTab={activeTab} onClick={setActiveTab} />
           </nav>
         </div>
@@ -143,6 +143,8 @@ const AnimalDetailModal: React.FC<AnimalDetailModalProps> = ({
               onUploadComplete={handleUploadComplete}
               setEditableAnimal={setEditableAnimal}
               animals={animals}
+              onDeletePhoto={handleDeletePhoto}
+              isDeletingPhoto={isDeletingPhoto}
             />
           )}
 
@@ -186,9 +188,11 @@ const AnimalDetailModal: React.FC<AnimalDetailModalProps> = ({
             />
           )}
 
-          {activeTab === 'progeny' && animal.sexo === Sexo.Femea && (
+          {activeTab === 'progeny' && (
             <ProgenyTab
               editableAnimal={editableAnimal}
+              animal={animal}
+              allAnimals={animals}
               isEditing={isEditing}
               offspringForm={offspringForm}
               setOffspringForm={setOffspringForm}

@@ -1,14 +1,19 @@
 import React, { useState, useEffect, useRef } from 'react';
 import Spinner from './common/Spinner';
-import { PhotoIcon, CheckIcon } from './common/Icons';
+import { PhotoIcon, CheckIcon, TrashIcon } from './common/Icons';
 import { firebaseServices } from '../services/firebase';
 import { prepareImageForUpload, getOptimalFormat } from '../utils/imageOptimization';
+import { isValidFirebaseStorageUrl } from '../services/storageService';
 
 interface ImageAnalyzerProps {
     imageUrl: string;
     onUploadComplete: (newPhotoUrl: string, thumbnailUrl?: string) => void;
     animalId: string;
     userId: string;
+    // Props para deleção de foto
+    onDeletePhoto?: () => Promise<{ success: boolean; error?: string; freedSpace?: number }>;
+    isDeletingPhoto?: boolean;
+    isEditing?: boolean;
 }
 
 type UploadError = {
@@ -16,21 +21,37 @@ type UploadError = {
     isConfigError?: boolean;
 };
 
-type UploadStatus = 'idle' | 'compressing' | 'uploading' | 'success' | 'error';
+type UploadStatus = 'idle' | 'compressing' | 'uploading' | 'success' | 'error' | 'deleting' | 'deleted';
 
-const ImageAnalyzerOptimized = ({ imageUrl, onUploadComplete, animalId, userId }: ImageAnalyzerProps) => {
+const ImageAnalyzerOptimized = ({
+    imageUrl,
+    onUploadComplete,
+    animalId,
+    userId,
+    onDeletePhoto,
+    isDeletingPhoto = false,
+    isEditing = false
+}: ImageAnalyzerProps) => {
     const [previewUrl, setPreviewUrl] = useState<string>(imageUrl);
     const [uploadStatus, setUploadStatus] = useState<UploadStatus>('idle');
     const [uploadProgress, setUploadProgress] = useState(0);
     const [compressionSavings, setCompressionSavings] = useState<string>('');
     const [error, setError] = useState<UploadError | null>(null);
+    const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+    const [deleteResult, setDeleteResult] = useState<{ freedSpace?: number } | null>(null);
 
     const uploadTaskRef = useRef<any | null>(null);
     const uploadTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
+    // Verifica se a foto atual pode ser deletada
+    const canDeletePhoto = isEditing &&
+                          onDeletePhoto &&
+                          isValidFirebaseStorageUrl(imageUrl) &&
+                          uploadStatus === 'idle';
+
     useEffect(() => {
         setPreviewUrl(imageUrl);
-        if (uploadStatus !== 'idle') {
+        if (uploadStatus !== 'idle' && uploadStatus !== 'deleted') {
             setUploadStatus('idle');
             setUploadProgress(0);
             setError(null);
@@ -40,6 +61,8 @@ const ImageAnalyzerOptimized = ({ imageUrl, onUploadComplete, animalId, userId }
             uploadTaskRef.current.cancel();
             uploadTaskRef.current = null;
         }
+        setShowDeleteConfirm(false);
+        setDeleteResult(null);
     }, [imageUrl, animalId]);
 
     useEffect(() => {
@@ -52,6 +75,13 @@ const ImageAnalyzerOptimized = ({ imageUrl, onUploadComplete, animalId, userId }
             }
         };
     }, []);
+
+    // Atualiza status quando isDeletingPhoto muda
+    useEffect(() => {
+        if (isDeletingPhoto) {
+            setUploadStatus('deleting');
+        }
+    }, [isDeletingPhoto]);
 
     const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
         const file = event.target.files?.[0];
@@ -140,7 +170,7 @@ const ImageAnalyzerOptimized = ({ imageUrl, onUploadComplete, animalId, userId }
                 (snapshot: any) => {
                     const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
                     setUploadProgress(progress);
-                    
+
                     if (snapshot.bytesTransferred > 0 && uploadTimeoutRef.current) {
                         clearTimeout(uploadTimeoutRef.current);
                         uploadTimeoutRef.current = null;
@@ -151,7 +181,7 @@ const ImageAnalyzerOptimized = ({ imageUrl, onUploadComplete, animalId, userId }
                         clearTimeout(uploadTimeoutRef.current);
                     }
                     uploadTaskRef.current = null;
-                    
+
                     if (uploadError.code === 'storage/canceled') {
                         setUploadStatus('idle');
                         return;
@@ -172,10 +202,10 @@ const ImageAnalyzerOptimized = ({ imageUrl, onUploadComplete, animalId, userId }
                     if (uploadTimeoutRef.current) {
                         clearTimeout(uploadTimeoutRef.current);
                     }
-                    
+
                     // Obtém URL da imagem principal
                     const downloadURL = await uploadTask.snapshot.ref.getDownloadURL();
-                    
+
                     // Upload do thumbnail em background (não bloqueia)
                     let thumbnailURL: string | undefined;
                     try {
@@ -186,7 +216,7 @@ const ImageAnalyzerOptimized = ({ imageUrl, onUploadComplete, animalId, userId }
                         console.warn('Falha no upload do thumbnail:', thumbError);
                         // Continua sem thumbnail - não é crítico
                     }
-                    
+
                     onUploadComplete(downloadURL, thumbnailURL);
                     setUploadStatus('success');
                     uploadTaskRef.current = null;
@@ -202,11 +232,49 @@ const ImageAnalyzerOptimized = ({ imageUrl, onUploadComplete, animalId, userId }
         }
     };
 
+    const handleDeleteClick = () => {
+        setShowDeleteConfirm(true);
+    };
+
+    const handleConfirmDelete = async () => {
+        if (!onDeletePhoto) return;
+
+        setShowDeleteConfirm(false);
+        setUploadStatus('deleting');
+
+        const result = await onDeletePhoto();
+
+        if (result.success) {
+            setDeleteResult({ freedSpace: result.freedSpace });
+            setUploadStatus('deleted');
+            // Reset após 2 segundos
+            setTimeout(() => {
+                setUploadStatus('idle');
+                setDeleteResult(null);
+            }, 2000);
+        } else {
+            setError({ message: result.error || 'Erro ao deletar foto' });
+            setUploadStatus('error');
+        }
+    };
+
+    const handleCancelDelete = () => {
+        setShowDeleteConfirm(false);
+    };
+
+    const formatBytes = (bytes: number): string => {
+        if (bytes === 0) return '0 Bytes';
+        const k = 1024;
+        const sizes = ['Bytes', 'KB', 'MB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+    };
+
     return (
         <div className="relative aspect-square bg-base-900 rounded-lg overflow-hidden flex items-center justify-center w-full max-w-sm mx-auto">
-            <img 
-                src={previewUrl} 
-                alt="Foto do animal" 
+            <img
+                src={previewUrl}
+                alt="Foto do animal"
                 className="w-full h-full object-cover"
                 loading="lazy" // 🔧 Lazy loading nativo
             />
@@ -223,7 +291,7 @@ const ImageAnalyzerOptimized = ({ imageUrl, onUploadComplete, animalId, userId }
             {uploadStatus === 'uploading' && (
                 <div className="absolute inset-0 bg-base-900/80 flex flex-col items-center justify-center text-white p-4">
                     <div className="w-3/4 bg-gray-600 rounded-full h-2.5">
-                        <div 
+                        <div
                             className="bg-brand-primary h-2.5 rounded-full transition-all duration-300"
                             style={{ width: `${uploadProgress}%` }}
                         />
@@ -250,6 +318,56 @@ const ImageAnalyzerOptimized = ({ imageUrl, onUploadComplete, animalId, userId }
                 </div>
             )}
 
+            {/* Status: Deletando */}
+            {uploadStatus === 'deleting' && (
+                <div className="absolute inset-0 bg-base-900/80 flex flex-col items-center justify-center text-white">
+                    <Spinner />
+                    <p className="mt-2 text-sm">Deletando foto...</p>
+                </div>
+            )}
+
+            {/* Status: Foto Deletada */}
+            {uploadStatus === 'deleted' && (
+                <div className="absolute inset-0 bg-green-900/80 flex flex-col items-center justify-center text-white">
+                    <CheckIcon className="w-12 h-12" />
+                    <p className="mt-2 font-bold">Foto Removida!</p>
+                    {deleteResult?.freedSpace && (
+                        <p className="mt-1 text-sm text-green-300">
+                            Liberados: {formatBytes(deleteResult.freedSpace)}
+                        </p>
+                    )}
+                    <p className="mt-2 text-xs text-gray-300">
+                        Clique em "Salvar" para confirmar
+                    </p>
+                </div>
+            )}
+
+            {/* Confirmação de Deleção */}
+            {showDeleteConfirm && (
+                <div className="absolute inset-0 bg-base-900/95 flex flex-col items-center justify-center text-white p-4">
+                    <TrashIcon className="w-10 h-10 text-red-400 mb-3" />
+                    <p className="text-center font-semibold mb-1">Deletar esta foto?</p>
+                    <p className="text-center text-sm text-gray-400 mb-4">
+                        Isso liberará espaço no Storage.<br/>
+                        A ação não pode ser desfeita.
+                    </p>
+                    <div className="flex gap-3">
+                        <button
+                            onClick={handleCancelDelete}
+                            className="bg-base-700 hover:bg-base-600 px-4 py-2 rounded text-sm"
+                        >
+                            Cancelar
+                        </button>
+                        <button
+                            onClick={handleConfirmDelete}
+                            className="bg-red-600 hover:bg-red-500 px-4 py-2 rounded text-sm font-semibold"
+                        >
+                            Deletar
+                        </button>
+                    </div>
+                </div>
+            )}
+
             {/* Status: Erro */}
             {error && (
                 <div className="absolute inset-0 bg-base-900/95 flex flex-col items-center justify-center text-white p-4">
@@ -268,22 +386,42 @@ const ImageAnalyzerOptimized = ({ imageUrl, onUploadComplete, animalId, userId }
                 </div>
             )}
 
-            {/* Botão de Upload */}
-            {uploadStatus !== 'error' && uploadStatus !== 'compressing' && uploadStatus !== 'uploading' && (
-                <label 
-                    htmlFor="photo-upload" 
-                    className="absolute bottom-4 right-4 bg-brand-primary hover:bg-brand-primary-light text-white p-3 rounded-full cursor-pointer shadow-lg transition-transform hover:scale-110"
-                >
-                    <PhotoIcon className="w-6 h-6" />
-                    <input 
-                        id="photo-upload" 
-                        type="file" 
-                        accept="image/*" 
-                        onChange={handleFileChange} 
-                        className="sr-only" 
-                        disabled={uploadStatus !== 'idle' && uploadStatus !== 'success'}
-                    />
-                </label>
+            {/* Botões de Ação */}
+            {uploadStatus !== 'error' &&
+             uploadStatus !== 'compressing' &&
+             uploadStatus !== 'uploading' &&
+             uploadStatus !== 'deleting' &&
+             uploadStatus !== 'deleted' &&
+             !showDeleteConfirm && (
+                <div className="absolute bottom-4 right-4 flex gap-2">
+                    {/* Botão Deletar Foto (só aparece em modo edição com foto válida) */}
+                    {canDeletePhoto && (
+                        <button
+                            onClick={handleDeleteClick}
+                            className="bg-red-600 hover:bg-red-500 text-white p-3 rounded-full shadow-lg transition-transform hover:scale-110"
+                            title="Deletar foto (libera espaço no Storage)"
+                        >
+                            <TrashIcon className="w-5 h-5" />
+                        </button>
+                    )}
+
+                    {/* Botão Upload */}
+                    <label
+                        htmlFor="photo-upload"
+                        className="bg-brand-primary hover:bg-brand-primary-light text-white p-3 rounded-full cursor-pointer shadow-lg transition-transform hover:scale-110"
+                        title="Enviar nova foto"
+                    >
+                        <PhotoIcon className="w-6 h-6" />
+                        <input
+                            id="photo-upload"
+                            type="file"
+                            accept="image/*"
+                            onChange={handleFileChange}
+                            className="sr-only"
+                            disabled={uploadStatus !== 'idle' && uploadStatus !== 'success'}
+                        />
+                    </label>
+                </div>
             )}
         </div>
     );

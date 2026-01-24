@@ -62,6 +62,8 @@ const AppRouter: React.FC<AppRouterProps> = ({
         deleteBreedingSeason,
         addCoverageToSeason,
         updatePregnancyDiagnosis,
+        // Animal CRUD
+        updateAnimal,
     } = firestore;
 
     const {
@@ -212,6 +214,7 @@ const AppRouter: React.FC<AppRouterProps> = ({
             <Suspense fallback={<div className="flex justify-center p-8"><Spinner size="lg" /></div>}>
                 <ReportsView
                     animals={state.animals}
+                    onUpdateAnimal={updateAnimal}
                 />
             </Suspense>
         );

@@ -258,14 +258,24 @@ const AddAnimalModal = ({ isOpen, onClose, onAddAnimal, animals }: AddAnimalModa
         };
 
         if (formData.isFIV) {
-            // FIV: mãe biológica é a doadora, maeNome mostra a receptora
+            // FIV: mãe biológica é a doadora
             finalData.isFIV = true;
             finalData.maeBiologicaNome = formData.maeBiologicaNome;
             finalData.maeReceptoraNome = formData.maeReceptoraNome;
-            // maeNome = receptora (para exibição no sistema)
-            finalData.maeNome = formData.maeReceptoraNome;
-            // Busca raça da doadora para cálculos genéticos
-            const donor = animals.find(a => a.brinco.toLowerCase() === (formData.maeBiologicaNome || '').toLowerCase());
+            // maeNome = doadora (mãe biológica) para que a genealogia funcione corretamente
+            // A receptora fica registrada separadamente em maeReceptoraNome
+            finalData.maeNome = formData.maeBiologicaNome;
+            // Busca IDs se disponíveis
+            const donor = animals.find(a => a.brinco.toLowerCase() === (formData.maeBiologicaNome || '').toLowerCase() && a.sexo === Sexo.Femea);
+            const recipient = animals.find(a => a.brinco.toLowerCase() === (formData.maeReceptoraNome || '').toLowerCase() && a.sexo === Sexo.Femea);
+            if (donor) {
+                finalData.maeBiologicaId = donor.id;
+                finalData.maeId = donor.id; // maeId aponta para a doadora
+            }
+            if (recipient) {
+                finalData.maeReceptoraId = recipient.id;
+            }
+            // Raça da doadora para cálculos genéticos
             finalData.maeRaca = donor?.raca || formData.maeRaca;
         } else {
             // Normal: maeNome é a mãe biológica
