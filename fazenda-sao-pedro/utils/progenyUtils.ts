@@ -28,8 +28,54 @@ const getWeightByType = (animal: Animal, type: WeighingType): number | undefined
 };
 
 /**
+ * Verifica se um animal é realmente filho deste animal
+ * Usado para validar registros manuais obsoletos
+ */
+const isActualChild = (
+  child: Animal,
+  parent: Animal
+): boolean => {
+  const parentBrinco = parent.brinco.toLowerCase().trim();
+  const parentNome = parent.nome?.toLowerCase().trim();
+  const parentId = parent.id;
+
+  // Verifica se o filho aponta para este pai por ID
+  if (child.maeId === parentId || child.paiId === parentId) {
+    return true;
+  }
+
+  // Verifica se o filho aponta para este pai por nome/brinco
+  if (child.maeNome) {
+    const maeNome = child.maeNome.toLowerCase().trim();
+    if (maeNome === parentBrinco || (parentNome && maeNome === parentNome)) {
+      return true;
+    }
+  }
+
+  if (child.paiNome) {
+    const paiNome = child.paiNome.toLowerCase().trim();
+    if (paiNome === parentBrinco || (parentNome && paiNome === parentNome)) {
+      return true;
+    }
+  }
+
+  // FIV: verifica mãe biológica
+  if (child.isFIV && child.maeBiologicaNome) {
+    const maeBio = child.maeBiologicaNome.toLowerCase().trim();
+    if (maeBio === parentBrinco || (parentNome && maeBio === parentNome)) {
+      return true;
+    }
+  }
+
+  return false;
+};
+
+/**
  * Obtém progênie unificada de um animal
  * Combina três fontes de dados para garantir que todos os filhos sejam exibidos
+ *
+ * IMPORTANTE: Registros manuais são VALIDADOS - se o filho cadastrado
+ * não aponta mais para este animal como mãe/pai, o registro é ignorado.
  */
 export const getUnifiedProgeny = (
   animal: Animal,
@@ -37,7 +83,7 @@ export const getUnifiedProgeny = (
 ): UnifiedProgenyRecord[] => {
   const progenyMap = new Map<string, UnifiedProgenyRecord>();
 
-  // Fonte 1: historicoProgenie (registro manual)
+  // Fonte 1: historicoProgenie (registro manual) - COM VALIDAÇÃO
   if (animal.historicoProgenie) {
     for (const record of animal.historicoProgenie) {
       const key = record.offspringBrinco.toLowerCase().trim();
@@ -46,6 +92,13 @@ export const getUnifiedProgeny = (
       const offspringAnimal = allAnimals.find(
         (a) => a.brinco.toLowerCase().trim() === key
       );
+
+      // VALIDAÇÃO: Se o animal existe no rebanho, verifica se ele ainda
+      // aponta para este animal como mãe/pai. Se não aponta, IGNORA o registro.
+      if (offspringAnimal && !isActualChild(offspringAnimal, animal)) {
+        // O filho foi reatribuído a outro pai/mãe - ignora este registro obsoleto
+        continue;
+      }
 
       progenyMap.set(key, {
         id: record.id,

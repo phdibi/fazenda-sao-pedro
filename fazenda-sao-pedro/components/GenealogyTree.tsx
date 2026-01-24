@@ -78,9 +78,16 @@ const getMaeNome = (animal: Animal): string | undefined => {
 
 const GenealogyTree = ({ animal, allAnimals }: GenealogyTreeProps) => {
     // ============================================
-    // Busca um animal pelo nome ou brinco
+    // Busca um animal pelo nome, brinco ou ID
     // ============================================
-    const findParent = (name?: string): Animal | undefined => {
+    const findParent = (name?: string, id?: string): Animal | undefined => {
+        // Prioridade 1: busca por ID (mais confiável)
+        if (id) {
+            const byId = allAnimals.find(a => a.id === id);
+            if (byId) return byId;
+        }
+
+        // Prioridade 2: busca por nome ou brinco
         if (!name) return undefined;
         return allAnimals.find(a =>
             a.nome?.toLowerCase() === name.toLowerCase() ||
@@ -125,38 +132,46 @@ const GenealogyTree = ({ animal, allAnimals }: GenealogyTreeProps) => {
 
     // ============================================
     // GERAÇÕES ANTERIORES (Ancestrais)
+    // Busca por ID primeiro, depois por nome/brinco
     // ============================================
 
     // Pais (Geração -1)
-    const pai = findParent(animal.paiNome);
+    const pai = findParent(animal.paiNome, animal.paiId);
     const maeNomeParaGenealogia = getMaeNome(animal);
-    const mae = findParent(maeNomeParaGenealogia);
+    const maeIdParaGenealogia = animal.isFIV ? animal.maeBiologicaId : animal.maeId;
+    const mae = findParent(maeNomeParaGenealogia, maeIdParaGenealogia);
 
     // Avós (Geração -2)
-    const avoPaterno = pai ? findParent(pai.paiNome) : undefined;
+    const avoPaterno = pai ? findParent(pai.paiNome, pai.paiId) : undefined;
     const avoPaternaNome = pai ? getMaeNome(pai) : undefined;
-    const avoPaterna = avoPaternaNome ? findParent(avoPaternaNome) : undefined;
+    const avoPaternaMaeId = pai ? (pai.isFIV ? pai.maeBiologicaId : pai.maeId) : undefined;
+    const avoPaterna = avoPaternaNome || avoPaternaMaeId ? findParent(avoPaternaNome, avoPaternaMaeId) : undefined;
 
-    const avoMaterno = mae ? findParent(mae.paiNome) : undefined;
+    const avoMaterno = mae ? findParent(mae.paiNome, mae.paiId) : undefined;
     const avoMaternaNome = mae ? getMaeNome(mae) : undefined;
-    const avoMaterna = avoMaternaNome ? findParent(avoMaternaNome) : undefined;
+    const avoMaternaMaeId = mae ? (mae.isFIV ? mae.maeBiologicaId : mae.maeId) : undefined;
+    const avoMaterna = avoMaternaNome || avoMaternaMaeId ? findParent(avoMaternaNome, avoMaternaMaeId) : undefined;
 
     // Bisavós (Geração -3)
-    const bisavoPaternoPaterno = avoPaterno ? findParent(avoPaterno.paiNome) : undefined;
+    const bisavoPaternoPaterno = avoPaterno ? findParent(avoPaterno.paiNome, avoPaterno.paiId) : undefined;
     const bisavoPaternoPaternaNome = avoPaterno ? getMaeNome(avoPaterno) : undefined;
-    const bisavoPaternoPaterna = bisavoPaternoPaternaNome ? findParent(bisavoPaternoPaternaNome) : undefined;
+    const bisavoPaternoPaternaMaeId = avoPaterno ? (avoPaterno.isFIV ? avoPaterno.maeBiologicaId : avoPaterno.maeId) : undefined;
+    const bisavoPaternoPaterna = bisavoPaternoPaternaNome || bisavoPaternoPaternaMaeId ? findParent(bisavoPaternoPaternaNome, bisavoPaternoPaternaMaeId) : undefined;
 
-    const bisavoPaternoMaterno = avoPaterna ? findParent(avoPaterna.paiNome) : undefined;
+    const bisavoPaternoMaterno = avoPaterna ? findParent(avoPaterna.paiNome, avoPaterna.paiId) : undefined;
     const bisavoPaternoMaternaNome = avoPaterna ? getMaeNome(avoPaterna) : undefined;
-    const bisavoPaternoMaterna = bisavoPaternoMaternaNome ? findParent(bisavoPaternoMaternaNome) : undefined;
+    const bisavoPaternoMaternaMaeId = avoPaterna ? (avoPaterna.isFIV ? avoPaterna.maeBiologicaId : avoPaterna.maeId) : undefined;
+    const bisavoPaternoMaterna = bisavoPaternoMaternaNome || bisavoPaternoMaternaMaeId ? findParent(bisavoPaternoMaternaNome, bisavoPaternoMaternaMaeId) : undefined;
 
-    const bisavoMaternoPaterno = avoMaterno ? findParent(avoMaterno.paiNome) : undefined;
+    const bisavoMaternoPaterno = avoMaterno ? findParent(avoMaterno.paiNome, avoMaterno.paiId) : undefined;
     const bisavoMaternoPaternaNome = avoMaterno ? getMaeNome(avoMaterno) : undefined;
-    const bisavoMaternoPaterna = bisavoMaternoPaternaNome ? findParent(bisavoMaternoPaternaNome) : undefined;
+    const bisavoMaternoPaternaMaeId = avoMaterno ? (avoMaterno.isFIV ? avoMaterno.maeBiologicaId : avoMaterno.maeId) : undefined;
+    const bisavoMaternoPaterna = bisavoMaternoPaternaNome || bisavoMaternoPaternaMaeId ? findParent(bisavoMaternoPaternaNome, bisavoMaternoPaternaMaeId) : undefined;
 
-    const bisavoMaternoMaterno = avoMaterna ? findParent(avoMaterna.paiNome) : undefined;
+    const bisavoMaternoMaterno = avoMaterna ? findParent(avoMaterna.paiNome, avoMaterna.paiId) : undefined;
     const bisavoMaternoMaternaNome = avoMaterna ? getMaeNome(avoMaterna) : undefined;
-    const bisavoMaternoMaterna = bisavoMaternoMaternaNome ? findParent(bisavoMaternoMaternaNome) : undefined;
+    const bisavoMaternoMaternaMaeId = avoMaterna ? (avoMaterna.isFIV ? avoMaterna.maeBiologicaId : avoMaterna.maeId) : undefined;
+    const bisavoMaternoMaterna = bisavoMaternoMaternaNome || bisavoMaternoMaternaMaeId ? findParent(bisavoMaternoMaternaNome, bisavoMaternoMaternaMaeId) : undefined;
 
     // ============================================
     // GERAÇÕES POSTERIORES (Descendentes)
@@ -194,8 +209,8 @@ const GenealogyTree = ({ animal, allAnimals }: GenealogyTreeProps) => {
     }, [netos, allAnimals]);
 
     // Receptora (para FIV)
-    const receptora = animal.isFIV && animal.maeReceptoraNome
-        ? findParent(animal.maeReceptoraNome)
+    const receptora = animal.isFIV && (animal.maeReceptoraNome || animal.maeReceptoraId)
+        ? findParent(animal.maeReceptoraNome, animal.maeReceptoraId)
         : undefined;
 
     // Flags de verificação
