@@ -142,6 +142,7 @@ const AnimalDetailModal: React.FC<AnimalDetailModalProps> = ({
               onAnimalFormChange={handleAnimalFormChange}
               onUploadComplete={handleUploadComplete}
               setEditableAnimal={setEditableAnimal}
+              animals={animals}
             />
           )}
 

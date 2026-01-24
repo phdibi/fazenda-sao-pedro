@@ -1,5 +1,5 @@
-import React from 'react';
-import { Raca, Sexo, AnimalStatus, EditableAnimalState, AppUser } from '../../../types';
+import React, { useMemo } from 'react';
+import { Raca, Sexo, AnimalStatus, EditableAnimalState, AppUser, Animal } from '../../../types';
 import ImageAnalyzerOptimized from '../../ImageAnalyzerOptimized';
 import { dateToInputValue } from '../../../utils/dateHelpers';
 
@@ -12,6 +12,7 @@ interface GeneralTabProps {
   onAnimalFormChange: (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => void;
   onUploadComplete: (newUrl: string, thumbnailUrl?: string) => void;
   setEditableAnimal: React.Dispatch<React.SetStateAction<EditableAnimalState | null>>;
+  animals?: Animal[]; // Lista de animais para verificar se mãe existe
 }
 
 const GeneralTab: React.FC<GeneralTabProps> = ({
@@ -23,7 +24,16 @@ const GeneralTab: React.FC<GeneralTabProps> = ({
   onAnimalFormChange,
   onUploadComplete,
   setEditableAnimal,
+  animals = [],
 }) => {
+  // Verifica se a mãe existe no rebanho atual
+  const motherExists = useMemo(() => {
+    if (!editableAnimal.maeNome) return null; // Não digitou nada
+    const motherBrinco = editableAnimal.maeNome.toLowerCase().trim();
+    return animals.some(
+      (a) => a.brinco.toLowerCase().trim() === motherBrinco && a.sexo === Sexo.Femea
+    );
+  }, [editableAnimal.maeNome, animals]);
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
       <div>
@@ -171,11 +181,11 @@ const GeneralTab: React.FC<GeneralTabProps> = ({
                 disabled={!isEditing}
                 placeholder="Ex: 2024"
               />
-              {editableAnimal.maeRaca ? (
+              {motherExists === true && editableAnimal.maeRaca ? (
                 <p className="text-xs text-emerald-400 mt-1">
                   Raça da mãe: <strong>{editableAnimal.maeRaca}</strong>
                 </p>
-              ) : editableAnimal.maeNome ? (
+              ) : motherExists === false ? (
                 <p className="text-xs text-amber-400 mt-1">Mãe não encontrada no rebanho</p>
               ) : (
                 <p className="text-xs text-gray-500 mt-1">A raça será puxada automaticamente</p>
