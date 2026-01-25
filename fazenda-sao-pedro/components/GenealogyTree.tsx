@@ -222,19 +222,12 @@ const GenealogyTree = ({ animal, allAnimals }: GenealogyTreeProps) => {
         ? findParent(animal.maeReceptoraNome, animal.maeReceptoraId)
         : undefined;
 
-    // DEBUG: Log para verificar busca de avós
-    console.log('🔍 GenealogyTree Debug:', {
-        animal: animal.brinco,
-        paiNome: animal.paiNome,
-        maeNome: animal.maeNome,
-        maeId: animal.maeId,
-        paiEncontrado: pai ? { brinco: pai.brinco, paiNome: pai.paiNome, maeNome: pai.maeNome, paiId: pai.paiId, maeId: pai.maeId } : 'NÃO ENCONTRADO',
-        maeEncontrada: mae ? { brinco: mae.brinco, paiNome: mae.paiNome, maeNome: mae.maeNome, paiId: mae.paiId, maeId: mae.maeId } : 'NÃO ENCONTRADA',
-        avoPaterno: avoPaterno?.brinco || 'não encontrado',
-        avoPaterna: avoPaterna?.brinco || 'não encontrada',
-        avoMaterno: avoMaterno?.brinco || 'não encontrado',
-        avoMaterna: avoMaterna?.brinco || 'não encontrada',
-    });
+    // DEBUG: Informações sobre os pais encontrados
+    const debugInfo = {
+        maeEncontrada: mae ? `${mae.brinco} (paiNome: ${mae.paiNome || 'VAZIO'}, maeNome: ${mae.maeNome || 'VAZIO'})` : 'NÃO',
+        paiEncontrado: pai ? `${pai.brinco} (paiNome: ${pai.paiNome || 'VAZIO'}, maeNome: ${pai.maeNome || 'VAZIO'})` : 'NÃO',
+        avosEncontrados: [avoPaterno?.brinco, avoPaterna?.brinco, avoMaterno?.brinco, avoMaterna?.brinco].filter(Boolean).join(', ') || 'NENHUM'
+    };
 
     // Flags de verificação
     const hasBisavos = bisavoPaternoPaterno || bisavoPaternoPaterna ||
@@ -264,6 +257,13 @@ const GenealogyTree = ({ animal, allAnimals }: GenealogyTreeProps) => {
                     </span>
                 )}
             </h3>
+
+            {/* DEBUG: Mostra informações sobre a busca de ancestrais */}
+            <div className="mb-4 p-2 bg-yellow-900/30 border border-yellow-700 rounded text-xs text-yellow-200">
+                <p><strong>DEBUG - Mãe:</strong> {debugInfo.maeEncontrada}</p>
+                <p><strong>DEBUG - Pai:</strong> {debugInfo.paiEncontrado}</p>
+                <p><strong>DEBUG - Avós encontrados:</strong> {debugInfo.avosEncontrados}</p>
+            </div>
 
             <div className="flex flex-col items-center gap-2 min-w-[600px]">
 
