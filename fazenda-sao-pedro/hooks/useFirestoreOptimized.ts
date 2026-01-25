@@ -1187,9 +1187,10 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
             // 🔧 OTIMIZAÇÃO: Rastrear escritas
             trackWrites(writeCount);
 
-            // 🔧 OTIMIZAÇÃO: Usa stateRef para cache
+            // 🔧 FIX: Use sanitizedData instead of updatedData to prevent undefined values
+            // from overwriting existing properties (like dataNascimento)
             const updatedAnimals = stateRef.current.animals.map((a: Animal) =>
-                a.id === animalId ? { ...a, ...updatedData } : a
+                a.id === animalId ? { ...a, ...sanitizedData } : a
             );
             await updateLocalCache('animals', updatedAnimals);
         } catch (error) {

@@ -39,6 +39,7 @@ const DataMigrationPanel: React.FC = () => {
   const showMigration = hasPendingMigrations || !!status.lastRun;
 
   // Não mostra nada se não há nada para fazer
+  // Relaxado: sempre mostra o painel se há migrações OU recuperações pendentes
   if (!showMigration && !showRecovery) {
     return null;
   }
@@ -138,11 +139,10 @@ const DataMigrationPanel: React.FC = () => {
                 <div className="mt-4 flex items-center gap-3">
                   <button
                     onClick={handleRunMigration}
-                    className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                      confirmRun
+                    className={`px-4 py-2 rounded-lg font-medium transition-colors ${confirmRun
                         ? 'bg-amber-600 hover:bg-amber-500 text-white'
                         : 'bg-amber-700/50 hover:bg-amber-600/50 text-amber-200'
-                    }`}
+                      }`}
                   >
                     {confirmRun ? '⚡ Confirmar Migração' : '🔄 Corrigir Dados'}
                   </button>
