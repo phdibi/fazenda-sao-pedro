@@ -36,7 +36,7 @@ const WeightTab: React.FC<WeightTabProps> = ({
                   {isEditing ? (
                     <input
                       type="date"
-                      value={dateToInputValue(new Date(entry.date))}
+                      value={dateToInputValue(entry.date)}
                       onChange={(e) => onWeightDateChange(entry.id, e.target.value)}
                       className="bg-base-700 p-1 rounded border border-base-600 w-32"
                     />

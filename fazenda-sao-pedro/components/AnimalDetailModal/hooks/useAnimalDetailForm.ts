@@ -345,10 +345,16 @@ export const useAnimalDetailForm = ({
 
   const handleMedicationDateChange = useCallback((medId: string, newDateString: string) => {
     setEditableAnimal((prev) => {
-      if (!prev || !newDateString) return prev;
-      const newDate = new Date(newDateString + 'T00:00:00');
+      // 🔧 FIX: Validate date string before creating Date object
+      if (!prev || !newDateString || newDateString.trim() === '') return prev;
+      const parsedDate = new Date(newDateString + 'T00:00:00');
+      // Validate the parsed date is valid
+      if (isNaN(parsedDate.getTime())) {
+        console.warn('⚠️ [DATE] Invalid date input for medication, ignoring:', newDateString);
+        return prev;
+      }
       const updatedHistory = prev.historicoSanitario.map((entry) =>
-        entry.id === medId ? { ...entry, dataAplicacao: newDate } : entry
+        entry.id === medId ? { ...entry, dataAplicacao: parsedDate } : entry
       );
       updatedHistory.sort((a, b) => new Date(a.dataAplicacao).getTime() - new Date(b.dataAplicacao).getTime());
       return { ...prev, historicoSanitario: updatedHistory };
@@ -399,10 +405,16 @@ export const useAnimalDetailForm = ({
 
   const handleWeightDateChange = useCallback((weightId: string, newDateString: string) => {
     setEditableAnimal((prev) => {
-      if (!prev || !newDateString) return prev;
-      const newDate = new Date(newDateString + 'T00:00:00');
+      // 🔧 FIX: Validate date string before creating Date object
+      if (!prev || !newDateString || newDateString.trim() === '') return prev;
+      const parsedDate = new Date(newDateString + 'T00:00:00');
+      // Validate the parsed date is valid
+      if (isNaN(parsedDate.getTime())) {
+        console.warn('⚠️ [DATE] Invalid date input for weight, ignoring:', newDateString);
+        return prev;
+      }
       const updatedHistory = prev.historicoPesagens.map((entry) =>
-        entry.id === weightId ? { ...entry, date: newDate } : entry
+        entry.id === weightId ? { ...entry, date: parsedDate } : entry
       );
       updatedHistory.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
       const latestWeight = updatedHistory.length > 0 ? updatedHistory[updatedHistory.length - 1].weightKg : 0;

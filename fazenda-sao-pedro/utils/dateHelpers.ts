@@ -35,6 +35,11 @@ export const convertDatesToTimestamps = (data: any): any => {
     if (Array.isArray(data)) return data.map(item => convertDatesToTimestamps(item));
     // Verifica se Timestamp está disponível antes de usar
     if (data instanceof Date) {
+        // 🔧 FIX: Skip Invalid Dates to prevent Firestore data corruption
+        if (isNaN(data.getTime())) {
+            console.warn('⚠️ [DATE] Skipping Invalid Date in convertDatesToTimestamps');
+            return undefined;
+        }
         if (Timestamp && typeof Timestamp.fromDate === 'function') {
             return Timestamp.fromDate(data);
         }
@@ -91,11 +96,11 @@ export const calculateAgeInMonths = (birthDate: Date | string | undefined): numb
     if (!birthDate) return null;
     const birth = new Date(birthDate);
     if (isNaN(birth.getTime())) return null;
-    
+
     const now = new Date();
-    const months = (now.getFullYear() - birth.getFullYear()) * 12 
+    const months = (now.getFullYear() - birth.getFullYear()) * 12
         + (now.getMonth() - birth.getMonth());
-    
+
     // Ajusta se o dia do mês ainda não chegou
     if (now.getDate() < birth.getDate()) {
         return Math.max(0, months - 1);
@@ -110,7 +115,7 @@ export const calculateAgeInDays = (birthDate: Date | string | undefined): number
     if (!birthDate) return null;
     const birth = new Date(birthDate);
     if (isNaN(birth.getTime())) return null;
-    
+
     const now = new Date();
     const diffTime = now.getTime() - birth.getTime();
     return Math.floor(diffTime / (1000 * 60 * 60 * 24));
@@ -122,23 +127,23 @@ export const calculateAgeInDays = (birthDate: Date | string | undefined): number
 export const formatAge = (birthDate: Date | string | undefined): string => {
     const months = calculateAgeInMonths(birthDate);
     if (months === null) return 'Idade desconhecida';
-    
+
     if (months < 1) {
         const days = calculateAgeInDays(birthDate);
         return days !== null ? `${days} dias` : 'Recém-nascido';
     }
-    
+
     const years = Math.floor(months / 12);
     const remainingMonths = months % 12;
-    
+
     if (years === 0) {
         return `${months} ${months === 1 ? 'mês' : 'meses'}`;
     }
-    
+
     if (remainingMonths === 0) {
         return `${years} ${years === 1 ? 'ano' : 'anos'}`;
     }
-    
+
     return `${years} ${years === 1 ? 'ano' : 'anos'} e ${remainingMonths} ${remainingMonths === 1 ? 'mês' : 'meses'}`;
 };
 
@@ -153,11 +158,11 @@ export const isDateInRange = (
     const d = new Date(date);
     const s = new Date(start);
     const e = new Date(end);
-    
+
     if (isNaN(d.getTime()) || isNaN(s.getTime()) || isNaN(e.getTime())) {
         return false;
     }
-    
+
     return d >= s && d <= e;
 };
 
