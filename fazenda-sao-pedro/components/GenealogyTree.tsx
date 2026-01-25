@@ -37,13 +37,18 @@ const Node = ({ animal, name, gender, level, isOffspring, generationLabel, isFIV
     const genderColor = gender === 'M' ? 'border-blue-400' : gender === 'F' ? 'border-pink-400' : 'border-gray-400';
     const sizeClass = compact ? 'min-w-[70px] p-1' : 'min-w-[100px] p-2';
 
+    // Nome de exibição: nome > brinco > name passado > "Desconhecido"
+    const displayName = animal?.nome || animal?.brinco || name || 'Desconhecido';
+    // Só mostra brinco separado se tem nome E brinco (e são diferentes)
+    const showBrinco = animal?.brinco && animal?.nome && animal.nome !== animal.brinco;
+
     return (
         <div className={`flex-1 ${sizeClass} rounded-lg text-center ${bgColor} border-b-2 ${genderColor} shadow-md`}>
             <UserIcon className={`${compact ? 'w-3 h-3' : 'w-4 h-4'} mx-auto text-gray-400 mb-0.5`} />
             <p className={`font-bold ${compact ? 'text-[10px]' : 'text-sm'} ${textColor} truncate`}>
-                {animal?.nome || name || 'Desconhecido'}
+                {displayName}
             </p>
-            {animal?.brinco && <p className={`${compact ? 'text-[9px]' : 'text-xs'} text-gray-400 truncate`}>{animal.brinco}</p>}
+            {showBrinco && <p className={`${compact ? 'text-[9px]' : 'text-xs'} text-gray-400 truncate`}>{animal.brinco}</p>}
             {generationLabel && <p className={`${compact ? 'text-[8px]' : 'text-[10px]'} text-green-400 mt-0.5`}>{generationLabel}</p>}
             {isFIV && <span className="inline-block bg-purple-600/50 text-purple-200 text-[8px] px-1 rounded mt-0.5">FIV</span>}
         </div>
@@ -216,6 +221,20 @@ const GenealogyTree = ({ animal, allAnimals }: GenealogyTreeProps) => {
     const receptora = animal.isFIV && (animal.maeReceptoraNome || animal.maeReceptoraId)
         ? findParent(animal.maeReceptoraNome, animal.maeReceptoraId)
         : undefined;
+
+    // DEBUG: Log para verificar busca de avós
+    console.log('🔍 GenealogyTree Debug:', {
+        animal: animal.brinco,
+        paiNome: animal.paiNome,
+        maeNome: animal.maeNome,
+        maeId: animal.maeId,
+        paiEncontrado: pai ? { brinco: pai.brinco, paiNome: pai.paiNome, maeNome: pai.maeNome, paiId: pai.paiId, maeId: pai.maeId } : 'NÃO ENCONTRADO',
+        maeEncontrada: mae ? { brinco: mae.brinco, paiNome: mae.paiNome, maeNome: mae.maeNome, paiId: mae.paiId, maeId: mae.maeId } : 'NÃO ENCONTRADA',
+        avoPaterno: avoPaterno?.brinco || 'não encontrado',
+        avoPaterna: avoPaterna?.brinco || 'não encontrada',
+        avoMaterno: avoMaterno?.brinco || 'não encontrado',
+        avoMaterna: avoMaterna?.brinco || 'não encontrada',
+    });
 
     // Flags de verificação
     const hasBisavos = bisavoPaternoPaterno || bisavoPaternoPaterna ||
