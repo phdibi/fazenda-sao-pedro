@@ -78,21 +78,25 @@ const getMaeNome = (animal: Animal): string | undefined => {
 
 const GenealogyTree = ({ animal, allAnimals }: GenealogyTreeProps) => {
     // ============================================
-    // Busca um animal pelo nome, brinco ou ID
+    // Busca um animal pelo ID, brinco ou nome
+    // Prioridade: ID > Brinco > Nome
     // ============================================
-    const findParent = (name?: string, id?: string): Animal | undefined => {
+    const findParent = (nameOrBrinco?: string, id?: string): Animal | undefined => {
         // Prioridade 1: busca por ID (mais confiável)
         if (id) {
             const byId = allAnimals.find(a => a.id === id);
             if (byId) return byId;
         }
 
-        // Prioridade 2: busca por nome ou brinco
-        if (!name) return undefined;
-        return allAnimals.find(a =>
-            a.nome?.toLowerCase() === name.toLowerCase() ||
-            a.brinco?.toLowerCase() === name.toLowerCase()
-        );
+        if (!nameOrBrinco) return undefined;
+        const searchTerm = nameOrBrinco.toLowerCase().trim();
+
+        // Prioridade 2: busca por BRINCO (exato) - os campos paiNome/maeNome armazenam brincos!
+        const byBrinco = allAnimals.find(a => a.brinco.toLowerCase().trim() === searchTerm);
+        if (byBrinco) return byBrinco;
+
+        // Prioridade 3: busca por NOME (fallback)
+        return allAnimals.find(a => a.nome?.toLowerCase().trim() === searchTerm);
     };
 
     // ============================================
