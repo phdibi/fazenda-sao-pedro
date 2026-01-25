@@ -39,8 +39,9 @@ export const recoverLostBirthDates = async (
   for (const animal of animals) {
     stats.totalScanned++;
 
-    // Only interested in animals with MISSING birth date
-    if (!animal.dataNascimento) {
+    // Only interested in animals with MISSING or INVALID birth date
+    const isInvalidDate = (d: any) => d instanceof Date && isNaN(d.getTime());
+    if (!animal.dataNascimento || isInvalidDate(animal.dataNascimento)) {
       stats.foundMissing++;
 
       // Strategy 1: Look for a weight entry with type 'Birth' (Nascimento)

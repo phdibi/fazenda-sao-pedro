@@ -163,7 +163,10 @@ export const useAnimalDetailForm = ({
       // 🔧 FIX: Safeguard para evitar perda acidental da data de nascimento
       // Se a data sumiu na edição, mas existia no original, restaura ela
       // E se é undefined, REMOVE do payload para não sobrescrever na atualização otimista
-      if (!dataToSave.dataNascimento && animal.dataNascimento) {
+      // Também verifica se a data é inválida (Invalid Date)
+      const isInvalidDate = (d: any) => d instanceof Date && isNaN(d.getTime());
+
+      if ((!dataToSave.dataNascimento || isInvalidDate(dataToSave.dataNascimento)) && animal.dataNascimento) {
         console.warn('⚠️ [SAFETY] Restaurando data de nascimento perdida durante edição');
         dataToSave.dataNascimento = animal.dataNascimento;
       } else if (dataToSave.dataNascimento === undefined) {
@@ -418,7 +421,15 @@ export const useAnimalDetailForm = ({
       );
       updatedHistory.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
       const latestWeight = updatedHistory.length > 0 ? updatedHistory[updatedHistory.length - 1].weightKg : 0;
-      return { ...prev, historicoPesagens: updatedHistory, pesoKg: String(latestWeight) };
+
+      // 🔧 FEATURE: Sync "Birth Weight" date with animal's birth date
+      let newDataNascimento = prev.dataNascimento;
+      const changedEntry = updatedHistory.find(e => e.id === weightId);
+      if (changedEntry && changedEntry.type === WeighingType.Birth) {
+        newDataNascimento = changedEntry.date;
+      }
+
+      return { ...prev, historicoPesagens: updatedHistory, dataNascimento: newDataNascimento, pesoKg: String(latestWeight) };
     });
   }, []);
 

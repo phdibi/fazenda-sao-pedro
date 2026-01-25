@@ -101,4 +101,29 @@ describe('Recovery Service', () => {
     expect(stats.foundMissing).toBe(0);
     expect(mockUpdateAnimal).not.toHaveBeenCalled();
   });
+
+  it('should recover date when existing date is Invalid Date', async () => {
+    const birthDate = new Date('2023-01-01T00:00:00.000Z');
+    const animals: Animal[] = [
+      {
+        ...baseAnimal,
+        dataNascimento: new Date('invalid'), // INVALID DATE
+        historicoPesagens: [
+          {
+            id: 'w1',
+            date: birthDate,
+            weightKg: 30,
+            type: WeighingType.Birth,
+          }
+        ]
+      }
+    ];
+
+    const stats = await recoverLostBirthDates(animals, mockUpdateAnimal);
+
+    expect(stats.recovered).toBe(1);
+    expect(mockUpdateAnimal).toHaveBeenCalledWith('1', {
+      dataNascimento: birthDate
+    });
+  });
 });
