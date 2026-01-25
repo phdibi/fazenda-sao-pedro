@@ -7,6 +7,15 @@ interface GenealogyTreeProps {
     allAnimals: Animal[];
 }
 
+// Tipo para representar um ancestral - pode ser um Animal cadastrado ou apenas uma referência de nome
+interface AncestorRef {
+    animal?: Animal;         // Animal cadastrado (se encontrado)
+    refName?: string;        // Nome/brinco de referência (se não cadastrado)
+    paiNome?: string;        // Nome do pai deste ancestral (para buscar gerações anteriores)
+    maeNome?: string;        // Nome da mãe deste ancestral (para buscar gerações anteriores)
+    isReference: boolean;    // true = apenas referência, false = animal cadastrado
+}
+
 interface NodeProps {
     animal?: Animal;
     name?: string;
@@ -16,11 +25,14 @@ interface NodeProps {
     generationLabel?: string;
     isFIV?: boolean;
     compact?: boolean;
+    isReference?: boolean;   // Se é apenas uma referência (não cadastrado)
 }
 
-const Node = ({ animal, name, gender, level, isOffspring, generationLabel, isFIV, compact = false }: NodeProps) => {
+const Node = ({ animal, name, gender, level, isOffspring, generationLabel, isFIV, compact = false, isReference = false }: NodeProps) => {
     // Cores baseadas no nível e se é descendente
     const getBgColor = () => {
+        // Referências (não cadastrados) têm fundo mais escuro/transparente
+        if (isReference) return 'bg-base-900/50';
         if (level === 0) return 'bg-brand-primary';
         if (isOffspring) {
             if (level === 1) return 'bg-green-900/60';
@@ -33,9 +45,11 @@ const Node = ({ animal, name, gender, level, isOffspring, generationLabel, isFIV
     };
 
     const bgColor = getBgColor();
-    const textColor = level === 0 ? 'text-white' : 'text-gray-300';
+    const textColor = isReference ? 'text-gray-400' : (level === 0 ? 'text-white' : 'text-gray-300');
     const genderColor = gender === 'M' ? 'border-blue-400' : gender === 'F' ? 'border-pink-400' : 'border-gray-400';
     const sizeClass = compact ? 'min-w-[70px] p-1' : 'min-w-[100px] p-2';
+    // Referências têm borda tracejada para indicar que não são cadastrados
+    const borderStyle = isReference ? 'border-dashed border border-gray-600' : '';
 
     // Nome de exibição: nome > brinco > name passado > "Desconhecido"
     const displayName = animal?.nome || animal?.brinco || name || 'Desconhecido';
@@ -43,12 +57,13 @@ const Node = ({ animal, name, gender, level, isOffspring, generationLabel, isFIV
     const showBrinco = animal?.brinco && animal?.nome && animal.nome !== animal.brinco;
 
     return (
-        <div className={`flex-1 ${sizeClass} rounded-lg text-center ${bgColor} border-b-2 ${genderColor} shadow-md`}>
-            <UserIcon className={`${compact ? 'w-3 h-3' : 'w-4 h-4'} mx-auto text-gray-400 mb-0.5`} />
+        <div className={`flex-1 ${sizeClass} rounded-lg text-center ${bgColor} border-b-2 ${genderColor} ${borderStyle} shadow-md`}>
+            <UserIcon className={`${compact ? 'w-3 h-3' : 'w-4 h-4'} mx-auto ${isReference ? 'text-gray-500' : 'text-gray-400'} mb-0.5`} />
             <p className={`font-bold ${compact ? 'text-[10px]' : 'text-sm'} ${textColor} truncate`}>
                 {displayName}
             </p>
             {showBrinco && <p className={`${compact ? 'text-[9px]' : 'text-xs'} text-gray-400 truncate`}>{animal.brinco}</p>}
+            {isReference && <p className={`${compact ? 'text-[7px]' : 'text-[9px]'} text-amber-600 italic`}>externo</p>}
             {generationLabel && <p className={`${compact ? 'text-[8px]' : 'text-[10px]'} text-green-400 mt-0.5`}>{generationLabel}</p>}
             {isFIV && <span className="inline-block bg-purple-600/50 text-purple-200 text-[8px] px-1 rounded mt-0.5">FIV</span>}
         </div>
@@ -105,6 +120,35 @@ const GenealogyTree = ({ animal, allAnimals }: GenealogyTreeProps) => {
     };
 
     // ============================================
+    // Retorna uma referência de ancestral (cadastrado ou apenas nome)
+    // Permite mostrar ancestrais externos não cadastrados
+    // ============================================
+    const getAncestorRef = (nameOrBrinco?: string, id?: string): AncestorRef | undefined => {
+        if (!nameOrBrinco && !id) return undefined;
+
+        const foundAnimal = findParent(nameOrBrinco, id);
+
+        if (foundAnimal) {
+            // Animal cadastrado - retorna com os dados do pai/mãe para buscar gerações anteriores
+            return {
+                animal: foundAnimal,
+                refName: foundAnimal.nome || foundAnimal.brinco,
+                paiNome: foundAnimal.paiNome,
+                maeNome: foundAnimal.isFIV ? foundAnimal.maeBiologicaNome : foundAnimal.maeNome,
+                isReference: false
+            };
+        } else if (nameOrBrinco) {
+            // Não cadastrado - apenas referência de nome (animal externo)
+            return {
+                refName: nameOrBrinco,
+                isReference: true
+            };
+        }
+
+        return undefined;
+    };
+
+    // ============================================
     // Busca os filhos de um animal (considera FIV)
     // ============================================
     const findOffspringOf = (parentAnimal: Animal): Animal[] => {
@@ -141,46 +185,52 @@ const GenealogyTree = ({ animal, allAnimals }: GenealogyTreeProps) => {
 
     // ============================================
     // GERAÇÕES ANTERIORES (Ancestrais)
-    // Busca por ID primeiro, depois por nome/brinco
+    // Usa AncestorRef para incluir animais externos (não cadastrados)
     // ============================================
 
     // Pais (Geração -1)
-    const pai = findParent(animal.paiNome, animal.paiId);
     const maeNomeParaGenealogia = getMaeNome(animal);
     const maeIdParaGenealogia = animal.isFIV ? animal.maeBiologicaId : animal.maeId;
-    const mae = findParent(maeNomeParaGenealogia, maeIdParaGenealogia);
+    const paiRef = getAncestorRef(animal.paiNome, animal.paiId);
+    const maeRef = getAncestorRef(maeNomeParaGenealogia, maeIdParaGenealogia);
 
-    // Avós (Geração -2)
-    const avoPaterno = pai ? findParent(pai.paiNome, pai.paiId) : undefined;
-    const avoPaternaNome = pai ? getMaeNome(pai) : undefined;
-    const avoPaternaMaeId = pai ? (pai.isFIV ? pai.maeBiologicaId : pai.maeId) : undefined;
-    const avoPaterna = avoPaternaNome || avoPaternaMaeId ? findParent(avoPaternaNome, avoPaternaMaeId) : undefined;
+    // Avós (Geração -2) - busca a partir dos pais cadastrados OU usa referência
+    const avoPaterno = paiRef?.animal ? getAncestorRef(paiRef.animal.paiNome, paiRef.animal.paiId) : undefined;
+    const avoPaterna = paiRef?.animal ? getAncestorRef(
+        paiRef.animal.isFIV ? paiRef.animal.maeBiologicaNome : paiRef.animal.maeNome,
+        paiRef.animal.isFIV ? paiRef.animal.maeBiologicaId : paiRef.animal.maeId
+    ) : undefined;
 
-    const avoMaterno = mae ? findParent(mae.paiNome, mae.paiId) : undefined;
-    const avoMaternaNome = mae ? getMaeNome(mae) : undefined;
-    const avoMaternaMaeId = mae ? (mae.isFIV ? mae.maeBiologicaId : mae.maeId) : undefined;
-    const avoMaterna = avoMaternaNome || avoMaternaMaeId ? findParent(avoMaternaNome, avoMaternaMaeId) : undefined;
+    const avoMaterno = maeRef?.animal ? getAncestorRef(maeRef.animal.paiNome, maeRef.animal.paiId) : undefined;
+    const avoMaterna = maeRef?.animal ? getAncestorRef(
+        maeRef.animal.isFIV ? maeRef.animal.maeBiologicaNome : maeRef.animal.maeNome,
+        maeRef.animal.isFIV ? maeRef.animal.maeBiologicaId : maeRef.animal.maeId
+    ) : undefined;
 
-    // Bisavós (Geração -3)
-    const bisavoPaternoPaterno = avoPaterno ? findParent(avoPaterno.paiNome, avoPaterno.paiId) : undefined;
-    const bisavoPaternoPaternaNome = avoPaterno ? getMaeNome(avoPaterno) : undefined;
-    const bisavoPaternoPaternaMaeId = avoPaterno ? (avoPaterno.isFIV ? avoPaterno.maeBiologicaId : avoPaterno.maeId) : undefined;
-    const bisavoPaternoPaterna = bisavoPaternoPaternaNome || bisavoPaternoPaternaMaeId ? findParent(bisavoPaternoPaternaNome, bisavoPaternoPaternaMaeId) : undefined;
+    // Bisavós (Geração -3) - busca a partir dos avós cadastrados
+    const bisavoPaternoPaterno = avoPaterno?.animal ? getAncestorRef(avoPaterno.animal.paiNome, avoPaterno.animal.paiId) : undefined;
+    const bisavoPaternoPaterna = avoPaterno?.animal ? getAncestorRef(
+        avoPaterno.animal.isFIV ? avoPaterno.animal.maeBiologicaNome : avoPaterno.animal.maeNome,
+        avoPaterno.animal.isFIV ? avoPaterno.animal.maeBiologicaId : avoPaterno.animal.maeId
+    ) : undefined;
 
-    const bisavoPaternoMaterno = avoPaterna ? findParent(avoPaterna.paiNome, avoPaterna.paiId) : undefined;
-    const bisavoPaternoMaternaNome = avoPaterna ? getMaeNome(avoPaterna) : undefined;
-    const bisavoPaternoMaternaMaeId = avoPaterna ? (avoPaterna.isFIV ? avoPaterna.maeBiologicaId : avoPaterna.maeId) : undefined;
-    const bisavoPaternoMaterna = bisavoPaternoMaternaNome || bisavoPaternoMaternaMaeId ? findParent(bisavoPaternoMaternaNome, bisavoPaternoMaternaMaeId) : undefined;
+    const bisavoPaternoMaterno = avoPaterna?.animal ? getAncestorRef(avoPaterna.animal.paiNome, avoPaterna.animal.paiId) : undefined;
+    const bisavoPaternoMaterna = avoPaterna?.animal ? getAncestorRef(
+        avoPaterna.animal.isFIV ? avoPaterna.animal.maeBiologicaNome : avoPaterna.animal.maeNome,
+        avoPaterna.animal.isFIV ? avoPaterna.animal.maeBiologicaId : avoPaterna.animal.maeId
+    ) : undefined;
 
-    const bisavoMaternoPaterno = avoMaterno ? findParent(avoMaterno.paiNome, avoMaterno.paiId) : undefined;
-    const bisavoMaternoPaternaNome = avoMaterno ? getMaeNome(avoMaterno) : undefined;
-    const bisavoMaternoPaternaMaeId = avoMaterno ? (avoMaterno.isFIV ? avoMaterno.maeBiologicaId : avoMaterno.maeId) : undefined;
-    const bisavoMaternoPaterna = bisavoMaternoPaternaNome || bisavoMaternoPaternaMaeId ? findParent(bisavoMaternoPaternaNome, bisavoMaternoPaternaMaeId) : undefined;
+    const bisavoMaternoPaterno = avoMaterno?.animal ? getAncestorRef(avoMaterno.animal.paiNome, avoMaterno.animal.paiId) : undefined;
+    const bisavoMaternoPaterna = avoMaterno?.animal ? getAncestorRef(
+        avoMaterno.animal.isFIV ? avoMaterno.animal.maeBiologicaNome : avoMaterno.animal.maeNome,
+        avoMaterno.animal.isFIV ? avoMaterno.animal.maeBiologicaId : avoMaterno.animal.maeId
+    ) : undefined;
 
-    const bisavoMaternoMaterno = avoMaterna ? findParent(avoMaterna.paiNome, avoMaterna.paiId) : undefined;
-    const bisavoMaternoMaternaNome = avoMaterna ? getMaeNome(avoMaterna) : undefined;
-    const bisavoMaternoMaternaMaeId = avoMaterna ? (avoMaterna.isFIV ? avoMaterna.maeBiologicaId : avoMaterna.maeId) : undefined;
-    const bisavoMaternoMaterna = bisavoMaternoMaternaNome || bisavoMaternoMaternaMaeId ? findParent(bisavoMaternoMaternaNome, bisavoMaternoMaternaMaeId) : undefined;
+    const bisavoMaternoMaterno = avoMaterna?.animal ? getAncestorRef(avoMaterna.animal.paiNome, avoMaterna.animal.paiId) : undefined;
+    const bisavoMaternoMaterna = avoMaterna?.animal ? getAncestorRef(
+        avoMaterna.animal.isFIV ? avoMaterna.animal.maeBiologicaNome : avoMaterna.animal.maeNome,
+        avoMaterna.animal.isFIV ? avoMaterna.animal.maeBiologicaId : avoMaterna.animal.maeId
+    ) : undefined;
 
     // ============================================
     // GERAÇÕES POSTERIORES (Descendentes)
@@ -222,21 +272,14 @@ const GenealogyTree = ({ animal, allAnimals }: GenealogyTreeProps) => {
         ? findParent(animal.maeReceptoraNome, animal.maeReceptoraId)
         : undefined;
 
-    // DEBUG: Informações sobre os pais encontrados
-    const debugInfo = {
-        maeEncontrada: mae ? `${mae.brinco} (paiNome: ${mae.paiNome || 'VAZIO'}, maeNome: ${mae.maeNome || 'VAZIO'})` : 'NÃO',
-        paiEncontrado: pai ? `${pai.brinco} (paiNome: ${pai.paiNome || 'VAZIO'}, maeNome: ${pai.maeNome || 'VAZIO'})` : 'NÃO',
-        avosEncontrados: [avoPaterno?.brinco, avoPaterna?.brinco, avoMaterno?.brinco, avoMaterna?.brinco].filter(Boolean).join(', ') || 'NENHUM'
-    };
-
-    // Flags de verificação
+    // Flags de verificação (agora usando AncestorRef)
     const hasBisavos = bisavoPaternoPaterno || bisavoPaternoPaterna ||
                        bisavoPaternoMaterno || bisavoPaternoMaterna ||
                        bisavoMaternoPaterno || bisavoMaternoPaterna ||
                        bisavoMaternoMaterno || bisavoMaternoMaterna;
 
     const hasAvos = avoPaterno || avoPaterna || avoMaterno || avoMaterna;
-    const hasPais = pai || mae || animal.paiNome || maeNomeParaGenealogia;
+    const hasPais = paiRef || maeRef;
     const hasFilhos = filhos.length > 0;
     const hasNetos = netos.length > 0;
     const hasBisnetos = bisnetos.length > 0;
@@ -258,13 +301,6 @@ const GenealogyTree = ({ animal, allAnimals }: GenealogyTreeProps) => {
                 )}
             </h3>
 
-            {/* DEBUG: Mostra informações sobre a busca de ancestrais */}
-            <div className="mb-4 p-2 bg-yellow-900/30 border border-yellow-700 rounded text-xs text-yellow-200">
-                <p><strong>DEBUG - Mãe:</strong> {debugInfo.maeEncontrada}</p>
-                <p><strong>DEBUG - Pai:</strong> {debugInfo.paiEncontrado}</p>
-                <p><strong>DEBUG - Avós encontrados:</strong> {debugInfo.avosEncontrados}</p>
-            </div>
-
             <div className="flex flex-col items-center gap-2 min-w-[600px]">
 
                 {/* ============================================ */}
@@ -276,22 +312,22 @@ const GenealogyTree = ({ animal, allAnimals }: GenealogyTreeProps) => {
                         <div className="w-full flex justify-center gap-1">
                             <div className="flex-1 flex justify-center gap-1">
                                 <div className="flex gap-1">
-                                    {bisavoPaternoPaterno && <Node animal={bisavoPaternoPaterno} gender="M" level={3} compact isFIV={bisavoPaternoPaterno?.isFIV} />}
-                                    {bisavoPaternoPaterna && <Node animal={bisavoPaternoPaterna} gender="F" level={3} compact isFIV={bisavoPaternoPaterna?.isFIV} />}
+                                    {bisavoPaternoPaterno && <Node animal={bisavoPaternoPaterno.animal} name={bisavoPaternoPaterno.refName} gender="M" level={3} compact isFIV={bisavoPaternoPaterno.animal?.isFIV} isReference={bisavoPaternoPaterno.isReference} />}
+                                    {bisavoPaternoPaterna && <Node animal={bisavoPaternoPaterna.animal} name={bisavoPaternoPaterna.refName} gender="F" level={3} compact isFIV={bisavoPaternoPaterna.animal?.isFIV} isReference={bisavoPaternoPaterna.isReference} />}
                                 </div>
                                 <div className="flex gap-1">
-                                    {bisavoPaternoMaterno && <Node animal={bisavoPaternoMaterno} gender="M" level={3} compact isFIV={bisavoPaternoMaterno?.isFIV} />}
-                                    {bisavoPaternoMaterna && <Node animal={bisavoPaternoMaterna} gender="F" level={3} compact isFIV={bisavoPaternoMaterna?.isFIV} />}
+                                    {bisavoPaternoMaterno && <Node animal={bisavoPaternoMaterno.animal} name={bisavoPaternoMaterno.refName} gender="M" level={3} compact isFIV={bisavoPaternoMaterno.animal?.isFIV} isReference={bisavoPaternoMaterno.isReference} />}
+                                    {bisavoPaternoMaterna && <Node animal={bisavoPaternoMaterna.animal} name={bisavoPaternoMaterna.refName} gender="F" level={3} compact isFIV={bisavoPaternoMaterna.animal?.isFIV} isReference={bisavoPaternoMaterna.isReference} />}
                                 </div>
                             </div>
                             <div className="flex-1 flex justify-center gap-1">
                                 <div className="flex gap-1">
-                                    {bisavoMaternoPaterno && <Node animal={bisavoMaternoPaterno} gender="M" level={3} compact isFIV={bisavoMaternoPaterno?.isFIV} />}
-                                    {bisavoMaternoPaterna && <Node animal={bisavoMaternoPaterna} gender="F" level={3} compact isFIV={bisavoMaternoPaterna?.isFIV} />}
+                                    {bisavoMaternoPaterno && <Node animal={bisavoMaternoPaterno.animal} name={bisavoMaternoPaterno.refName} gender="M" level={3} compact isFIV={bisavoMaternoPaterno.animal?.isFIV} isReference={bisavoMaternoPaterno.isReference} />}
+                                    {bisavoMaternoPaterna && <Node animal={bisavoMaternoPaterna.animal} name={bisavoMaternoPaterna.refName} gender="F" level={3} compact isFIV={bisavoMaternoPaterna.animal?.isFIV} isReference={bisavoMaternoPaterna.isReference} />}
                                 </div>
                                 <div className="flex gap-1">
-                                    {bisavoMaternoMaterno && <Node animal={bisavoMaternoMaterno} gender="M" level={3} compact isFIV={bisavoMaternoMaterno?.isFIV} />}
-                                    {bisavoMaternoMaterna && <Node animal={bisavoMaternoMaterna} gender="F" level={3} compact isFIV={bisavoMaternoMaterna?.isFIV} />}
+                                    {bisavoMaternoMaterno && <Node animal={bisavoMaternoMaterno.animal} name={bisavoMaternoMaterno.refName} gender="M" level={3} compact isFIV={bisavoMaternoMaterno.animal?.isFIV} isReference={bisavoMaternoMaterno.isReference} />}
+                                    {bisavoMaternoMaterna && <Node animal={bisavoMaternoMaterna.animal} name={bisavoMaternoMaterna.refName} gender="F" level={3} compact isFIV={bisavoMaternoMaterna.animal?.isFIV} isReference={bisavoMaternoMaterna.isReference} />}
                                 </div>
                             </div>
                         </div>
@@ -307,12 +343,12 @@ const GenealogyTree = ({ animal, allAnimals }: GenealogyTreeProps) => {
                         <p className="text-xs text-gray-500 mb-1">Avós</p>
                         <div className="w-full flex justify-center gap-2 md:gap-4">
                             <div className="flex-1 flex justify-center gap-2">
-                                {avoPaterno && <Node animal={avoPaterno} gender="M" level={2} isFIV={avoPaterno?.isFIV} />}
-                                {avoPaterna && <Node animal={avoPaterna} gender="F" level={2} isFIV={avoPaterna?.isFIV} />}
+                                {avoPaterno && <Node animal={avoPaterno.animal} name={avoPaterno.refName} gender="M" level={2} isFIV={avoPaterno.animal?.isFIV} isReference={avoPaterno.isReference} />}
+                                {avoPaterna && <Node animal={avoPaterna.animal} name={avoPaterna.refName} gender="F" level={2} isFIV={avoPaterna.animal?.isFIV} isReference={avoPaterna.isReference} />}
                             </div>
                             <div className="flex-1 flex justify-center gap-2">
-                                {avoMaterno && <Node animal={avoMaterno} gender="M" level={2} isFIV={avoMaterno?.isFIV} />}
-                                {avoMaterna && <Node animal={avoMaterna} gender="F" level={2} isFIV={avoMaterna?.isFIV} />}
+                                {avoMaterno && <Node animal={avoMaterno.animal} name={avoMaterno.refName} gender="M" level={2} isFIV={avoMaterno.animal?.isFIV} isReference={avoMaterno.isReference} />}
+                                {avoMaterna && <Node animal={avoMaterna.animal} name={avoMaterna.refName} gender="F" level={2} isFIV={avoMaterna.animal?.isFIV} isReference={avoMaterna.isReference} />}
                             </div>
                         </div>
                         <VerticalConnector />
@@ -326,14 +362,26 @@ const GenealogyTree = ({ animal, allAnimals }: GenealogyTreeProps) => {
                     <>
                         <p className="text-xs text-gray-500 mb-1">Pais</p>
                         <div className="w-full flex justify-center gap-4 md:gap-8">
-                            {pai
-                                ? <Node animal={pai} gender="M" level={1} isFIV={pai?.isFIV} />
-                                : animal.paiNome && <Node name={animal.paiNome} gender="M" level={1} />
-                            }
-                            {mae
-                                ? <Node animal={mae} gender="F" level={1} isFIV={mae?.isFIV} />
-                                : maeNomeParaGenealogia && <Node name={maeNomeParaGenealogia} gender="F" level={1} />
-                            }
+                            {paiRef && (
+                                <Node
+                                    animal={paiRef.animal}
+                                    name={paiRef.refName}
+                                    gender="M"
+                                    level={1}
+                                    isFIV={paiRef.animal?.isFIV}
+                                    isReference={paiRef.isReference}
+                                />
+                            )}
+                            {maeRef && (
+                                <Node
+                                    animal={maeRef.animal}
+                                    name={maeRef.refName}
+                                    gender="F"
+                                    level={1}
+                                    isFIV={maeRef.animal?.isFIV}
+                                    isReference={maeRef.isReference}
+                                />
+                            )}
                         </div>
 
                         {animal.isFIV && (
@@ -479,6 +527,10 @@ const GenealogyTree = ({ animal, allAnimals }: GenealogyTreeProps) => {
                 <div className="flex items-center gap-1">
                     <div className="w-3 h-1 bg-pink-400 rounded" />
                     <span>Fêmea</span>
+                </div>
+                <div className="flex items-center gap-1">
+                    <div className="w-3 h-3 bg-base-900/50 border border-dashed border-gray-600 rounded" />
+                    <span className="text-amber-600">Externo (não cadastrado)</span>
                 </div>
                 {animal.isFIV && (
                     <div className="flex items-center gap-1">
