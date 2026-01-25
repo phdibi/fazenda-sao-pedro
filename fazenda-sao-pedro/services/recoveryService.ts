@@ -9,6 +9,18 @@ export interface RecoveryStats {
   errors: string[];
 }
 
+// Birth weight range in kg (typical for cattle)
+const BIRTH_WEIGHT_MIN = 20;
+const BIRTH_WEIGHT_MAX = 55;
+
+/**
+ * Attempts to recover lost birth dates from weight history.
+ * 
+ * Strategy:
+ * 1. First, look for weight entries with type WeighingType.Birth
+ * 2. If not found, look for the oldest weight entry with a weight in birth range (20-55kg)
+ * 3. Validate that no older records exist (would indicate suspicious data)
+ */
 export const recoverLostBirthDates = async (
   animals: Animal[],
   updateAnimal: (id: string, data: Partial<Animal>) => Promise<void>
@@ -31,11 +43,32 @@ export const recoverLostBirthDates = async (
     if (!animal.dataNascimento) {
       stats.foundMissing++;
 
-      // 1. Look for a weight entry with type 'Birth' (Nascimento)
-      const birthWeightEntry = animal.historicoPesagens?.find(w => w.type === WeighingType.Birth);
+      // Strategy 1: Look for a weight entry with type 'Birth' (Nascimento)
+      let candidateEntry = animal.historicoPesagens?.find(w => w.type === WeighingType.Birth);
+      let recoveryMethod = 'explicit_birth_type';
 
-      if (birthWeightEntry && birthWeightEntry.date) {
-        const candidateDate = new Date(birthWeightEntry.date);
+      // Strategy 2: If no explicit birth weight, look for oldest entry with birth-like weight
+      if (!candidateEntry && animal.historicoPesagens && animal.historicoPesagens.length > 0) {
+        // Sort by date ascending to find oldest
+        const sortedWeights = [...animal.historicoPesagens].sort(
+          (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
+        );
+
+        // Find oldest weight entry that looks like birth weight
+        const oldestBirthLike = sortedWeights.find(w =>
+          w.weightKg >= BIRTH_WEIGHT_MIN &&
+          w.weightKg <= BIRTH_WEIGHT_MAX
+        );
+
+        if (oldestBirthLike && sortedWeights.indexOf(oldestBirthLike) === 0) {
+          // Only use if it's actually the oldest entry
+          candidateEntry = oldestBirthLike;
+          recoveryMethod = 'oldest_birth_weight_range';
+        }
+      }
+
+      if (candidateEntry && candidateEntry.date) {
+        const candidateDate = new Date(candidateEntry.date);
 
         // Validation: Check if there are ANY records (weight or health) older than this candidate date
         // If so, this candidate date is likely a "buggy" date (e.g. defaulted to today)
@@ -43,7 +76,7 @@ export const recoverLostBirthDates = async (
 
         // Check other weights
         const olderWeight = animal.historicoPesagens?.find(w =>
-          w.id !== birthWeightEntry.id &&
+          w.id !== candidateEntry!.id &&
           new Date(w.date) < candidateDate
         );
 
@@ -72,7 +105,7 @@ export const recoverLostBirthDates = async (
         stats.recoverable++;
 
         try {
-          console.log(`🔧 [RECOVERY] Recovering birth date for ${animal.brinco}: ${candidateDate.toLocaleDateString()}`);
+          console.log(`🔧 [RECOVERY] Recovering birth date for ${animal.brinco}: ${candidateDate.toLocaleDateString()} (method: ${recoveryMethod})`);
 
           await updateAnimal(animal.id, {
             dataNascimento: candidateDate

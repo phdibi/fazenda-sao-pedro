@@ -28,14 +28,14 @@ export interface UseAnimalDetailFormReturn {
   isEditing: boolean;
   isSaving: boolean;
   saveError: string | null;
-  
+
   // Formulários
   medicationForm: MedicationFormState;
   newWeightData: { weight: string; type: WeighingType };
   pregnancyForm: Omit<PregnancyRecord, 'id'>;
   abortionDate: string;
   offspringForm: OffspringFormState;
-  
+
   // Ações de estado
   setIsEditing: (editing: boolean) => void;
   setEditableAnimal: React.Dispatch<React.SetStateAction<EditableAnimalState | null>>;
@@ -44,31 +44,31 @@ export interface UseAnimalDetailFormReturn {
   setPregnancyForm: React.Dispatch<React.SetStateAction<Omit<PregnancyRecord, 'id'>>>;
   setAbortionDate: React.Dispatch<React.SetStateAction<string>>;
   setOffspringForm: React.Dispatch<React.SetStateAction<OffspringFormState>>;
-  
+
   // Handlers
   handleSaveChanges: () => void;
   handleCancelEdit: () => void;
   handleAnimalFormChange: (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => void;
   handleUploadComplete: (newUrl: string, thumbnailUrl?: string) => void;
-  
+
   // Medicação
   handleDataExtracted: (data: Partial<MedicationAdministration>) => void;
   handleMedicationFormChange: (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => void;
   handleAddMedicationSubmit: (e: React.FormEvent) => void;
   handleDeleteMedication: (medId: string) => void;
   handleMedicationDateChange: (medId: string, newDateString: string) => void;
-  
+
   // Peso
   handleAddWeight: (e: React.FormEvent) => void;
   handleDeleteWeight: (weightId: string) => void;
   handleWeightDateChange: (weightId: string, newDateString: string) => void;
-  
+
   // Reprodução
   handleAddPregnancySubmit: (e: React.FormEvent) => void;
   handleDeletePregnancyRecord: (recordId: string) => void;
   handleAddAbortionSubmit: (e: React.FormEvent) => void;
   handleDeleteAbortionRecord: (recordId: string) => void;
-  
+
   // Progênie
   handleAddOrUpdateOffspringSubmit: (e: React.FormEvent) => void;
   handleDeleteOffspringRecord: (recordId: string) => void;
@@ -162,9 +162,14 @@ export const useAnimalDetailForm = ({
 
       // 🔧 FIX: Safeguard para evitar perda acidental da data de nascimento
       // Se a data sumiu na edição, mas existia no original, restaura ela
+      // E se é undefined, REMOVE do payload para não sobrescrever na atualização otimista
       if (!dataToSave.dataNascimento && animal.dataNascimento) {
         console.warn('⚠️ [SAFETY] Restaurando data de nascimento perdida durante edição');
         dataToSave.dataNascimento = animal.dataNascimento;
+      } else if (dataToSave.dataNascimento === undefined) {
+        // Se dataNascimento é explicitamente undefined, remove do payload
+        // para que a atualização otimista não sobrescreva o valor existente
+        delete (dataToSave as any).dataNascimento;
       }
 
       const { id, ...finalChanges } = dataToSave as Animal;
@@ -274,10 +279,10 @@ export const useAnimalDetailForm = ({
     setEditableAnimal((prev) =>
       prev
         ? {
-            ...prev,
-            fotos: newPhotos,
-            ...(thumbnailUrl && { thumbnailUrl }),
-          }
+          ...prev,
+          fotos: newPhotos,
+          ...(thumbnailUrl && { thumbnailUrl }),
+        }
         : null
     );
 
@@ -413,11 +418,11 @@ export const useAnimalDetailForm = ({
     setEditableAnimal((prev) =>
       prev
         ? {
-            ...prev,
-            historicoPrenhez: [...(prev.historicoPrenhez || []), newRecord].sort(
-              (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
-            ),
-          }
+          ...prev,
+          historicoPrenhez: [...(prev.historicoPrenhez || []), newRecord].sort(
+            (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
+          ),
+        }
         : null
     );
     setPregnancyForm({ date: new Date(), type: PregnancyType.Monta, sireName: '' });
@@ -437,11 +442,11 @@ export const useAnimalDetailForm = ({
       setEditableAnimal((prev) =>
         prev
           ? {
-              ...prev,
-              historicoAborto: [...(prev.historicoAborto || []), newRecord].sort(
-                (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
-              ),
-            }
+            ...prev,
+            historicoAborto: [...(prev.historicoAborto || []), newRecord].sort(
+              (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
+            ),
+          }
           : null
       );
       setAbortionDate('');

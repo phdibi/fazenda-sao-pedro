@@ -940,7 +940,7 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
                     date: animalData.dataNascimento || new Date(),
                     weightKg: animalData.pesoKg,
                     type: animalData.dataNascimento ? WeighingType.Birth : WeighingType.None
-                  }]
+                }]
                 : [];
 
             const fullAnimalData: Omit<Animal, 'id'> = {
@@ -1079,19 +1079,23 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
             throw new Error('Limite de escritas atingido. Tente novamente amanhã.');
         }
 
-        // Atualização otimista
-        dispatch({ type: 'LOCAL_UPDATE_ANIMAL', payload: { animalId, updatedData } });
+        // 🔧 FIX: Remove undefined values BEFORE optimistic update
+        // This prevents dataNascimento: undefined from overwriting existing birth date
+        const sanitizedData = removeUndefined(updatedData);
+
+        // Atualização otimista (usando dados já sanitizados)
+        dispatch({ type: 'LOCAL_UPDATE_ANIMAL', payload: { animalId, updatedData: sanitizedData } });
 
         let writeCount = 1; // Contador para rastrear escritas
 
         try {
             const batch = db.batch();
             const animalRef = db.collection('animals').doc(animalId);
-            const sanitizedData = removeUndefined(updatedData);
             const dataWithTimestamp = convertDatesToTimestamps(sanitizedData);
 
             // 🔧 OTIMIZAÇÃO: Adiciona updatedAt para suportar sync delta
             batch.update(animalRef, { ...dataWithTimestamp, updatedAt: new Date() });
+
 
             // ============================================
             // 🔧 PROPAGAR PESOS ESPECIAIS PARA PROGÊNIE DA MÃE
@@ -1712,10 +1716,12 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
             await animalRef.update({ ...dataWithTimestamp, updatedAt: new Date() });
 
             // Atualização otimista local
-            dispatch({ type: 'LOCAL_UPDATE_ANIMAL', payload: {
-                animalId: coverage.cowId,
-                updatedData: { historicoPrenhez: updatedHistoricoPrenhez }
-            }});
+            dispatch({
+                type: 'LOCAL_UPDATE_ANIMAL', payload: {
+                    animalId: coverage.cowId,
+                    updatedData: { historicoPrenhez: updatedHistoricoPrenhez }
+                }
+            });
 
             // Atualiza cache local
             const updatedAnimals = stateRef.current.animals.map((a: Animal) =>
@@ -1743,10 +1749,12 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
                     await donorRef.update({ ...donorDataWithTimestamp, updatedAt: new Date() });
 
                     // Atualização otimista local para doadora
-                    dispatch({ type: 'LOCAL_UPDATE_ANIMAL', payload: {
-                        animalId: coverage.donorCowId,
-                        updatedData: { historicoProgenie: updatedHistoricoProgenie }
-                    }});
+                    dispatch({
+                        type: 'LOCAL_UPDATE_ANIMAL', payload: {
+                            animalId: coverage.donorCowId,
+                            updatedData: { historicoProgenie: updatedHistoricoProgenie }
+                        }
+                    });
                 }
             }
         }
@@ -1803,10 +1811,12 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
                 await animalRef.update({ ...dataWithTimestamp, updatedAt: new Date() });
 
                 // Atualização otimista local
-                dispatch({ type: 'LOCAL_UPDATE_ANIMAL', payload: {
-                    animalId: coverage.cowId,
-                    updatedData: { historicoAborto: updatedHistoricoAborto }
-                }});
+                dispatch({
+                    type: 'LOCAL_UPDATE_ANIMAL', payload: {
+                        animalId: coverage.cowId,
+                        updatedData: { historicoAborto: updatedHistoricoAborto }
+                    }
+                });
 
                 // Atualiza cache local
                 const updatedAnimals = stateRef.current.animals.map((a: Animal) =>
