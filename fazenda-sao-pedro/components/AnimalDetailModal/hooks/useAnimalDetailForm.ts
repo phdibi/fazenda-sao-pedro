@@ -160,6 +160,13 @@ export const useAnimalDetailForm = ({
         pesoKg: isNaN(pesoKgValue) ? animal.pesoKg : pesoKgValue,
       };
 
+      // 🔧 FIX: Safeguard para evitar perda acidental da data de nascimento
+      // Se a data sumiu na edição, mas existia no original, restaura ela
+      if (!dataToSave.dataNascimento && animal.dataNascimento) {
+        console.warn('⚠️ [SAFETY] Restaurando data de nascimento perdida durante edição');
+        dataToSave.dataNascimento = animal.dataNascimento;
+      }
+
       const { id, ...finalChanges } = dataToSave as Animal;
       onUpdateAnimal(animal.id, finalChanges);
 
@@ -349,9 +356,16 @@ export const useAnimalDetailForm = ({
     e.preventDefault();
     const weightValue = parseFloat(newWeightData.weight);
     if (!isNaN(weightValue) && weightValue > 0) {
+      // 🔧 FIX: Se for peso de nascimento, usa a data de nascimento do animal
+      let weightDate = new Date();
+      // O hook precisa ter editableAnimal nas dependências para isso funcionar
+      if (newWeightData.type === WeighingType.Birth && editableAnimal?.dataNascimento) {
+        weightDate = new Date(editableAnimal.dataNascimento);
+      }
+
       const newEntry: WeightEntry = {
         id: `new-${Date.now()}`,
-        date: new Date(),
+        date: weightDate,
         weightKg: weightValue,
         type: newWeightData.type,
       };
@@ -367,7 +381,7 @@ export const useAnimalDetailForm = ({
 
       setNewWeightData({ weight: '', type: WeighingType.None });
     }
-  }, [newWeightData]);
+  }, [newWeightData, editableAnimal]);
 
   const handleDeleteWeight = useCallback((weightId: string) => {
     setEditableAnimal((prev) => {

@@ -6,9 +6,11 @@
 
 import React, { useState } from 'react';
 import { useBirthWeightMigration } from '../hooks/useBirthWeightMigration';
+import { useBirthDateRecovery } from '../hooks/useBirthDateRecovery';
 import Spinner from './common/Spinner';
 
 const DataMigrationPanel: React.FC = () => {
+  // Hook de migração de peso (existente)
   const {
     preview,
     status,
@@ -16,6 +18,9 @@ const DataMigrationPanel: React.FC = () => {
     hasPendingMigrations,
     eligibleCount,
   } = useBirthWeightMigration();
+
+  // Hook de recuperação de datas (novo)
+  const recovery = useBirthDateRecovery();
 
   const [showDetails, setShowDetails] = useState(false);
   const [confirmRun, setConfirmRun] = useState(false);
@@ -30,8 +35,11 @@ const DataMigrationPanel: React.FC = () => {
     setConfirmRun(false);
   };
 
-  // Não mostra nada se não há migrações pendentes e nunca foi executado
-  if (!hasPendingMigrations && !status.lastRun) {
+  const showRecovery = recovery.eligibleCount > 0;
+  const showMigration = hasPendingMigrations || !!status.lastRun;
+
+  // Não mostra nada se não há nada para fazer
+  if (!showMigration && !showRecovery) {
     return null;
   }
 
@@ -165,6 +173,28 @@ const DataMigrationPanel: React.FC = () => {
               )}
             </>
           ) : null}
+
+          {/* === SEÇÃO DE RECUPERAÇÃO DE DATAS === */}
+          {showRecovery && (
+            <div className="mt-6 pt-6 border-t border-white/10">
+              <h3 className="text-lg font-semibold text-blue-300 mb-2">
+                🆘 Recuperação de Dados
+              </h3>
+              <p className="text-sm text-blue-100/80">
+                Detectamos <strong>{recovery.eligibleCount} animais</strong> sem data de nascimento,
+                mas com registro de "Peso ao Nascimento". Podemos tentar restaurar a data original
+                usando a data da pesagem.
+              </p>
+
+              <button
+                onClick={recovery.runRecovery}
+                disabled={recovery.isRecovering}
+                className="mt-3 bg-blue-700 hover:bg-blue-600 disabled:opacity-50 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors"
+              >
+                {recovery.isRecovering ? <Spinner /> : '🔍 Tentar Recuperar Datas'}
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </div>
