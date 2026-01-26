@@ -7,6 +7,7 @@ import {
   getCullAnimals,
 } from '../services/depCalculator';
 import { useFarmData } from '../contexts/FarmContext';
+import { REFERENCE_PERIOD_DISPLAY, getReferencePeriodStats } from '../utils/referencePeriod';
 
 interface DEPReportProps {
   animals: Animal[];
@@ -152,6 +153,9 @@ const DEPReportComponent: React.FC<DEPReportProps> = ({ animals, onSelectAnimal,
   // Tenta usar métricas centralizadas do contexto
   const farmContext = useFarmData();
 
+  // Estatísticas do período de referência
+  const referencePeriodStats = useMemo(() => getReferencePeriodStats(animals), [animals]);
+
   // Usa DEPs pré-calculados se disponíveis (props > contexto > cálculo local)
   const allReports = useMemo(() => {
     // 1. Prioridade: DEPs passados via props
@@ -213,6 +217,23 @@ const DEPReportComponent: React.FC<DEPReportProps> = ({ animals, onSelectAnimal,
         <p className="text-sm text-gray-400">
           Diferença Esperada na Progênie • Seleção Genética
         </p>
+      </div>
+
+      {/* Banner do Período de Referência */}
+      <div className="bg-blue-900/20 border border-blue-700/50 rounded-lg p-3">
+        <div className="flex items-start gap-2">
+          <span className="text-blue-400 text-lg">📊</span>
+          <div>
+            <p className="text-sm font-medium text-blue-300">Período de Referência Ativo</p>
+            <p className="text-xs text-blue-200/80 mt-1">
+              DEPs calculados apenas com animais nascidos a partir de {REFERENCE_PERIOD_DISPLAY}.
+              Isso corrige o viés de seleção dos dados históricos.
+            </p>
+            <p className="text-xs text-blue-400 mt-1">
+              {referencePeriodStats.inPeriod} animais no período ({referencePeriodStats.excluded} excluídos)
+            </p>
+          </div>
+        </div>
       </div>
 
       {/* Resumo */}

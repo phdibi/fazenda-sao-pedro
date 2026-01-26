@@ -23,6 +23,12 @@ import {
   GainMetrics,
 } from '../types';
 import { calcularGMDAnimal } from '../utils/gmdCalculations';
+import {
+  isInReferencePeriod,
+  filterByReferencePeriod,
+  getReferencePeriodStats,
+  REFERENCE_PERIOD_DISPLAY,
+} from '../utils/referencePeriod';
 
 // ============================================
 // HELPERS
@@ -312,6 +318,9 @@ export interface KPICalculationResult {
     // NOVO: detalhes de prenhez por fonte
     pregnantFromBreedingSeason: number;
     pregnantFromManualRecord: number;
+    // NOVO: estatísticas do período de referência
+    animalsInReferencePeriod?: number;
+    animalsExcludedFromPeriod?: number;
   };
   warnings: string[];
   calculatedAt: Date;
@@ -325,6 +334,7 @@ export interface KPICalculationOptions {
 /**
  * Calcula todos os KPIs zootécnicos do rebanho
  * ATUALIZADO: Agora aceita breedingSeasons e GMD pré-calculado
+ * ATUALIZADO: Filtra animais pelo período de referência (2025+)
  */
 export const calculateZootechnicalKPIs = (
   animals: Animal[],
@@ -333,8 +343,15 @@ export const calculateZootechnicalKPIs = (
   const { breedingSeasons = [], preCalculatedGMD } = options;
   const warnings: string[] = [];
 
-  // Agregação em passagem única
-  const agg = aggregateAnimals(animals);
+  // Estatísticas do período de referência
+  const referencePeriodStats = getReferencePeriodStats(animals);
+  warnings.push(`Cálculos baseados em animais nascidos a partir de ${REFERENCE_PERIOD_DISPLAY}`);
+
+  // IMPORTANTE: Filtra animais pelo período de referência para corrigir viés de seleção
+  const animalsInPeriod = filterByReferencePeriod(animals);
+
+  // Agregação em passagem única (usando apenas animais do período)
+  const agg = aggregateAnimals(animalsInPeriod);
 
   // ============================================
   // 1. TAXA DE MORTALIDADE
@@ -392,7 +409,8 @@ export const calculateZootechnicalKPIs = (
   // ============================================
   const oneYearAgo = new Date();
   oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
-  const birthsLastYear = animals.filter(
+  // CORRIGIDO: Usa animalsInPeriod para manter consistência com o período de referência
+  const birthsLastYear = animalsInPeriod.filter(
     (a) => a.dataNascimento && new Date(a.dataNascimento) >= oneYearAgo
   );
   const birthRate = agg.breedingAgeFemales.length > 0
@@ -405,7 +423,8 @@ export const calculateZootechnicalKPIs = (
   const calvingIntervals: number[] = [];
 
   for (const cow of agg.females) {
-    const progeny = getUnifiedProgeny(cow, agg, animals);
+    // CORRIGIDO: Usa animalsInPeriod para manter consistência
+    const progeny = getUnifiedProgeny(cow, agg, animalsInPeriod);
 
     if (progeny.length >= 2) {
       const birthDates = progeny
@@ -464,7 +483,8 @@ export const calculateZootechnicalKPIs = (
   for (const cow of agg.females) {
     if (!cow.dataNascimento) continue;
 
-    const progeny = getUnifiedProgeny(cow, agg, animals);
+    // CORRIGIDO: Usa animalsInPeriod para manter consistência
+    const progeny = getUnifiedProgeny(cow, agg, animalsInPeriod);
     if (progeny.length === 0) continue;
 
     // Ordena progênie por data de nascimento
@@ -508,7 +528,7 @@ export const calculateZootechnicalKPIs = (
   return {
     kpis,
     details: {
-      totalAnimals: agg.totalAnimals,
+      totalAnimals: animals.length, // Total geral (sem filtro)
       totalFemales: agg.females.length,
       totalMales: agg.males.length,
       totalActive: agg.active.length,
@@ -520,6 +540,9 @@ export const calculateZootechnicalKPIs = (
       births: birthsLastYear.length,
       pregnantFromBreedingSeason,
       pregnantFromManualRecord,
+      // Estatísticas do período de referência
+      animalsInReferencePeriod: referencePeriodStats.inPeriod,
+      animalsExcludedFromPeriod: referencePeriodStats.excluded,
     },
     warnings,
     calculatedAt: new Date(),

@@ -32,13 +32,20 @@ export const convertTimestampsToDates = (data: any): any => {
  */
 export const convertDatesToTimestamps = (data: any): any => {
     if (!data) return data;
-    if (Array.isArray(data)) return data.map(item => convertDatesToTimestamps(item));
+    if (Array.isArray(data)) {
+        // 🔧 FIX: Filtra nulls de arrays para evitar itens vazios
+        return data
+            .map(item => convertDatesToTimestamps(item))
+            .filter(item => item !== null);
+    }
     // Verifica se Timestamp está disponível antes de usar
     if (data instanceof Date) {
         // 🔧 FIX: Skip Invalid Dates to prevent Firestore data corruption
+        // IMPORTANTE: Retorna null em vez de undefined para que o campo seja
+        // explicitamente removido pelo removeUndefined() ou preservado
         if (isNaN(data.getTime())) {
-            console.warn('⚠️ [DATE] Skipping Invalid Date in convertDatesToTimestamps');
-            return undefined;
+            console.warn('⚠️ [DATE] Skipping Invalid Date in convertDatesToTimestamps - this field will be excluded');
+            return null; // null será filtrado se necessário, undefined causava sobrescrita
         }
         if (Timestamp && typeof Timestamp.fromDate === 'function') {
             return Timestamp.fromDate(data);
@@ -49,7 +56,13 @@ export const convertDatesToTimestamps = (data: any): any => {
     if (typeof data === 'object' && data !== null) {
         const converted = { ...data };
         for (const key in converted) {
-            converted[key] = convertDatesToTimestamps(converted[key]);
+            const convertedValue = convertDatesToTimestamps(converted[key]);
+            // 🔧 FIX: Remove campos com null de objetos para não salvar nulls no Firestore
+            if (convertedValue === null) {
+                delete converted[key];
+            } else {
+                converted[key] = convertedValue;
+            }
         }
         return converted;
     }

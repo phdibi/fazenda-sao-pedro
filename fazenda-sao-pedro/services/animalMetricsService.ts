@@ -24,6 +24,12 @@ import {
   Raca,
 } from '../types';
 import { KPICalculationResult } from './kpiCalculator';
+import {
+  isInReferencePeriod,
+  filterByReferencePeriod,
+  getReferencePeriodStats,
+  REFERENCE_PERIOD_DISPLAY,
+} from '../utils/referencePeriod';
 
 // ============================================
 // TIPOS DE DADOS DERIVADOS
@@ -162,6 +168,9 @@ export class AnimalMetricsService {
   private depBaselines: HerdDEPBaseline[];
   private allGMDs: Map<string, number>;
   private allDEPs: Map<string, DEPReport>;
+  // Animais filtrados pelo período de referência (2025+) para cálculos
+  private animalsInReferencePeriod: Animal[];
+  private referencePeriodStats: { total: number; inPeriod: number; excluded: number; percentInPeriod: number };
 
   constructor(animals: Animal[], breedingSeasons: BreedingSeason[] = []) {
     this.animals = animals;
@@ -171,6 +180,9 @@ export class AnimalMetricsService {
     this.allDEPs = new Map();
     this.depBaselines = [];
     this.indices = this.buildIndices();
+    // Filtra animais pelo período de referência para cálculos de DEP e KPI
+    this.animalsInReferencePeriod = filterByReferencePeriod(animals);
+    this.referencePeriodStats = getReferencePeriodStats(animals);
   }
 
   // ============================================
@@ -616,18 +628,22 @@ export class AnimalMetricsService {
   private calculateHerdBaselines(): HerdDEPBaseline[] {
     const baselines: HerdDEPBaseline[] = [];
 
+    // IMPORTANTE: Usa apenas animais do período de referência (2025+) para baseline
+    // Isso corrige o viés de seleção dos dados históricos
     this.indices.byRaca.forEach((raceAnimals, raca) => {
-      if (raceAnimals.length === 0) return;
+      // Filtra animais da raça pelo período de referência
+      const raceAnimalsInPeriod = raceAnimals.filter(isInReferencePeriod);
+      if (raceAnimalsInPeriod.length === 0) return;
 
-      const birthWeights = raceAnimals
+      const birthWeights = raceAnimalsInPeriod
         .map(a => getWeightByType(a, WeighingType.Birth))
         .filter((w): w is number => w !== null && w > 0);
 
-      const weaningWeights = raceAnimals
+      const weaningWeights = raceAnimalsInPeriod
         .map(a => getWeightByType(a, WeighingType.Weaning))
         .filter((w): w is number => w !== null && w > 0);
 
-      const yearlingWeights = raceAnimals
+      const yearlingWeights = raceAnimalsInPeriod
         .map(a => getWeightByType(a, WeighingType.Yearling))
         .filter((w): w is number => w !== null && w > 0);
 
@@ -646,13 +662,16 @@ export class AnimalMetricsService {
   }
 
   private calculateDEP(animal: Animal, baseline: HerdDEPBaseline): DEPReport {
-    // Dados do próprio animal
-    const ownBirthWeight = getWeightByType(animal, WeighingType.Birth);
-    const ownWeaningWeight = getWeightByType(animal, WeighingType.Weaning);
-    const ownYearlingWeight = getWeightByType(animal, WeighingType.Yearling);
+    // Dados do próprio animal (somente se nasceu no período de referência)
+    const animalInPeriod = isInReferencePeriod(animal);
+    const ownBirthWeight = animalInPeriod ? getWeightByType(animal, WeighingType.Birth) : null;
+    const ownWeaningWeight = animalInPeriod ? getWeightByType(animal, WeighingType.Weaning) : null;
+    const ownYearlingWeight = animalInPeriod ? getWeightByType(animal, WeighingType.Yearling) : null;
 
     // Dados de progênie (USANDO FUNÇÃO UNIFICADA)
-    const progeny = this.getUnifiedProgeny(animal);
+    // IMPORTANTE: Filtra progênie pelo período de referência para cálculo de DEP
+    const allProgeny = this.getUnifiedProgeny(animal);
+    const progeny = allProgeny.filter(isInReferencePeriod);
 
     const progenyBirthWeights = progeny
       .map(p => getWeightByType(p, WeighingType.Birth))
@@ -666,8 +685,9 @@ export class AnimalMetricsService {
       .map(p => getWeightByType(p, WeighingType.Yearling))
       .filter((w): w is number => w !== null && w > 0);
 
-    // Dados de irmãos (USANDO FUNÇÃO OTIMIZADA)
-    const siblings = this.getSiblings(animal);
+    // Dados de irmãos (USANDO FUNÇÃO OTIMIZADA - também filtrados)
+    const allSiblings = this.getSiblings(animal);
+    const siblings = allSiblings.filter(isInReferencePeriod);
 
     // Contagem de registros
     const dataSource = {
@@ -808,24 +828,31 @@ export class AnimalMetricsService {
     }
 
     // 3. Segunda passagem: calcula rankings e dados derivados completos
-    const gmdArray = Array.from(this.allGMDs.values()).filter(g => g > 0);
+    // IMPORTANTE: Rankings de GMD também usam apenas animais do período de referência
+    const gmdArray = this.animalsInReferencePeriod
+      .map(a => this.allGMDs.get(a.id) || 0)
+      .filter(g => g > 0);
     const gmdByRaca = new Map<Raca, number[]>();
 
     this.indices.byRaca.forEach((animals, raca) => {
-      const gmds = animals
+      // Filtra pelo período de referência para manter consistência
+      const animalsInPeriod = animals.filter(isInReferencePeriod);
+      const gmds = animalsInPeriod
         .map(a => this.allGMDs.get(a.id) || 0)
         .filter(g => g > 0);
       gmdByRaca.set(raca, gmds);
     });
 
-    // Calcula percentis de DEP por raça
+    // Calcula percentis de DEP por raça (APENAS animais do período de referência)
     const depWeaningByRaca = new Map<Raca, number[]>();
     const depYearlingByRaca = new Map<Raca, number[]>();
 
     this.indices.byRaca.forEach((animals, raca) => {
-      const weaningDeps = animals
+      // IMPORTANTE: Filtra pelo período de referência para manter consistência
+      const animalsInPeriod = animals.filter(isInReferencePeriod);
+      const weaningDeps = animalsInPeriod
         .map(a => this.allDEPs.get(a.id)?.dep.weaningWeight || 0);
-      const yearlingDeps = animals
+      const yearlingDeps = animalsInPeriod
         .map(a => this.allDEPs.get(a.id)?.dep.yearlingWeight || 0);
       depWeaningByRaca.set(raca, weaningDeps);
       depYearlingByRaca.set(raca, yearlingDeps);
@@ -950,14 +977,24 @@ export class AnimalMetricsService {
   // ============================================
 
   public calculateKPIs(): KPICalculationResult {
-    const activeAnimals = this.indices.byStatus.get(AnimalStatus.Ativo) || [];
-    const deadAnimals = this.indices.byStatus.get(AnimalStatus.Obito) || [];
-    const soldAnimals = this.indices.byStatus.get(AnimalStatus.Vendido) || [];
-    const females = this.indices.bySexo.get(Sexo.Femea) || [];
-    const males = this.indices.bySexo.get(Sexo.Macho) || [];
+    // IMPORTANTE: Filtra todos os grupos pelo período de referência (2025+)
+    // para corrigir viés de seleção dos dados históricos
+    const allActiveAnimals = this.indices.byStatus.get(AnimalStatus.Ativo) || [];
+    const allDeadAnimals = this.indices.byStatus.get(AnimalStatus.Obito) || [];
+    const allSoldAnimals = this.indices.byStatus.get(AnimalStatus.Vendido) || [];
+    const allFemales = this.indices.bySexo.get(Sexo.Femea) || [];
+    const allMales = this.indices.bySexo.get(Sexo.Macho) || [];
+
+    // Filtrar pelo período de referência
+    const activeAnimals = allActiveAnimals.filter(isInReferencePeriod);
+    const deadAnimals = allDeadAnimals.filter(isInReferencePeriod);
+    const soldAnimals = allSoldAnimals.filter(isInReferencePeriod);
+    const females = allFemales.filter(isInReferencePeriod);
+    const males = allMales.filter(isInReferencePeriod);
     const activeFemales = females.filter(f => f.status === AnimalStatus.Ativo);
 
     const warnings: string[] = [];
+    warnings.push(`Cálculos baseados em animais nascidos a partir de ${REFERENCE_PERIOD_DISPLAY}`);
 
     // Vacas em idade reprodutiva (>= 18 meses)
     const breedingAgeFemales = activeFemales.filter(a => {
@@ -965,21 +1002,22 @@ export class AnimalMetricsService {
       return derived && derived.ageMonths >= 18;
     });
 
-    // Taxa de mortalidade
-    const mortalityRate = this.animals.length > 0
-      ? (deadAnimals.length / this.animals.length) * 100
+    // Taxa de mortalidade (baseada apenas em animais do período de referência)
+    const animalsInPeriodTotal = this.animalsInReferencePeriod.length;
+    const mortalityRate = animalsInPeriodTotal > 0
+      ? (deadAnimals.length / animalsInPeriodTotal) * 100
       : 0;
 
-    // Pesos médios
-    const birthWeights = this.animals
+    // Pesos médios (apenas animais do período de referência)
+    const birthWeights = this.animalsInReferencePeriod
       .map(a => getWeightByType(a, WeighingType.Birth))
       .filter((w): w is number => w !== null && w > 0);
 
-    const weaningWeights = this.animals
+    const weaningWeights = this.animalsInReferencePeriod
       .map(a => getWeightByType(a, WeighingType.Weaning))
       .filter((w): w is number => w !== null && w > 0);
 
-    const yearlingWeights = this.animals
+    const yearlingWeights = this.animalsInReferencePeriod
       .map(a => getWeightByType(a, WeighingType.Yearling))
       .filter((w): w is number => w !== null && w > 0);
 
@@ -994,8 +1032,8 @@ export class AnimalMetricsService {
       warnings.push('Poucos registros de peso ao desmame para cálculo preciso');
     }
 
-    // Taxa de desmame
-    const weanedCalves = this.animals.filter(a => getWeightByType(a, WeighingType.Weaning) !== null);
+    // Taxa de desmame (apenas animais do período de referência)
+    const weanedCalves = this.animalsInReferencePeriod.filter(a => getWeightByType(a, WeighingType.Weaning) !== null);
     const weaningRate = breedingAgeFemales.length > 0
       ? (weanedCalves.length / breedingAgeFemales.length) * 100
       : 0;
@@ -1021,10 +1059,10 @@ export class AnimalMetricsService {
       ? (pregnantCows.length / breedingAgeFemales.length) * 100
       : 0;
 
-    // Taxa de natalidade
+    // Taxa de natalidade (apenas animais do período de referência)
     const oneYearAgo = new Date();
     oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
-    const birthsLastYear = this.animals.filter(a =>
+    const birthsLastYear = this.animalsInReferencePeriod.filter(a =>
       a.dataNascimento && new Date(a.dataNascimento) >= oneYearAgo
     );
     const birthRate = breedingAgeFemales.length > 0
@@ -1097,6 +1135,9 @@ export class AnimalMetricsService {
         births: birthsLastYear.length,
         pregnantFromBreedingSeason,
         pregnantFromManualRecord,
+        // Estatísticas do período de referência
+        animalsInReferencePeriod: this.referencePeriodStats.inPeriod,
+        animalsExcludedFromPeriod: this.referencePeriodStats.excluded,
       },
       warnings,
       calculatedAt: new Date(),

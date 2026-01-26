@@ -35,7 +35,8 @@ const DataMigrationPanel: React.FC = () => {
     setConfirmRun(false);
   };
 
-  const showRecovery = recovery.eligibleCount > 0;
+  // Mostra recuperação se há animais sem data de nascimento
+  const showRecovery = recovery.totalMissingDates > 0;
   const showMigration = hasPendingMigrations || !!status.lastRun;
 
   // Não mostra nada se não há nada para fazer
@@ -178,13 +179,23 @@ const DataMigrationPanel: React.FC = () => {
           {showRecovery && (
             <div className="mt-6 pt-6 border-t border-white/10">
               <h3 className="text-lg font-semibold text-blue-300 mb-2">
-                🆘 Recuperação de Dados
+                🆘 Recuperação de Datas de Nascimento
               </h3>
               <p className="text-sm text-blue-100/80">
-                Detectamos <strong>{recovery.eligibleCount} animais</strong> sem data de nascimento,
-                mas com registro de "Peso ao Nascimento". Podemos tentar restaurar a data original
-                usando a data da pesagem.
+                Detectamos <strong>{recovery.totalMissingDates} animais</strong> sem data de nascimento.
+                {recovery.eligibleCount > 0 ? (
+                  <> Destes, <strong>{recovery.eligibleCount}</strong> têm dados que podem ser usados
+                  para recuperação automática (peso ao nascimento ou peso antigo na faixa típica).</>
+                ) : (
+                  <> Infelizmente nenhum tem dados suficientes para recuperação automática.</>
+                )}
               </p>
+
+              {recovery.stats && (
+                <div className="mt-2 p-2 bg-blue-900/30 rounded text-xs text-blue-200">
+                  <p>Última execução: {recovery.stats.recovered} recuperados, {recovery.stats.skippedSuspicious} ignorados</p>
+                </div>
+              )}
 
               <button
                 onClick={recovery.runRecovery}

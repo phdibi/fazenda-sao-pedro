@@ -8,20 +8,31 @@ import {
   WeighingType
 } from '../types';
 import { calcularGMDAnimal, calcularIdadeMeses } from './gmdCalculations';
+import { filterByReferencePeriod, isInReferencePeriod } from './referencePeriod';
 
 // ============================================
 // 📊 COMPARATIVO DE PERFORMANCE
 // ============================================
 
 /**
- * Gera comparativo de performance de todos os animais
+ * Gera comparativo de performance de animais
+ * @param animals Lista de animais a comparar
+ * @param skipPeriodFilter Se true, não aplica filtro de período (usado internamente quando já filtrado)
+ * ATUALIZADO: Filtra animais pelo período de referência (2025+)
  */
-export const generatePerformanceComparison = (animals: Animal[]): PerformanceComparison[] => {
-  const comparisons = animals
+export const generatePerformanceComparison = (
+  animals: Animal[],
+  skipPeriodFilter: boolean = false
+): PerformanceComparison[] => {
+  // IMPORTANTE: Filtra pelo período de referência para corrigir viés de seleção
+  // (pode ser pulado se já foi filtrado externamente)
+  const animalsToProcess = skipPeriodFilter ? animals : filterByReferencePeriod(animals);
+
+  const comparisons = animalsToProcess
     .map(animal => {
       const gmd = calcularGMDAnimal(animal);
       const idade = calcularIdadeMeses(animal.dataNascimento);
-      
+
       return {
         animalId: animal.id,
         brinco: animal.brinco,
@@ -63,12 +74,16 @@ export const generatePerformanceComparison = (animals: Animal[]): PerformanceCom
 
 /**
  * Compara filhos do mesmo touro
+ * ATUALIZADO: Filtra progênie pelo período de referência (2025+)
  */
 export const compareBullProgeny = (animals: Animal[]): BullProgenyComparison[] => {
   const bullMap = new Map<string, Animal[]>();
 
-  // Agrupa animais por pai
-  animals.forEach(animal => {
+  // IMPORTANTE: Filtra pelo período de referência para corrigir viés de seleção
+  const animalsInPeriod = filterByReferencePeriod(animals);
+
+  // Agrupa animais por pai (apenas filhos do período de referência)
+  animalsInPeriod.forEach(animal => {
     if (animal.paiNome) {
       const key = animal.paiNome.toUpperCase().trim();
       if (!bullMap.has(key)) bullMap.set(key, []);
@@ -119,13 +134,17 @@ export const compareBullProgeny = (animals: Animal[]): BullProgenyComparison[] =
 
 /**
  * Gera benchmark por raça
+ * ATUALIZADO: Filtra animais pelo período de referência (2025+)
  */
 export const generateRaceBenchmarks = (animals: Animal[]): RaceBenchmark[] => {
   const racaMap = new Map<Raca, Animal[]>();
 
-  // Agrupa por raça
+  // IMPORTANTE: Filtra pelo período de referência para corrigir viés de seleção
+  const animalsInPeriod = filterByReferencePeriod(animals);
+
+  // Agrupa por raça (apenas animais do período de referência)
   Object.values(Raca).forEach(raca => racaMap.set(raca, []));
-  animals.forEach(animal => {
+  animalsInPeriod.forEach(animal => {
     racaMap.get(animal.raca)?.push(animal);
   });
 
@@ -134,7 +153,8 @@ export const generateRaceBenchmarks = (animals: Animal[]): RaceBenchmark[] => {
   racaMap.forEach((group, raca) => {
     if (group.length === 0) return;
 
-    const performances = generatePerformanceComparison(group);
+    // skipPeriodFilter=true pois group já está filtrado pelo período
+    const performances = generatePerformanceComparison(group, true);
     const weights = group.map(a => a.pesoKg);
     const ages = group.map(a => calcularIdadeMeses(a.dataNascimento)).filter(a => a > 0);
     const gmds = performances.map(p => p.gmd).filter(g => g > 0);
@@ -205,12 +225,16 @@ export const compareAnimals = (
 
 /**
  * Identifica animais com performance abaixo da média
+ * ATUALIZADO: Filtra animais pelo período de referência (2025+)
  */
 export const identifyUnderperformers = (
   animals: Animal[],
   threshold: number = 0.7 // 70% da média
 ): Animal[] => {
-  const gmds = animals
+  // IMPORTANTE: Filtra pelo período de referência para corrigir viés de seleção
+  const animalsInPeriod = filterByReferencePeriod(animals);
+
+  const gmds = animalsInPeriod
     .map(a => ({ animal: a, gmd: calcularGMDAnimal(a).gmdTotal || 0 }))
     .filter(item => item.gmd > 0);
 
@@ -226,12 +250,16 @@ export const identifyUnderperformers = (
 
 /**
  * Identifica top performers
+ * ATUALIZADO: Filtra animais pelo período de referência (2025+)
  */
 export const identifyTopPerformers = (
   animals: Animal[],
   count: number = 10
 ): Array<Animal & { gmd: number; ranking: number }> => {
-  return animals
+  // IMPORTANTE: Filtra pelo período de referência para corrigir viés de seleção
+  const animalsInPeriod = filterByReferencePeriod(animals);
+
+  return animalsInPeriod
     .map(animal => ({
       ...animal,
       gmd: calcularGMDAnimal(animal).gmdTotal || 0,

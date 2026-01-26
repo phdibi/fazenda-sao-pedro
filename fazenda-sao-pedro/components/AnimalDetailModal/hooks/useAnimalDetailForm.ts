@@ -160,15 +160,24 @@ export const useAnimalDetailForm = ({
         pesoKg: isNaN(pesoKgValue) ? animal.pesoKg : pesoKgValue,
       };
 
-      // 🔧 FIX: Safeguard para evitar perda acidental da data de nascimento
-      // Se a data sumiu na edição, mas existia no original, restaura ela
-      // E se é undefined, REMOVE do payload para não sobrescrever na atualização otimista
-      if (!dataToSave.dataNascimento && animal.dataNascimento) {
-        console.warn('⚠️ [SAFETY] Restaurando data de nascimento perdida durante edição');
+      // 🔧 FIX: Safeguard robusto para evitar perda da data de nascimento
+      // Verifica se a data é válida (não é undefined, null, ou Invalid Date)
+      const isValidDate = (d: any): boolean => {
+        if (!d) return false;
+        const date = d instanceof Date ? d : new Date(d);
+        return !isNaN(date.getTime());
+      };
+
+      const editableHasValidDate = isValidDate(dataToSave.dataNascimento);
+      const originalHasValidDate = isValidDate(animal.dataNascimento);
+
+      if (!editableHasValidDate && originalHasValidDate) {
+        // Se a data sumiu ou ficou inválida na edição, mas existia no original, restaura ela
+        console.warn('⚠️ [SAFETY] Restaurando data de nascimento perdida/inválida durante edição');
         dataToSave.dataNascimento = animal.dataNascimento;
-      } else if (dataToSave.dataNascimento === undefined) {
-        // Se dataNascimento é explicitamente undefined, remove do payload
-        // para que a atualização otimista não sobrescreva o valor existente
+      } else if (!editableHasValidDate) {
+        // Se não há data válida em nenhum lugar, remove do payload
+        // para evitar sobrescrever com undefined/Invalid Date
         delete (dataToSave as any).dataNascimento;
       }
 

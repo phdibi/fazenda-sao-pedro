@@ -20,6 +20,7 @@ import {
   DEPValues,
   HerdDEPBaseline,
 } from '../types';
+import { isInReferencePeriod, filterByReferencePeriod } from '../utils/referencePeriod';
 
 // ============================================
 // CONFIGURAÇÃO
@@ -303,21 +304,26 @@ const getSiblings = (animal: Animal, indices: DEPIndices): Animal[] => {
 /**
  * Calcula médias e desvios padrão do rebanho por raça
  * OTIMIZADO: Usa índices pré-computados
+ * ATUALIZADO: Filtra animais pelo período de referência (2025+)
  */
 export const calculateHerdBaseline = (animals: Animal[], indices?: DEPIndices): HerdDEPBaseline[] => {
   const idx = indices || buildIndices(animals);
   const baselines: HerdDEPBaseline[] = [];
 
   idx.byRaca.forEach((raceAnimals, raca) => {
-    const birthWeights = raceAnimals
+    // IMPORTANTE: Filtra pelo período de referência para corrigir viés de seleção
+    const raceAnimalsInPeriod = raceAnimals.filter(isInReferencePeriod);
+    if (raceAnimalsInPeriod.length === 0) return;
+
+    const birthWeights = raceAnimalsInPeriod
       .map((a) => getWeightByType(a, WeighingType.Birth))
       .filter((w): w is number => w !== null && w > 0);
 
-    const weaningWeights = raceAnimals
+    const weaningWeights = raceAnimalsInPeriod
       .map((a) => getWeightByType(a, WeighingType.Weaning))
       .filter((w): w is number => w !== null && w > 0);
 
-    const yearlingWeights = raceAnimals
+    const yearlingWeights = raceAnimalsInPeriod
       .map((a) => getWeightByType(a, WeighingType.Yearling))
       .filter((w): w is number => w !== null && w > 0);
 
@@ -348,19 +354,23 @@ interface DEPCalculationInput {
 /**
  * Calcula DEP para um animal específico
  * OTIMIZADO: Usa progênie unificada e índices (byPaiId/byMaeId)
+ * ATUALIZADO: Filtra progênie pelo período de referência (2025+)
  */
 export const calculateAnimalDEP = ({
   animal,
   baseline,
   indices,
 }: DEPCalculationInput): DEPReport => {
-  // Coleta dados do próprio animal (usa WeighingType enum)
-  const ownBirthWeight = getWeightByType(animal, WeighingType.Birth);
-  const ownWeaningWeight = getWeightByType(animal, WeighingType.Weaning);
-  const ownYearlingWeight = getWeightByType(animal, WeighingType.Yearling);
+  // Coleta dados do próprio animal (somente se nasceu no período de referência)
+  const animalInPeriod = isInReferencePeriod(animal);
+  const ownBirthWeight = animalInPeriod ? getWeightByType(animal, WeighingType.Birth) : null;
+  const ownWeaningWeight = animalInPeriod ? getWeightByType(animal, WeighingType.Weaning) : null;
+  const ownYearlingWeight = animalInPeriod ? getWeightByType(animal, WeighingType.Yearling) : null;
 
   // Coleta dados de progênie (USANDO FUNÇÃO UNIFICADA)
-  const progeny = getUnifiedProgeny(animal, indices);
+  // IMPORTANTE: Filtra progênie pelo período de referência
+  const allProgeny = getUnifiedProgeny(animal, indices);
+  const progeny = allProgeny.filter(isInReferencePeriod);
 
   const progenyBirthWeights = progeny
     .map((p) => getWeightByType(p, WeighingType.Birth))
@@ -374,8 +384,9 @@ export const calculateAnimalDEP = ({
     .map((p) => getWeightByType(p, WeighingType.Yearling))
     .filter((w): w is number => w !== null && w > 0);
 
-  // Coleta dados de irmãos (USANDO ÍNDICES + paiId/maeId)
-  const siblings = getSiblings(animal, indices);
+  // Coleta dados de irmãos (USANDO ÍNDICES + paiId/maeId) - também filtrados
+  const allSiblings = getSiblings(animal, indices);
+  const siblings = allSiblings.filter(isInReferencePeriod);
 
   // Contagem de registros para acurácia
   const dataSource = {
@@ -469,7 +480,9 @@ export const calculateAnimalDEP = ({
   // CÁLCULO DOS PERCENTIS (USANDO ÍNDICES)
   // ============================================
 
-  const raceAnimals = indices.byRaca.get(animal.raca || Raca.Outros) || [];
+  // IMPORTANTE: Filtra pelo período de referência para percentis
+  const allRaceAnimals = indices.byRaca.get(animal.raca || Raca.Outros) || [];
+  const raceAnimals = allRaceAnimals.filter(isInReferencePeriod);
 
   const allBirthDEPs = raceAnimals.map((a) => {
     const w = getWeightByType(a, WeighingType.Birth);
