@@ -4,24 +4,41 @@
  */
 
 /**
- * Remove recursivamente campos undefined de um objeto
- * Firebase não aceita valores undefined
+ * Verifica se um valor é uma Date inválida
+ */
+const isInvalidDate = (value: any): boolean => {
+    return value instanceof Date && isNaN(value.getTime());
+};
+
+/**
+ * Remove recursivamente campos undefined e datas inválidas de um objeto
+ * Firebase não aceita valores undefined, e datas inválidas causam problemas
  */
 export const removeUndefined = (obj: any): any => {
     if (obj === null || typeof obj !== 'object') return obj;
-    
+
+    // Não processa Dates válidas
+    if (obj instanceof Date) {
+        return isInvalidDate(obj) ? undefined : obj;
+    }
+
     if (Array.isArray(obj)) {
         return obj
             .map(item => removeUndefined(item))
             .filter(item => item !== undefined);
     }
-    
+
     const newObj: any = {};
     for (const key in obj) {
         if (Object.prototype.hasOwnProperty.call(obj, key)) {
             const value = obj[key];
-            if (value !== undefined) {
-                newObj[key] = removeUndefined(value);
+            // Remove undefined E datas inválidas
+            if (value !== undefined && !isInvalidDate(value)) {
+                const processed = removeUndefined(value);
+                // Só adiciona se o valor processado não for undefined
+                if (processed !== undefined) {
+                    newObj[key] = processed;
+                }
             }
         }
     }

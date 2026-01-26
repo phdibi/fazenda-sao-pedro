@@ -1079,9 +1079,25 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
             throw new Error('Limite de escritas atingido. Tente novamente amanhã.');
         }
 
-        // 🔧 FIX: Remove undefined values BEFORE optimistic update
-        // This prevents dataNascimento: undefined from overwriting existing birth date
+        // 🔧 FIX: Remove undefined values AND invalid dates BEFORE optimistic update
+        // This prevents dataNascimento: undefined/Invalid from overwriting existing birth date
         const sanitizedData = removeUndefined(updatedData);
+
+        // 🔧 FIX EXTRA: Preservar dataNascimento do animal original se a nova for inválida
+        const currentAnimal = stateRef.current.animals.find((a: Animal) => a.id === animalId);
+        if (currentAnimal) {
+            const isValidDate = (d: any): boolean => {
+                if (!d) return false;
+                const date = d instanceof Date ? d : new Date(d);
+                return !isNaN(date.getTime());
+            };
+
+            // Se o dado sanitizado não tem dataNascimento válida mas o animal original tem, preserva
+            if (!isValidDate(sanitizedData.dataNascimento) && isValidDate(currentAnimal.dataNascimento)) {
+                console.warn('⚠️ [UPDATE_ANIMAL] Preservando dataNascimento original - nova data é inválida');
+                delete sanitizedData.dataNascimento; // Remove para não sobrescrever
+            }
+        }
 
         // Atualização otimista (usando dados já sanitizados)
         dispatch({ type: 'LOCAL_UPDATE_ANIMAL', payload: { animalId, updatedData: sanitizedData } });

@@ -155,19 +155,30 @@ export const useAnimalDetailForm = ({
       setSaveError(null);
 
       const pesoKgValue = parseFloat(editableAnimal.pesoKg);
-      const dataToSave: Partial<Animal> = {
-        ...editableAnimal,
-        pesoKg: isNaN(pesoKgValue) ? animal.pesoKg : pesoKgValue,
-      };
 
-      // 🔧 FIX: Safeguard robusto para evitar perda da data de nascimento
-      // Verifica se a data é válida (não é undefined, null, ou Invalid Date)
+      // 🔧 FIX: Helper para verificar se uma data é válida
       const isValidDate = (d: any): boolean => {
         if (!d) return false;
         const date = d instanceof Date ? d : new Date(d);
         return !isNaN(date.getTime());
       };
 
+      // 🔧 FIX: Garantir que historicoPesagens tenha apenas datas válidas
+      const cleanedHistoricoPesagens = editableAnimal.historicoPesagens.filter(entry => {
+        const isValid = isValidDate(entry.date);
+        if (!isValid) {
+          console.warn(`⚠️ [SAFETY] Removendo pesagem com data inválida: ${entry.id}`);
+        }
+        return isValid;
+      });
+
+      const dataToSave: Partial<Animal> = {
+        ...editableAnimal,
+        pesoKg: isNaN(pesoKgValue) ? animal.pesoKg : pesoKgValue,
+        historicoPesagens: cleanedHistoricoPesagens,
+      };
+
+      // 🔧 FIX: Safeguard robusto para evitar perda da data de nascimento
       const editableHasValidDate = isValidDate(dataToSave.dataNascimento);
       const originalHasValidDate = isValidDate(animal.dataNascimento);
 
@@ -180,6 +191,16 @@ export const useAnimalDetailForm = ({
         // para evitar sobrescrever com undefined/Invalid Date
         delete (dataToSave as any).dataNascimento;
       }
+
+      // 🔧 DEBUG: Log para verificar o que está sendo salvo
+      console.log('📝 [SAVE] Salvando animal:', {
+        id: animal.id,
+        brinco: animal.brinco,
+        dataNascimentoOriginal: animal.dataNascimento,
+        dataNascimentoEditavel: editableAnimal.dataNascimento,
+        dataNascimentoFinal: dataToSave.dataNascimento,
+        pesagensCount: cleanedHistoricoPesagens.length,
+      });
 
       const { id, ...finalChanges } = dataToSave as Animal;
       onUpdateAnimal(animal.id, finalChanges);
