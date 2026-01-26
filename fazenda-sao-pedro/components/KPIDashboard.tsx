@@ -7,10 +7,8 @@ import {
   KPIStatus,
 } from '../services/kpiCalculator';
 import { useFarmData } from '../contexts/FarmContext';
-import DataMigrationPanel from './DataMigrationPanel';
 import FIVMigrationModal from './FIVMigrationModal';
 import { WrenchScrewdriverIcon } from './common/Icons';
-import { REFERENCE_PERIOD_DISPLAY } from '../utils/referencePeriod';
 
 interface KPIDashboardProps {
   animals: Animal[];
@@ -277,28 +275,6 @@ const KPIDashboard: React.FC<KPIDashboardProps> = ({ animals, preCalculatedKPIs,
 
   return (
     <div className="space-y-6">
-      {/* Painel de Migração de Dados - aparece se houver dados inconsistentes */}
-      <DataMigrationPanel />
-
-      {/* Banner do Período de Referência */}
-      <div className="bg-blue-900/20 border border-blue-700/50 rounded-lg p-3">
-        <div className="flex items-start gap-2">
-          <span className="text-blue-400 text-lg">📊</span>
-          <div>
-            <p className="text-sm font-medium text-blue-300">Período de Referência Ativo</p>
-            <p className="text-xs text-blue-200/80 mt-1">
-              KPIs calculados apenas com animais nascidos a partir de {REFERENCE_PERIOD_DISPLAY}.
-              Isso corrige o viés de seleção dos dados históricos.
-            </p>
-            {result.details.animalsInReferencePeriod !== undefined && (
-              <p className="text-xs text-blue-400 mt-1">
-                {result.details.animalsInReferencePeriod} animais no período ({result.details.animalsExcludedFromPeriod} excluídos)
-              </p>
-            )}
-          </div>
-        </div>
-      </div>
-
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>

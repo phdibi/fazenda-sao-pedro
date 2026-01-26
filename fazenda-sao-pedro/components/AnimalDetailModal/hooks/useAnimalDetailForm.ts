@@ -225,7 +225,22 @@ export const useAnimalDetailForm = ({
     const { name, value } = e.target;
     if (name === 'dataNascimento') {
       if (value) {
-        setEditableAnimal((prev) => (prev ? { ...prev, [name]: new Date(value + 'T00:00:00') } : null));
+        const newDate = new Date(value + 'T00:00:00');
+        setEditableAnimal((prev) => {
+          if (!prev) return null;
+          // 🔧 FIX: Atualiza também a data do peso de nascimento se existir
+          const updatedHistorico = prev.historicoPesagens.map(entry => {
+            if (entry.type === WeighingType.Birth) {
+              return { ...entry, date: newDate };
+            }
+            return entry;
+          });
+          return {
+            ...prev,
+            dataNascimento: newDate,
+            historicoPesagens: updatedHistorico,
+          };
+        });
       } else {
         setEditableAnimal((prev) => (prev ? { ...prev, dataNascimento: undefined } : null));
       }
