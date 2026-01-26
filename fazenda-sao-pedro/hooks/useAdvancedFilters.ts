@@ -145,6 +145,20 @@ export const useAdvancedFilters = ({
   }, [animals, preCalculatedMetrics]);
 
   const filteredAnimals = useMemo(() => {
+    // DEBUG: Verificar se animal I88 está presente antes do filtro
+    const i88Before = animalsWithCachedGMD.find(a => a.brinco.toUpperCase() === 'I88');
+    if (i88Before) {
+      console.log('🔍 [DEBUG] I88 ANTES do filtro:', {
+        id: i88Before.id,
+        brinco: i88Before.brinco,
+        status: i88Before.status,
+        dataNascimento: i88Before.dataNascimento,
+        idade: i88Before.dataNascimento ? getAgeInMonths(i88Before.dataNascimento) : 'sem data',
+      });
+    } else {
+      console.warn('⚠️ [DEBUG] I88 NÃO ENCONTRADO em animalsWithCachedGMD!');
+    }
+
     let result = animalsWithCachedGMD.filter(animal => {
       // Busca avançada com operadores booleanos
       if (debouncedSearch) {
@@ -256,6 +270,14 @@ export const useAdvancedFilters = ({
 
       return true;
     });
+
+    // DEBUG: Verificar se animal I88 passou no filtro
+    const i88After = result.find(a => a.brinco.toUpperCase() === 'I88');
+    if (i88After) {
+      console.log('✅ [DEBUG] I88 PASSOU no filtro, está no array filteredAnimals');
+    } else {
+      console.warn('❌ [DEBUG] I88 foi FILTRADO! Verificar qual condição o excluiu');
+    }
 
     result.sort((a, b) => {
       const { field, direction } = filters.sortConfig;
