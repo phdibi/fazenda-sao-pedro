@@ -1,9 +1,11 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, lazy, Suspense } from 'react';
 import Spinner from './common/Spinner';
 import { PhotoIcon, CheckIcon, TrashIcon } from './common/Icons';
 import { firebaseServices } from '../services/firebase';
-import { prepareImageForUpload, getOptimalFormat } from '../utils/imageOptimization';
 import { isValidFirebaseStorageUrl } from '../services/storageService';
+
+// Lazy load do editor de crop para não carregar código desnecessário
+const ImageCropEditor = lazy(() => import('./ImageCropEditor'));
 
 interface ImageAnalyzerProps {
     imageUrl: string;
@@ -39,6 +41,10 @@ const ImageAnalyzerOptimized = ({
     const [error, setError] = useState<UploadError | null>(null);
     const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
     const [deleteResult, setDeleteResult] = useState<{ freedSpace?: number } | null>(null);
+
+    // Estado para o editor de crop
+    const [showCropEditor, setShowCropEditor] = useState(false);
+    const [selectedFile, setSelectedFile] = useState<File | null>(null);
 
     const uploadTaskRef = useRef<any | null>(null);
     const uploadTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -97,51 +103,97 @@ const ImageAnalyzerOptimized = ({
             return;
         }
 
+        // Abre o editor de crop com o arquivo selecionado
+        setSelectedFile(file);
+        setShowCropEditor(true);
+
+        // Limpa o input para permitir selecionar o mesmo arquivo novamente
+        event.target.value = '';
+    };
+
+    const handleCropComplete = async (croppedBlob: Blob) => {
+        setShowCropEditor(false);
+        setSelectedFile(null);
+
         setError(null);
         setUploadProgress(0);
         setCompressionSavings('');
 
         // Preview local imediato
-        const localPreviewUrl = URL.createObjectURL(file);
+        const localPreviewUrl = URL.createObjectURL(croppedBlob);
         setPreviewUrl(localPreviewUrl);
 
         // ============================================
-        // 🔧 OTIMIZAÇÃO: COMPRESSÃO + THUMBNAIL
+        // 🔧 OTIMIZAÇÃO: THUMBNAIL APENAS
+        // O crop já gera WebP 800x800 com qualidade 0.85
         // ============================================
         setUploadStatus('compressing');
 
-        let fileToUpload: Blob;
+        let fileToUpload: Blob = croppedBlob;
         let thumbnailToUpload: Blob;
-        let fileName: string;
-        let thumbnailFileName: string;
+        const timestamp = Date.now();
+        const extension = 'webp';
+        const fileName = `${timestamp}.${extension}`;
+        const thumbnailFileName = `${timestamp}_thumb.${extension}`;
 
         try {
-            // Prepara imagem comprimida + thumbnail
-            const prepared = await prepareImageForUpload(file);
-            fileToUpload = prepared.compressed;
-            thumbnailToUpload = prepared.thumbnail;
-            setCompressionSavings(prepared.savings);
+            // Gerar apenas thumbnail (150x150) - imagem principal já está otimizada
+            const img = new Image();
+            const blobUrl = URL.createObjectURL(croppedBlob);
 
-            // Define extensão baseada no formato
-            const extension = getOptimalFormat() === 'image/webp' ? 'webp' : 'jpg';
-            const timestamp = Date.now();
-            fileName = `${timestamp}.${extension}`;
-            thumbnailFileName = `${timestamp}_thumb.${extension}`;
+            await new Promise<void>((resolve, reject) => {
+                img.onload = () => resolve();
+                img.onerror = reject;
+                img.src = blobUrl;
+            });
+
+            const canvas = document.createElement('canvas');
+            canvas.width = 150;
+            canvas.height = 150;
+            const ctx = canvas.getContext('2d');
+
+            if (ctx) {
+                ctx.imageSmoothingEnabled = true;
+                ctx.imageSmoothingQuality = 'medium';
+                ctx.drawImage(img, 0, 0, 150, 150);
+
+                thumbnailToUpload = await new Promise<Blob>((resolve) => {
+                    canvas.toBlob(
+                        (blob) => resolve(blob || croppedBlob),
+                        'image/webp',
+                        0.6 // Thumbnail com qualidade menor
+                    );
+                });
+            } else {
+                thumbnailToUpload = croppedBlob;
+            }
+
+            URL.revokeObjectURL(blobUrl);
+
+            // Calcular economia de espaço
+            const originalSize = croppedBlob.size;
+            const thumbSize = thumbnailToUpload.size;
+            setCompressionSavings(`Thumb: ${Math.round(thumbSize / 1024)}KB`);
 
         } catch (compressError) {
-            console.warn('Falha na compressão, usando original:', compressError);
-            fileToUpload = file;
-            thumbnailToUpload = file; // Fallback: usa original como thumb também
-            const ext = file.name.split('.').pop() || 'jpg';
-            const timestamp = Date.now();
-            fileName = `${timestamp}.${ext}`;
-            thumbnailFileName = `${timestamp}_thumb.${ext}`;
+            console.warn('Falha ao criar thumbnail, usando original:', compressError);
+            thumbnailToUpload = croppedBlob;
         }
 
         // ============================================
         // UPLOAD (imagem principal + thumbnail)
         // ============================================
         setUploadStatus('uploading');
+
+        const storage = firebaseServices.storage;
+        if (!storage) {
+            setError({
+                message: "Firebase Storage não configurado.",
+                isConfigError: true
+            });
+            setUploadStatus('error');
+            return;
+        }
 
         try {
             const storagePath = `animal_photos/${userId}/${animalId}/${fileName}`;
@@ -232,6 +284,11 @@ const ImageAnalyzerOptimized = ({
         }
     };
 
+    const handleCropCancel = () => {
+        setShowCropEditor(false);
+        setSelectedFile(null);
+    };
+
     const handleDeleteClick = () => {
         setShowDeleteConfirm(true);
     };
@@ -271,6 +328,22 @@ const ImageAnalyzerOptimized = ({
     };
 
     return (
+        <>
+        {/* Editor de Crop - Lazy loaded */}
+        {showCropEditor && selectedFile && (
+            <Suspense fallback={
+                <div className="fixed inset-0 bg-black z-50 flex items-center justify-center">
+                    <Spinner />
+                </div>
+            }>
+                <ImageCropEditor
+                    imageFile={selectedFile}
+                    onCropComplete={handleCropComplete}
+                    onCancel={handleCropCancel}
+                />
+            </Suspense>
+        )}
+
         <div className="relative aspect-square bg-base-900 rounded-lg overflow-hidden flex items-center justify-center w-full max-w-sm mx-auto">
             <img
                 src={previewUrl}
@@ -424,6 +497,7 @@ const ImageAnalyzerOptimized = ({
                 </div>
             )}
         </div>
+        </>
     );
 };
 
