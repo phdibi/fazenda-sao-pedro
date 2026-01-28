@@ -120,24 +120,26 @@ const isBrincoLike = (value: string): boolean => {
 };
 
 /**
- * Parseia data em vários formatos
+ * Parseia data em vários formatos.
+ * Prioridade: YYYY-MM-DD (ISO/americano, formato da balança) > DD/MM/YYYY (brasileiro)
  */
 const parseDate = (str: string): Date | null => {
   if (!str) return null;
-  // DD/MM/YYYY ou DD-MM-YYYY
-  const match1 = str.match(/(\d{2})[\/\-](\d{2})[\/\-](\d{2,4})/);
-  if (match1) {
-    const day = parseInt(match1[1]);
-    const month = parseInt(match1[2]) - 1;
-    let year = parseInt(match1[3]);
-    if (year < 100) year += 2000;
-    return new Date(year, month, day);
+
+  // YYYY-MM-DD (formato ISO / americano — padrão da balança)
+  const matchISO = str.match(/(\d{4})[\/\-](\d{2})[\/\-](\d{2})/);
+  if (matchISO) {
+    return new Date(parseInt(matchISO[1]), parseInt(matchISO[2]) - 1, parseInt(matchISO[3]));
   }
 
-  // YYYY-MM-DD
-  const match2 = str.match(/(\d{4})[\/\-](\d{2})[\/\-](\d{2})/);
-  if (match2) {
-    return new Date(parseInt(match2[1]), parseInt(match2[2]) - 1, parseInt(match2[3]));
+  // DD/MM/YYYY ou DD-MM-YYYY (formato brasileiro, fallback)
+  const matchBR = str.match(/(\d{2})[\/\-](\d{2})[\/\-](\d{2,4})/);
+  if (matchBR) {
+    const day = parseInt(matchBR[1]);
+    const month = parseInt(matchBR[2]) - 1;
+    let year = parseInt(matchBR[3]);
+    if (year < 100) year += 2000;
+    return new Date(year, month, day);
   }
 
   return null;
