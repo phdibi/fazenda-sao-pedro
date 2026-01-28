@@ -2,6 +2,8 @@
 // TIPOS DE CALENDÁRIO E TAREFAS
 // ============================================
 
+import { WeighingType } from './animal';
+
 export enum CalendarEventType {
   Evento = 'Evento',
   Observacao = 'Observação',
@@ -52,4 +54,20 @@ export interface ManagementBatch {
   purpose: BatchPurpose;
   status: 'active' | 'completed' | 'archived';
   notes?: string;
+
+  // Dados de sincronização ao concluir o lote
+
+  // Para Vacinação/Vermifugação: dados da medicação (iguais para todos animais)
+  medicationData?: {
+    medicamento: string;
+    dose: number;
+    unidade: 'ml' | 'mg' | 'dose';
+    responsavel: string;
+  };
+
+  // Para Pesagem/Desmame: pesos individuais por animal
+  animalWeights?: Record<string, number>;
+
+  // Para Pesagem: tipo de pesagem
+  weighingType?: WeighingType;
 }

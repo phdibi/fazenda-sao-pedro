@@ -101,6 +101,13 @@ export interface ScaleReading {
   animalBrinco?: string;
   matched: boolean;
   animalId?: string;
+  warnings?: string[];
+}
+
+export interface ScaleSkippedLine {
+  lineNumber: number;
+  content: string;
+  reason: string;
 }
 
 export interface ScaleImportResult {
@@ -108,6 +115,7 @@ export interface ScaleImportResult {
   matched: number;
   unmatched: number;
   readings: ScaleReading[];
+  skippedLines: ScaleSkippedLine[];
 }
 
 // ============================================

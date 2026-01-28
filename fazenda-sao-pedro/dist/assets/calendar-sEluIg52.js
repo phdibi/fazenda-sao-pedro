@@ -1,1 +1,0 @@
-var a=(o=>(o.Evento="Evento",o.Observacao="Observação",o.Compromisso="Compromisso",o))(a||{}),m=(o=>(o.Vacinacao="Vacinação",o.Vermifugacao="Vermifugação",o.Pesagem="Pesagem",o.Venda="Venda",o.Desmame="Desmame",o.Confinamento="Confinamento",o.Exposicao="Exposição",o.Apartacao="Apartação",o.Outros="Outros",o))(m||{});export{m as B,a as C};

@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useReducer, useRef } from 'react';
 import { firebaseServices } from '../services/firebase';
 import { localCache } from '../services/localCache';
 import { trackReads, trackWrites, trackDeletes, isQuotaCritical, canPerformOperation } from '../services/quotaMonitor';
-import { Animal, FirestoreCollectionName, ManagementBatch, UserRole, WeighingType, AnimalStatus, Sexo, CalendarEvent, AppUser, ManagementArea, MedicationAdministration, PregnancyRecord, PregnancyType, AbortionRecord, Task, LoadingKey, LocalStateCollectionName, BreedingSeason, CoverageRecord } from '../types';
+import { Animal, FirestoreCollectionName, ManagementBatch, BatchPurpose, UserRole, WeighingType, AnimalStatus, Sexo, CalendarEvent, AppUser, ManagementArea, MedicationAdministration, PregnancyRecord, PregnancyType, AbortionRecord, Task, LoadingKey, LocalStateCollectionName, BreedingSeason, CoverageRecord } from '../types';
 import { QUERY_LIMITS, ARCHIVED_COLLECTION_NAME, AUTO_SYNC_INTERVAL_MS } from '../constants/app';
 import { convertTimestampsToDates, convertDatesToTimestamps } from '../utils/dateHelpers';
 import { removeUndefined } from '../utils/objectHelpers';
@@ -1591,16 +1591,226 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
         }
     }, [userId, updateLocalCache, forceSync]);
 
-    const completeBatch = useCallback(async (batchId: string) => {
+    const completeBatch = useCallback(async (batchId: string, completionData?: Partial<ManagementBatch>) => {
         if (!userId || !db) return;
 
-        const completedData = {
-            status: 'completed' as const,
-            completedAt: new Date(),
+        // Busca o lote no estado local
+        const batch = stateRef.current.batches.find((b: ManagementBatch) => b.id === batchId);
+        if (!batch) return;
+
+        // 🔧 OTIMIZAÇÃO: Verifica quota antes de iniciar (1 lote + N animais)
+        const estimatedWrites = 1 + batch.animalIds.length;
+        if (!canPerformOperation('write', estimatedWrites)) {
+            throw new Error(`Quota insuficiente: esta operação requer ${estimatedWrites} escritas. Tente novamente amanhã.`);
+        }
+
+        // Mescla dados de conclusão (medicação, pesos, etc.)
+        const mergedBatch = { ...batch, ...completionData };
+
+        // Lookup O(1) para animais em vez de .find() repetido no loop
+        const animalsMap = new Map<string, Animal>();
+        for (const a of stateRef.current.animals) {
+            animalsMap.set(a.id, a);
+        }
+
+        // Firestore WriteBatch suporta no máximo 500 operações
+        const MAX_BATCH_OPS = 499; // 1 reservada para o lote
+        const writeBatches: ReturnType<typeof db.batch>[] = [db.batch()];
+        let currentBatchIdx = 0;
+        let currentBatchOps = 0;
+        let totalWriteCount = 0;
+        const now = new Date();
+
+        const getWriteBatch = () => {
+            if (currentBatchOps >= MAX_BATCH_OPS) {
+                writeBatches.push(db.batch());
+                currentBatchIdx++;
+                currentBatchOps = 0;
+            }
+            currentBatchOps++;
+            totalWriteCount++;
+            return writeBatches[currentBatchIdx];
         };
 
-        await updateBatch(batchId, completedData);
-    }, [userId, db, updateBatch]);
+        // 1. Atualiza o status do lote para 'completed'
+        // 🔧 OTIMIZAÇÃO: Não persiste animalWeights/medicationData no Firestore
+        // pois já são propagados para os animais (economia de storage)
+        const batchRef = db.collection('batches').doc(batchId);
+        const completedFields: Record<string, any> = {
+            status: 'completed' as const,
+            completedAt: now,
+        };
+        // Preserva apenas weighingType (leve) no lote para referência
+        if (completionData?.weighingType) {
+            completedFields.weighingType = completionData.weighingType;
+        }
+        const wb0 = getWriteBatch();
+        wb0.update(batchRef, { ...convertDatesToTimestamps(completedFields), updatedAt: now });
+
+        // Atualização otimista local mantém todos os dados para exibição imediata
+        const localCompletedFields = {
+            status: 'completed' as const,
+            completedAt: now,
+            ...(completionData ? removeUndefined(completionData) : {}),
+        };
+        dispatch({ type: 'LOCAL_UPDATE_BATCH', payload: { batchId, updatedData: localCompletedFields } });
+
+        // 2. Sincroniza dados nos animais baseado no propósito do lote
+        switch (mergedBatch.purpose) {
+            case BatchPurpose.Venda: {
+                for (const animalId of mergedBatch.animalIds) {
+                    if (!animalsMap.has(animalId)) continue;
+
+                    const wb = getWriteBatch();
+                    const animalRef = db.collection('animals').doc(animalId);
+                    wb.update(animalRef, { status: AnimalStatus.Vendido, updatedAt: now });
+
+                    dispatch({
+                        type: 'LOCAL_UPDATE_ANIMAL',
+                        payload: { animalId, updatedData: { status: AnimalStatus.Vendido } }
+                    });
+                }
+                break;
+            }
+
+            case BatchPurpose.Vacinacao:
+            case BatchPurpose.Vermifugacao: {
+                if (!mergedBatch.medicationData) break;
+
+                const motivo = mergedBatch.purpose === BatchPurpose.Vacinacao ? 'Vacinação' : 'Vermifugação';
+
+                for (const animalId of mergedBatch.animalIds) {
+                    const animal = animalsMap.get(animalId);
+                    if (!animal) continue;
+
+                    const newMedRecord: MedicationAdministration = {
+                        id: `batch_${batchId}_${animalId}`,
+                        medicamento: mergedBatch.medicationData.medicamento,
+                        dataAplicacao: now,
+                        dose: mergedBatch.medicationData.dose,
+                        unidade: mergedBatch.medicationData.unidade,
+                        motivo,
+                        responsavel: mergedBatch.medicationData.responsavel,
+                    };
+
+                    // 🔧 OTIMIZAÇÃO: arrayUnion envia apenas o novo registro ao Firestore
+                    // em vez de reescrever o array inteiro (economia de ~95% bandwidth)
+                    const wb = getWriteBatch();
+                    const animalRef = db.collection('animals').doc(animalId);
+                    wb.update(animalRef, {
+                        historicoSanitario: FieldValue.arrayUnion(convertDatesToTimestamps(newMedRecord)),
+                        updatedAt: now
+                    });
+
+                    // Optimistic update local continua com array completo
+                    const updatedHistorico = [...(animal.historicoSanitario || []), newMedRecord];
+                    dispatch({
+                        type: 'LOCAL_UPDATE_ANIMAL',
+                        payload: { animalId, updatedData: { historicoSanitario: updatedHistorico } }
+                    });
+                }
+                break;
+            }
+
+            case BatchPurpose.Pesagem: {
+                if (!mergedBatch.animalWeights) break;
+
+                const weighingTypeValue = mergedBatch.weighingType || WeighingType.None;
+
+                for (const animalId of mergedBatch.animalIds) {
+                    const weight = mergedBatch.animalWeights[animalId];
+                    if (!weight || weight <= 0) continue;
+
+                    const animal = animalsMap.get(animalId);
+                    if (!animal) continue;
+
+                    const newWeightEntry = {
+                        id: `batch_${batchId}_${animalId}`,
+                        date: now,
+                        weightKg: weight,
+                        type: weighingTypeValue,
+                    };
+
+                    // 🔧 OTIMIZAÇÃO: arrayUnion envia apenas o novo registro
+                    const wb = getWriteBatch();
+                    const animalRef = db.collection('animals').doc(animalId);
+                    wb.update(animalRef, {
+                        historicoPesagens: FieldValue.arrayUnion(convertDatesToTimestamps(newWeightEntry)),
+                        pesoKg: weight,
+                        updatedAt: now
+                    });
+
+                    const updatedPesagens = [...(animal.historicoPesagens || []), newWeightEntry];
+                    dispatch({
+                        type: 'LOCAL_UPDATE_ANIMAL',
+                        payload: {
+                            animalId,
+                            updatedData: { historicoPesagens: updatedPesagens, pesoKg: weight }
+                        }
+                    });
+                }
+                break;
+            }
+
+            case BatchPurpose.Desmame: {
+                if (!mergedBatch.animalWeights) break;
+
+                for (const animalId of mergedBatch.animalIds) {
+                    const weight = mergedBatch.animalWeights[animalId];
+                    if (!weight || weight <= 0) continue;
+
+                    const animal = animalsMap.get(animalId);
+                    if (!animal) continue;
+
+                    const newWeightEntry = {
+                        id: `batch_${batchId}_${animalId}`,
+                        date: now,
+                        weightKg: weight,
+                        type: WeighingType.Weaning,
+                    };
+
+                    // 🔧 OTIMIZAÇÃO: arrayUnion envia apenas o novo registro
+                    const wb = getWriteBatch();
+                    const animalRef = db.collection('animals').doc(animalId);
+                    wb.update(animalRef, {
+                        historicoPesagens: FieldValue.arrayUnion(convertDatesToTimestamps(newWeightEntry)),
+                        pesoKg: weight,
+                        updatedAt: now
+                    });
+
+                    const updatedPesagens = [...(animal.historicoPesagens || []), newWeightEntry];
+                    dispatch({
+                        type: 'LOCAL_UPDATE_ANIMAL',
+                        payload: {
+                            animalId,
+                            updatedData: { historicoPesagens: updatedPesagens, pesoKg: weight }
+                        }
+                    });
+                }
+                break;
+            }
+
+            // Confinamento, Exposição, Apartação, Outros: sem mudanças nos animais
+            default:
+                break;
+        }
+
+        // 3. Commit de todas as escritas (múltiplos batches se > 500 ops)
+        try {
+            for (const wb of writeBatches) {
+                await wb.commit();
+            }
+            trackWrites(totalWriteCount);
+
+            // Atualiza caches locais
+            await updateLocalCache('batches', stateRef.current.batches);
+            await updateLocalCache('animals', stateRef.current.animals);
+        } catch (error) {
+            console.error("Erro ao completar lote com sincronização:", error);
+            await forceSync();
+            throw error;
+        }
+    }, [userId, db, updateLocalCache, forceSync]);
 
     // ============================================
     // 🔧 ESTAÇÃO DE MONTA (BREEDING SEASONS)
