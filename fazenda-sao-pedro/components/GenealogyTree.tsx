@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { Animal, Sexo } from '../types';
+import { Animal, AnimalStatus, Sexo } from '../types';
 import { ShareIcon, UserIcon } from './common/Icons';
 
 interface GenealogyTreeProps {
@@ -51,13 +51,33 @@ const Node = ({ animal, name, gender, level, isOffspring, generationLabel, isFIV
     // Referências têm borda tracejada para indicar que não são cadastrados
     const borderStyle = isReference ? 'border-dashed border border-gray-600' : '';
 
+    // Indicador de status (Ativo / Vendido / Óbito)
+    const getStatusIndicator = () => {
+        if (!animal?.status) return null;
+        const cfg: Record<string, { color: string; label: string }> = {
+            [AnimalStatus.Ativo]: { color: 'bg-emerald-400', label: 'Ativo' },
+            [AnimalStatus.Vendido]: { color: 'bg-amber-400', label: 'Vendido' },
+            [AnimalStatus.Obito]: { color: 'bg-red-400', label: 'Óbito' },
+        };
+        const st = cfg[animal.status];
+        if (!st) return null;
+        const dotSize = compact ? 'w-2 h-2' : 'w-2.5 h-2.5';
+        return (
+            <span
+                className={`absolute top-1 right-1 ${dotSize} rounded-full ${st.color} border border-black/30`}
+                title={st.label}
+            />
+        );
+    };
+
     // Nome de exibição: nome > brinco > name passado > "Desconhecido"
     const displayName = animal?.nome || animal?.brinco || name || 'Desconhecido';
     // Só mostra brinco separado se tem nome E brinco (e são diferentes)
     const showBrinco = animal?.brinco && animal?.nome && animal.nome !== animal.brinco;
 
     return (
-        <div className={`flex-1 ${sizeClass} rounded-lg text-center ${bgColor} border-b-2 ${genderColor} ${borderStyle} shadow-md`}>
+        <div className={`relative flex-1 ${sizeClass} rounded-lg text-center ${bgColor} border-b-2 ${genderColor} ${borderStyle} shadow-md`}>
+            {getStatusIndicator()}
             <UserIcon className={`${compact ? 'w-3 h-3' : 'w-4 h-4'} mx-auto ${isReference ? 'text-gray-500' : 'text-gray-400'} mb-0.5`} />
             <p className={`font-bold ${compact ? 'text-[10px]' : 'text-sm'} ${textColor} truncate`}>
                 {displayName}
@@ -544,6 +564,18 @@ const GenealogyTree = ({ animal, allAnimals }: GenealogyTreeProps) => {
                         <span>Descendentes</span>
                     </div>
                 )}
+                <div className="flex items-center gap-1">
+                    <div className="w-2 h-2 rounded-full bg-emerald-400" />
+                    <span>Ativo</span>
+                </div>
+                <div className="flex items-center gap-1">
+                    <div className="w-2 h-2 rounded-full bg-amber-400" />
+                    <span>Vendido</span>
+                </div>
+                <div className="flex items-center gap-1">
+                    <div className="w-2 h-2 rounded-full bg-red-400" />
+                    <span>Óbito</span>
+                </div>
             </div>
         </div>
     );

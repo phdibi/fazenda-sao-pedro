@@ -2,8 +2,6 @@ import React from 'react';
 import { Animal, FilteredStats, ManagementArea } from '../types';
 import {
   CSV_HEADERS,
-  exportCalfSnapshotToCSV,
-  exportCalfSnapshotToPDF,
   exportToCSV,
   exportToPDF,
   prepareAnimalDataForExport,
@@ -31,14 +29,6 @@ const ExportButtons: React.FC<ExportButtonsProps> = ({ animals, stats, areas, va
     });
   };
 
-  const handleCalfCSV = () => {
-    exportCalfSnapshotToCSV(animals, areas);
-  };
-
-  const handleCalfPDF = () => {
-    exportCalfSnapshotToPDF(animals, areas);
-  };
-
   const baseButtonClasses =
     'px-3 py-2 rounded-lg text-sm font-medium flex items-center justify-center gap-2 transition-colors';
 
@@ -60,22 +50,6 @@ const ExportButtons: React.FC<ExportButtonsProps> = ({ animals, stats, areas, va
       >
         <span>📄</span>
         <span>PDF</span>
-      </button>
-      <button
-        onClick={handleCalfCSV}
-        className={`${baseButtonClasses} bg-amber-600 hover:bg-amber-700 text-white`}
-        title="Exporta somente terneiros com pesos de desmame/sobreano e genealogia materna para arquivar antes da venda"
-      >
-        <span>🍼</span>
-        <span>Terneiros CSV</span>
-      </button>
-      <button
-        onClick={handleCalfPDF}
-        className={`${baseButtonClasses} bg-amber-700 hover:bg-amber-800 text-white`}
-        title="Gera PDF com pesos por fase e mãe para arquivar antes da venda anual"
-      >
-        <span>📔</span>
-        <span>Terneiros PDF</span>
       </button>
     </div>
   );
