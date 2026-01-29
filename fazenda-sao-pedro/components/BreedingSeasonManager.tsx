@@ -965,19 +965,60 @@ const ExposedCowsManager: React.FC<{
 const CoverageCard: React.FC<{
   coverage: CoverageRecord;
   season: BreedingSeason;
+  availableBulls: Animal[];
   onEdit: () => void;
   onDelete: () => void;
   onQuickDiagnosis: (coverageId: string, result: 'positive' | 'negative') => void;
+  onDiagnosisWithRepasse: (coverageId: string, repasseBulls: RepasseBull[]) => void;
   onConfirmPaternity?: (coverageId: string, bullId: string, bullBrinco: string) => void;
-}> = ({ coverage, season, onEdit, onDelete, onQuickDiagnosis, onConfirmPaternity }) => {
+}> = ({ coverage, season, availableBulls, onEdit, onDelete, onQuickDiagnosis, onDiagnosisWithRepasse, onConfirmPaternity }) => {
   const isNatural = coverage.type === 'natural';
   const isFiv = coverage.type === 'fiv';
   const hasRepasse = coverage.repasse?.enabled;
+
+  // Estado local para fluxo "Vazia → Repasse"
+  const [showRepasseFlow, setShowRepasseFlow] = useState(false);
+  const [repasseSelectedBullIds, setRepasseSelectedBullIds] = useState<string[]>([]);
+  const [repasseBullSearchText, setRepasseBullSearchText] = useState('');
+
+  const selectedRepasseBullsLocal = useMemo(
+    () => repasseSelectedBullIds.map((id) => availableBulls.find((b) => b.id === id)).filter(Boolean) as Animal[],
+    [availableBulls, repasseSelectedBullIds]
+  );
+
+  const filteredRepasseBullsLocal = useMemo(() => {
+    if (!repasseBullSearchText.trim()) return availableBulls.slice(0, 30);
+    const s = repasseBullSearchText.toLowerCase();
+    return availableBulls.filter(
+      (b) => b.brinco.toLowerCase().includes(s) || b.nome?.toLowerCase().includes(s)
+    );
+  }, [availableBulls, repasseBullSearchText]);
+
+  const handleConfirmRepasse = () => {
+    if (repasseSelectedBullIds.length === 0) return;
+    const bulls: RepasseBull[] = selectedRepasseBullsLocal.map((b) => ({
+      bullId: b.id,
+      bullBrinco: b.brinco,
+    }));
+    onDiagnosisWithRepasse(coverage.id, bulls);
+    setShowRepasseFlow(false);
+    setRepasseSelectedBullIds([]);
+    setRepasseBullSearchText('');
+  };
+
+  const handleSkipRepasse = () => {
+    onQuickDiagnosis(coverage.id, 'negative');
+    setShowRepasseFlow(false);
+    setRepasseSelectedBullIds([]);
+  };
 
   // Resultado final: se tem repasse, mostra o resultado do repasse
   const finalResult = hasRepasse
     ? coverage.repasse!.diagnosisResult || 'pending'
     : coverage.pregnancyResult || 'pending';
+
+  // Mostra opção de repasse para coberturas não-natural com DG pendente
+  const canShowRepasseOption = coverage.type !== 'natural' && (!coverage.pregnancyResult || coverage.pregnancyResult === 'pending');
 
   return (
     <div className="bg-base-700 rounded-xl p-4 space-y-3">
@@ -1078,7 +1119,7 @@ const CoverageCard: React.FC<{
             )}
           </div>
           {/* Botões rápidos de DG */}
-          {(!coverage.pregnancyResult || coverage.pregnancyResult === 'pending') && (
+          {(!coverage.pregnancyResult || coverage.pregnancyResult === 'pending') && !showRepasseFlow && (
             <div className="flex gap-1">
               <button
                 onClick={() => onQuickDiagnosis(coverage.id, 'positive')}
@@ -1086,12 +1127,21 @@ const CoverageCard: React.FC<{
               >
                 Prenhe
               </button>
-              <button
-                onClick={() => onQuickDiagnosis(coverage.id, 'negative')}
-                className="px-2 py-1 bg-red-600 text-white text-xs rounded hover:bg-red-700"
-              >
-                Vazia
-              </button>
+              {canShowRepasseOption ? (
+                <button
+                  onClick={() => setShowRepasseFlow(true)}
+                  className="px-2 py-1 bg-red-600 text-white text-xs rounded hover:bg-red-700"
+                >
+                  Vazia
+                </button>
+              ) : (
+                <button
+                  onClick={() => onQuickDiagnosis(coverage.id, 'negative')}
+                  className="px-2 py-1 bg-red-600 text-white text-xs rounded hover:bg-red-700"
+                >
+                  Vazia
+                </button>
+              )}
             </div>
           )}
         </div>
@@ -1099,6 +1149,107 @@ const CoverageCard: React.FC<{
           <p className="text-xs text-gray-500 mt-1">
             Parto previsto: {formatDate(coverage.expectedCalvingDate)}
           </p>
+        )}
+
+        {/* Fluxo inline: Vazia → Encaminhar para Repasse */}
+        {showRepasseFlow && (
+          <div className="mt-3 p-3 bg-amber-900/20 border border-amber-700 rounded-lg space-y-3">
+            <div className="flex items-center justify-between">
+              <h4 className="text-sm font-semibold text-amber-400">
+                Vaca vazia — Encaminhar para repasse?
+              </h4>
+              <button
+                onClick={() => { setShowRepasseFlow(false); setRepasseSelectedBullIds([]); setRepasseBullSearchText(''); }}
+                className="text-gray-400 hover:text-white text-xs"
+              >
+                Cancelar
+              </button>
+            </div>
+            <p className="text-xs text-amber-300/70">
+              Selecione o(s) touro(s) para monta natural (max. 2). O diagnostico sera registrado como vazia e o repasse sera habilitado automaticamente.
+            </p>
+
+            {/* Bulls selecionados como chips */}
+            {selectedRepasseBullsLocal.length > 0 && (
+              <div className="flex flex-wrap gap-2">
+                {selectedRepasseBullsLocal.map((bull) => (
+                  <span
+                    key={bull.id}
+                    className="inline-flex items-center gap-1 px-2 py-1 bg-emerald-900/30 border border-emerald-600 rounded-full text-xs text-emerald-400"
+                  >
+                    {bull.brinco} {bull.nome ? `- ${bull.nome}` : ''}
+                    <button
+                      type="button"
+                      onClick={() => setRepasseSelectedBullIds((ids) => ids.filter((id) => id !== bull.id))}
+                      className="text-emerald-300 hover:text-red-400 ml-1"
+                    >
+                      &times;
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
+
+            {/* Seletor de touros */}
+            {selectedRepasseBullsLocal.length < 2 && (
+              <div>
+                <input
+                  type="text"
+                  value={repasseBullSearchText}
+                  onChange={(e) => setRepasseBullSearchText(e.target.value)}
+                  placeholder="Buscar touro..."
+                  className="w-full bg-base-700 border border-base-600 rounded-lg px-3 py-1.5 text-white text-sm mb-1"
+                />
+                <select
+                  value=""
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (val && !repasseSelectedBullIds.includes(val)) {
+                      setRepasseSelectedBullIds((ids) => [...ids, val]);
+                    }
+                  }}
+                  className="w-full bg-base-700 border border-base-600 rounded-lg px-3 py-1.5 text-white text-sm"
+                  size={Math.min(4, filteredRepasseBullsLocal.filter((b) => !repasseSelectedBullIds.includes(b.id)).length + 1)}
+                >
+                  <option value="">Selecione o touro...</option>
+                  {filteredRepasseBullsLocal
+                    .filter((b) => !repasseSelectedBullIds.includes(b.id))
+                    .map((bull) => (
+                      <option key={bull.id} value={bull.id}>
+                        {bull.brinco} - {bull.nome || 'Sem nome'}
+                      </option>
+                    ))}
+                </select>
+              </div>
+            )}
+
+            {selectedRepasseBullsLocal.length >= 2 && (
+              <p className="text-xs text-amber-400">
+                Maximo de 2 touros selecionados. Apos o nascimento, confirme qual e o pai.
+              </p>
+            )}
+
+            {/* Botões de ação */}
+            <div className="flex gap-2 pt-1">
+              <button
+                onClick={handleConfirmRepasse}
+                disabled={repasseSelectedBullIds.length === 0}
+                className={`flex-1 px-3 py-2 text-white text-sm rounded-lg font-medium transition-colors ${
+                  repasseSelectedBullIds.length === 0
+                    ? 'bg-gray-600 cursor-not-allowed'
+                    : 'bg-amber-600 hover:bg-amber-700'
+                }`}
+              >
+                Confirmar Repasse ({repasseSelectedBullIds.length} {repasseSelectedBullIds.length === 1 ? 'touro' : 'touros'})
+              </button>
+              <button
+                onClick={handleSkipRepasse}
+                className="px-3 py-2 bg-red-600/80 hover:bg-red-700 text-white text-sm rounded-lg transition-colors"
+              >
+                Apenas Vazia
+              </button>
+            </div>
+          </div>
         )}
       </div>
 
@@ -1415,6 +1566,30 @@ const BreedingSeasonManager: React.FC<BreedingSeasonManagerProps> = ({
       alert('Erro ao confirmar paternidade. Tente novamente.');
     }
   }, [currentSeason, onConfirmPaternity]);
+
+  // Handler combinado: marca DG como vazia + habilita repasse em uma ÚNICA operação
+  // Usa onUpdateCoverage que atualiza pregnancyResult + repasse atomicamente no mesmo coverageRecord
+  const handleDiagnosisWithRepasse = useCallback(async (coverageId: string, repasseBulls: RepasseBull[]) => {
+    if (!currentSeason) return;
+    try {
+      await onUpdateCoverage(currentSeason.id, coverageId, {
+        pregnancyResult: 'negative',
+        pregnancyCheckDate: new Date(),
+        repasse: {
+          enabled: true,
+          bulls: repasseBulls,
+          bullId: repasseBulls[0]?.bullId,
+          bullBrinco: repasseBulls[0]?.bullBrinco,
+          startDate: new Date(),
+          endDate: new Date(currentSeason.endDate),
+          diagnosisResult: 'pending',
+        },
+      });
+    } catch (err) {
+      console.error('Erro ao registrar repasse:', err);
+      alert('Erro ao encaminhar para repasse. Tente novamente.');
+    }
+  }, [currentSeason, onUpdateCoverage]);
 
   const handleUpdateExposedCows = useCallback(async (cowIds: string[]) => {
     if (!currentSeason) return;
@@ -1785,9 +1960,11 @@ const BreedingSeasonManager: React.FC<BreedingSeasonManagerProps> = ({
                 key={coverage.id}
                 coverage={coverage}
                 season={currentSeason}
+                availableBulls={availableBulls}
                 onEdit={() => setEditingCoverage(coverage)}
                 onDelete={() => handleDeleteCoverage(coverage.id)}
                 onQuickDiagnosis={handleQuickDiagnosis}
+                onDiagnosisWithRepasse={handleDiagnosisWithRepasse}
                 onConfirmPaternity={handleConfirmPaternity}
               />
             ))
