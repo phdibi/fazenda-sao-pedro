@@ -396,12 +396,10 @@ const CoverageForm: React.FC<{
             // Backward compat: set bullId/bullBrinco to first bull
             bullId: repasseBullsArray[0]?.bullId || undefined,
             bullBrinco: repasseBullsArray[0]?.bullBrinco || undefined,
-            // Inicio do repasse: preserva existente, ou usa data do DG principal, ou data atual
+            // Inicio do repasse: preserva existente, ou usa inicio da estação
             startDate: initialData?.repasse?.startDate
               ? new Date(initialData.repasse.startDate)
-              : pregnancyCheckDate
-                ? new Date(pregnancyCheckDate + 'T00:00:00')
-                : new Date(),
+              : new Date(season.startDate),
             endDate: new Date(season.endDate),
             notes: repasseNotes || undefined,
             diagnosisDate: showRepasse && repasseDiagDate ? new Date(repasseDiagDate + 'T00:00:00') : undefined,
@@ -1580,7 +1578,7 @@ const BreedingSeasonManager: React.FC<BreedingSeasonManagerProps> = ({
           bulls: repasseBulls,
           bullId: repasseBulls[0]?.bullId,
           bullBrinco: repasseBulls[0]?.bullBrinco,
-          startDate: new Date(),
+          startDate: new Date(currentSeason.startDate),
           endDate: new Date(currentSeason.endDate),
           diagnosisResult: 'pending',
         },
