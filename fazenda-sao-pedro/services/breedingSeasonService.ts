@@ -90,8 +90,18 @@ export const PREGNANCY_TYPE_MAP: Record<string, PregnancyType> = {
 
 /**
  * Determina o nome do reprodutor (sireName) a partir de uma cobertura
+ * Para FIV: formato "DoadoraXSêmen" (ex: 5311XLinaje)
  */
-export const getCoverageSireName = (coverage: { bullBrinco?: string; semenCode?: string }): string => {
+export const getCoverageSireName = (coverage: {
+  bullBrinco?: string;
+  semenCode?: string;
+  type?: CoverageType;
+  donorCowBrinco?: string;
+}): string => {
+  // FIV: cruzamento no formato DoadoraXSêmen
+  if (coverage.type === 'fiv' && coverage.donorCowBrinco && coverage.semenCode) {
+    return `${coverage.donorCowBrinco}X${coverage.semenCode}`;
+  }
   return coverage.bullBrinco || coverage.semenCode || 'Desconhecido';
 };
 

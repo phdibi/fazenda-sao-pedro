@@ -56,6 +56,8 @@ export interface PregnancyRecord {
   date: Date;
   type: PregnancyType;
   sireName: string;
+  /** Resultado do DG vinculado: 'positive' | 'negative' | 'pending' */
+  result?: 'positive' | 'negative' | 'pending';
 }
 
 export interface AbortionRecord {

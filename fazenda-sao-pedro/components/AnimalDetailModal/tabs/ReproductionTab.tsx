@@ -40,11 +40,28 @@ const ReproductionTab: React.FC<ReproductionTabProps> = ({
             [...(editableAnimal.historicoPrenhez || [])].reverse().map((record) => (
               <div
                 key={record.id}
-                className="grid grid-cols-1 md:grid-cols-6 gap-2 text-sm p-2 border-b border-base-700 items-center"
+                className="grid grid-cols-1 md:grid-cols-7 gap-2 text-sm p-2 border-b border-base-700 items-center"
               >
                 <span className="col-span-2">{formatDate(record.date)}</span>
                 <span className="font-bold col-span-2">{record.type}</span>
                 <span>{record.sireName}</span>
+                <span>
+                  {record.result === 'negative' && (
+                    <span className="px-2 py-0.5 bg-red-600/20 text-red-400 text-xs font-semibold rounded-full">
+                      Vazia
+                    </span>
+                  )}
+                  {record.result === 'positive' && (
+                    <span className="px-2 py-0.5 bg-emerald-600/20 text-emerald-400 text-xs font-semibold rounded-full">
+                      Prenhe
+                    </span>
+                  )}
+                  {record.result === 'pending' && (
+                    <span className="px-2 py-0.5 bg-amber-600/20 text-amber-400 text-xs font-semibold rounded-full">
+                      Aguardando DG
+                    </span>
+                  )}
+                </span>
                 <div className="flex gap-2">
                   {isEditing && (
                     <button

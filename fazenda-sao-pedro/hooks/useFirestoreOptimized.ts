@@ -1933,6 +1933,7 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
                 date: coverageDate,
                 type: PREGNANCY_TYPE_MAP[coverage.type] || PregnancyType.Monta,
                 sireName,
+                result: 'pending',
             };
 
             const updatedHistoricoPrenhez = [...(animal.historicoPrenhez || []), pregnancyRecord];
@@ -2020,37 +2021,45 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
             coverageRecords: updatedCoverageRecords,
         });
 
-        // 🔧 INTEGRAÇÃO: Se DG negativo E o resultado anterior era 'positive', é perda gestacional
-        // Nota: DG negativo de primeiro diagnóstico (pending -> negative) = vazia, NÃO é aborto
-        const previousResult = coverage.pregnancyResult;
-        if (result === 'negative' && previousResult === 'positive') {
-            const animal = stateRef.current.animals.find((a: Animal) => a.id === coverage.cowId);
-            if (animal) {
+        // 🔧 SYNC: Atualiza result no historicoPrenhez do animal
+        const animal = stateRef.current.animals.find((a: Animal) => a.id === coverage.cowId);
+        if (animal) {
+            const animalUpdates: Record<string, unknown> = {};
+
+            // Atualiza o resultado no registro de prenhez
+            const updatedHistoricoPrenhez = (animal.historicoPrenhez || []).map((r: PregnancyRecord) =>
+                r.id === coverageId ? { ...r, result } : r
+            );
+            animalUpdates.historicoPrenhez = updatedHistoricoPrenhez;
+
+            // 🔧 INTEGRAÇÃO: Se DG negativo E o resultado anterior era 'positive', é perda gestacional
+            // Nota: DG negativo de primeiro diagnóstico (pending -> negative) = vazia, NÃO é aborto
+            const previousResult = coverage.pregnancyResult;
+            if (result === 'negative' && previousResult === 'positive') {
                 const abortionRecord = {
                     id: `abort_${coverageId}`,
                     date: checkDate,
                 };
-
-                const updatedHistoricoAborto = [...(animal.historicoAborto || []), abortionRecord];
-
-                const animalRef = db.collection('animals').doc(coverage.cowId);
-                const dataWithTimestamp = convertDatesToTimestamps({ historicoAborto: updatedHistoricoAborto });
-                await animalRef.update({ ...dataWithTimestamp, updatedAt: new Date() });
-
-                dispatch({
-                    type: 'LOCAL_UPDATE_ANIMAL', payload: {
-                        animalId: coverage.cowId,
-                        updatedData: { historicoAborto: updatedHistoricoAborto }
-                    }
-                });
-
-                const updatedAnimals = stateRef.current.animals.map((a: Animal) =>
-                    a.id === coverage.cowId
-                        ? { ...a, historicoAborto: updatedHistoricoAborto }
-                        : a
-                );
-                await updateLocalCache('animals', updatedAnimals);
+                animalUpdates.historicoAborto = [...(animal.historicoAborto || []), abortionRecord];
             }
+
+            const animalRef = db.collection('animals').doc(coverage.cowId);
+            const dataWithTimestamp = convertDatesToTimestamps(animalUpdates);
+            await animalRef.update({ ...dataWithTimestamp, updatedAt: new Date() });
+
+            dispatch({
+                type: 'LOCAL_UPDATE_ANIMAL', payload: {
+                    animalId: coverage.cowId,
+                    updatedData: animalUpdates
+                }
+            });
+
+            const updatedAnimals = stateRef.current.animals.map((a: Animal) =>
+                a.id === coverage.cowId
+                    ? { ...a, ...animalUpdates }
+                    : a
+            );
+            await updateLocalCache('animals', updatedAnimals);
         }
     }, [userId, db, updateBreedingSeason, updateLocalCache]);
 
@@ -2093,9 +2102,10 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
             const coverageDate = new Date(updatedCoverage.date);
 
             // Atualiza registro da cobertura principal
+            const mainResult = updatedCoverage.pregnancyResult || 'pending';
             let updatedHistoricoPrenhez = (animal.historicoPrenhez || []).map((r: PregnancyRecord) =>
                 r.id === coverageId
-                    ? { ...r, date: coverageDate, type: PREGNANCY_TYPE_MAP[updatedCoverage.type] || PregnancyType.Monta, sireName }
+                    ? { ...r, date: coverageDate, type: PREGNANCY_TYPE_MAP[updatedCoverage.type] || PregnancyType.Monta, sireName, result: mainResult }
                     : r
             );
 
@@ -2106,6 +2116,7 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
                     date: coverageDate,
                     type: PREGNANCY_TYPE_MAP[updatedCoverage.type] || PregnancyType.Monta,
                     sireName,
+                    result: mainResult,
                 }];
             }
 
@@ -2133,6 +2144,7 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
                     ? new Date(updatedCoverage.repasse.startDate)
                     : coverageDate;
 
+                const repasseResult = updatedCoverage.repasse?.diagnosisResult || 'pending';
                 const existingRepasseIdx = updatedHistoricoPrenhez.findIndex((r: PregnancyRecord) => r.id === repasseRecordId);
                 if (existingRepasseIdx >= 0) {
                     updatedHistoricoPrenhez[existingRepasseIdx] = {
@@ -2140,6 +2152,7 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
                         date: repasseDate,
                         type: PregnancyType.Monta,
                         sireName: repasseSireName,
+                        result: repasseResult,
                     };
                 } else {
                     updatedHistoricoPrenhez = [...updatedHistoricoPrenhez, {
@@ -2147,6 +2160,7 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
                         date: repasseDate,
                         type: PregnancyType.Monta,
                         sireName: repasseSireName,
+                        result: repasseResult,
                     }];
                 }
             } else if (oldRepasseEnabled && !newRepasseEnabled) {
