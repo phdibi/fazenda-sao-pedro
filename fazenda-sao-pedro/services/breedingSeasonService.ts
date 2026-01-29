@@ -11,9 +11,13 @@
 import {
   BreedingSeason,
   CoverageType,
+  CoverageRecord,
+  RepasseData,
+  RepasseBull,
   Animal,
   Sexo,
   AnimalStatus,
+  PregnancyType,
 } from '../types';
 
 // ============================================
@@ -38,6 +42,59 @@ export const calculateGestationDays = (coverageDate: Date): number => {
   return Math.floor((now.getTime() - coverage.getTime()) / (1000 * 60 * 60 * 24));
 };
 
+/**
+ * Retorna touros do repasse (backward compat: suporta bullId legado e bulls[])
+ */
+export const getRepasseBulls = (repasse: RepasseData): RepasseBull[] => {
+  if (repasse.bulls && repasse.bulls.length > 0) {
+    return repasse.bulls;
+  }
+  if (repasse.bullId) {
+    return [{ bullId: repasse.bullId, bullBrinco: repasse.bullBrinco || 'Desconhecido' }];
+  }
+  return [];
+};
+
+/**
+ * Retorna label do touro para exibição no repasse
+ * Se paternidade confirmada, mostra o confirmado; senão mostra todos
+ */
+export const getRepasseBullLabel = (repasse: RepasseData): string => {
+  if (repasse.confirmedSireId) {
+    return repasse.confirmedSireBrinco || 'Confirmado';
+  }
+  const bulls = getRepasseBulls(repasse);
+  if (bulls.length === 0) return 'Sem touro';
+  if (bulls.length === 1) return bulls[0].bullBrinco;
+  return bulls.map((b) => b.bullBrinco).join(' / ');
+};
+
+/**
+ * Verifica se há paternidade pendente de confirmação (2 touros, sem confirmedSireId)
+ */
+export const hasPendingPaternity = (repasse: RepasseData): boolean => {
+  if (!repasse.enabled || repasse.diagnosisResult !== 'positive') return false;
+  const bulls = getRepasseBulls(repasse);
+  return bulls.length > 1 && !repasse.confirmedSireId;
+};
+
+/**
+ * Mapeia tipo de cobertura para PregnancyType (para historicoPrenhez do animal)
+ */
+export const PREGNANCY_TYPE_MAP: Record<string, PregnancyType> = {
+  'natural': PregnancyType.Monta,
+  'ia': PregnancyType.InseminacaoArtificial,
+  'iatf': PregnancyType.InseminacaoArtificial,
+  'fiv': PregnancyType.FIV,
+};
+
+/**
+ * Determina o nome do reprodutor (sireName) a partir de uma cobertura
+ */
+export const getCoverageSireName = (coverage: { bullBrinco?: string; semenCode?: string }): string => {
+  return coverage.bullBrinco || coverage.semenCode || 'Desconhecido';
+};
+
 // ============================================
 // MÉTRICAS DA ESTAÇÃO DE MONTA
 // ============================================
@@ -54,7 +111,11 @@ export interface BreedingSeasonMetrics {
   coveragesByType: Record<CoverageType, number>;
   coveragesByBull: { bullId: string; bullBrinco: string; count: number; pregnancies: number }[];
   dailyCoverages: { date: string; count: number }[];
-  pregnancyChecksDue: { cowId: string; cowBrinco: string; dueDate: Date }[];
+  pregnancyChecksDue: { cowId: string; cowBrinco: string; dueDate: Date; coverageId: string }[];
+  // Repasse
+  repasseCount: number;
+  repassePregnant: number;
+  overallPregnancyRate: number;
 }
 
 /**
@@ -72,25 +133,56 @@ export const calculateBreedingMetrics = (
   const coveredCowIds = new Set(coverages.map((c) => c.cowId));
   const totalCovered = coveredCowIds.size;
 
-  // Resultados de prenhez
-  const pregnantCowIds = new Set(
-    coverages.filter((c) => c.pregnancyResult === 'positive').map((c) => c.cowId)
-  );
-  const emptyCowIds = new Set(
-    coverages.filter((c) => c.pregnancyResult === 'negative').map((c) => c.cowId)
-  );
-  const pendingCowIds = new Set(
-    coverages.filter((c) => c.pregnancyResult === 'pending' || !c.pregnancyResult).map((c) => c.cowId)
-  );
+  // Resultados de prenhez (incluindo repasse)
+  const pregnantCowIds = new Set<string>();
+  const emptyCowIds = new Set<string>();
+  const pendingCowIds = new Set<string>();
+  // Prenhez apenas da cobertura principal (sem contar repasse)
+  const firstServicePregnant = new Set<string>();
+  let repasseCount = 0;
+  let repassePregnant = 0;
+
+  coverages.forEach((c) => {
+    // Resultado da cobertura principal
+    if (c.pregnancyResult === 'positive') {
+      pregnantCowIds.add(c.cowId);
+      firstServicePregnant.add(c.cowId);
+      return; // Se prenhe na primeira cobertura, não precisa de repasse
+    }
+
+    // Se tem repasse habilitado (DG principal foi negativo)
+    if (c.repasse?.enabled) {
+      repasseCount++;
+      if (c.repasse.diagnosisResult === 'positive') {
+        repassePregnant++;
+        pregnantCowIds.add(c.cowId);
+      } else if (c.repasse.diagnosisResult === 'negative') {
+        emptyCowIds.add(c.cowId);
+      } else {
+        pendingCowIds.add(c.cowId);
+      }
+      return;
+    }
+
+    // Sem repasse, resultado da cobertura principal
+    if (c.pregnancyResult === 'negative') {
+      emptyCowIds.add(c.cowId);
+    } else {
+      pendingCowIds.add(c.cowId);
+    }
+  });
 
   const totalPregnant = pregnantCowIds.size;
   const totalEmpty = emptyCowIds.size;
   const totalPending = pendingCowIds.size;
 
   // Taxas
-  const pregnancyRate = totalExposed > 0 ? (totalPregnant / totalExposed) * 100 : 0;
+  // pregnancyRate = taxa de prenhez da primeira cobertura (sem repasse)
+  const pregnancyRate = totalExposed > 0 ? (firstServicePregnant.size / totalExposed) * 100 : 0;
   const serviceRate = totalExposed > 0 ? (totalCovered / totalExposed) * 100 : 0;
   const conceptionRate = totalCovered > 0 ? (totalPregnant / totalCovered) * 100 : 0;
+  // overallPregnancyRate = taxa geral (incluindo repasse)
+  const overallPregnancyRate = totalExposed > 0 ? (totalPregnant / totalExposed) * 100 : 0;
 
   // Coberturas por tipo
   const coveragesByType: Record<CoverageType, number> = {
@@ -103,12 +195,13 @@ export const calculateBreedingMetrics = (
     coveragesByType[c.type]++;
   });
 
-  // Coberturas por touro
+  // Coberturas por touro (inclui touros de repasse)
   const bullStats = new Map<
     string,
     { bullId: string; bullBrinco: string; count: number; pregnancies: number }
   >();
   coverages.forEach((c) => {
+    // Touro/sêmen da cobertura principal
     const bullKey = c.bullId || c.semenCode || 'desconhecido';
     const existing = bullStats.get(bullKey) || {
       bullId: c.bullId || '',
@@ -121,6 +214,38 @@ export const calculateBreedingMetrics = (
       existing.pregnancies++;
     }
     bullStats.set(bullKey, existing);
+
+    // Touros de repasse (suporta 1 ou 2 touros)
+    if (c.repasse?.enabled) {
+      const repasseBulls = getRepasseBulls(c.repasse);
+      const isPregnant = c.repasse.diagnosisResult === 'positive';
+      // Se paternidade confirmada, só conta para o touro confirmado
+      const confirmedId = c.repasse.confirmedSireId;
+
+      repasseBulls.forEach((rb) => {
+        const repasseKey = rb.bullId;
+        const repasseExisting = bullStats.get(repasseKey) || {
+          bullId: rb.bullId,
+          bullBrinco: rb.bullBrinco,
+          count: 0,
+          pregnancies: 0,
+        };
+        repasseExisting.count++;
+        if (isPregnant) {
+          if (confirmedId) {
+            // Só adiciona prenhez ao touro confirmado
+            if (confirmedId === rb.bullId) {
+              repasseExisting.pregnancies++;
+            }
+          } else if (repasseBulls.length === 1) {
+            // Touro único, prenhez é dele
+            repasseExisting.pregnancies++;
+          }
+          // Se 2 touros sem confirmação, não conta prenhez para nenhum
+        }
+        bullStats.set(repasseKey, repasseExisting);
+      });
+    }
   });
   const coveragesByBull = Array.from(bullStats.values()).sort((a, b) => b.count - a.count);
 
@@ -134,18 +259,33 @@ export const calculateBreedingMetrics = (
     .map(([date, count]) => ({ date, count }))
     .sort((a, b) => a.date.localeCompare(b.date));
 
-  // Diagnósticos pendentes
-  const pregnancyChecksDue: { cowId: string; cowBrinco: string; dueDate: Date }[] = [];
+  // Diagnósticos pendentes (cobertura principal + repasse)
+  const pregnancyChecksDue: { cowId: string; cowBrinco: string; dueDate: Date; coverageId: string }[] = [];
   const checkDays = season.config?.pregnancyCheckDays || 60;
 
   coverages.forEach((c) => {
+    // DG pendente da cobertura principal
     if (!c.pregnancyResult || c.pregnancyResult === 'pending') {
       const gestationDays = calculateGestationDays(c.date);
       if (gestationDays >= checkDays) {
         pregnancyChecksDue.push({
           cowId: c.cowId,
           cowBrinco: c.cowBrinco,
+          coverageId: c.id,
           dueDate: new Date(new Date(c.date).getTime() + checkDays * 24 * 60 * 60 * 1000),
+        });
+      }
+    }
+    // DG pendente do repasse
+    if (c.repasse?.enabled && (!c.repasse.diagnosisResult || c.repasse.diagnosisResult === 'pending')) {
+      const repasseStartDate = c.repasse.startDate || season.startDate;
+      const gestationDays = calculateGestationDays(new Date(repasseStartDate));
+      if (gestationDays >= checkDays) {
+        pregnancyChecksDue.push({
+          cowId: c.cowId,
+          cowBrinco: c.cowBrinco,
+          coverageId: c.id,
+          dueDate: new Date(new Date(repasseStartDate).getTime() + checkDays * 24 * 60 * 60 * 1000),
         });
       }
     }
@@ -164,6 +304,9 @@ export const calculateBreedingMetrics = (
     coveragesByBull,
     dailyCoverages,
     pregnancyChecksDue,
+    repasseCount,
+    repassePregnant,
+    overallPregnancyRate: Math.round(overallPregnancyRate * 10) / 10,
   };
 };
 
@@ -213,7 +356,8 @@ export const addBull = (
   season: BreedingSeason,
   bull: { id: string; brinco: string; nome?: string; type: 'natural' | 'semen' }
 ): BreedingSeason => {
-  const existingIds = new Set(season.bulls.map((b) => b.id));
+  const bulls = season.bulls || [];
+  const existingIds = new Set(bulls.map((b) => b.id));
 
   if (existingIds.has(bull.id)) {
     return season;
@@ -221,7 +365,7 @@ export const addBull = (
 
   return {
     ...season,
-    bulls: [...season.bulls, bull],
+    bulls: [...bulls, bull],
     updatedAt: new Date(),
   };
 };
@@ -293,7 +437,28 @@ export const getAvailableBulls = (animals: Animal[], minAgeMonths: number = 18):
 };
 
 /**
- * Gera relatório de prenhez esperada
+ * Retorna coberturas com paternidade pendente (2 touros no repasse, prenhe, sem confirmação)
+ */
+export const getPendingPaternityRecords = (season: BreedingSeason): CoverageRecord[] => {
+  return (season.coverageRecords || []).filter(
+    (c) => c.repasse?.enabled && hasPendingPaternity(c.repasse!)
+  );
+};
+
+/**
+ * Retorna coberturas IATF/FIV com diagnóstico negativo elegíveis para repasse
+ */
+export const getRepasseEligibleCows = (season: BreedingSeason): CoverageRecord[] => {
+  return (season.coverageRecords || []).filter(
+    (c) =>
+      (c.type === 'iatf' || c.type === 'fiv' || c.type === 'ia') &&
+      c.pregnancyResult === 'negative' &&
+      !c.repasse?.enabled
+  );
+};
+
+/**
+ * Gera relatório de prenhez esperada (cobertura principal + repasse)
  */
 export const getExpectedCalvings = (
   season: BreedingSeason
@@ -304,16 +469,47 @@ export const getExpectedCalvings = (
   bullInfo: string;
   isFIV: boolean;
   donorInfo?: string;
+  isRepasse?: boolean;
 }[] => {
-  return season.coverageRecords
-    .filter((c) => c.pregnancyResult === 'positive' && c.expectedCalvingDate)
-    .map((c) => ({
-      cowId: c.cowId,
-      cowBrinco: c.cowBrinco,
-      expectedDate: new Date(c.expectedCalvingDate!),
-      bullInfo: c.bullBrinco || c.semenCode || 'Desconhecido',
-      isFIV: c.type === 'fiv',
-      donorInfo: c.donorCowBrinco,
-    }))
-    .sort((a, b) => a.expectedDate.getTime() - b.expectedDate.getTime());
+  const results: {
+    cowId: string;
+    cowBrinco: string;
+    expectedDate: Date;
+    bullInfo: string;
+    isFIV: boolean;
+    donorInfo?: string;
+    isRepasse?: boolean;
+  }[] = [];
+
+  (season.coverageRecords || []).forEach((c) => {
+    // Prenhez da cobertura principal
+    if (c.pregnancyResult === 'positive' && c.expectedCalvingDate) {
+      results.push({
+        cowId: c.cowId,
+        cowBrinco: c.cowBrinco,
+        expectedDate: new Date(c.expectedCalvingDate),
+        bullInfo: c.bullBrinco || c.semenCode || 'Desconhecido',
+        isFIV: c.type === 'fiv',
+        donorInfo: c.donorCowBrinco,
+      });
+    }
+    // Prenhez do repasse (monta natural após DG negativo)
+    if (c.repasse?.enabled && c.repasse.diagnosisResult === 'positive') {
+      const repasseDate = c.repasse.startDate || season.startDate;
+      const expectedDate = new Date(repasseDate);
+      expectedDate.setDate(expectedDate.getDate() + 283);
+      const bullLabel = getRepasseBullLabel(c.repasse);
+      const pendingPat = hasPendingPaternity(c.repasse);
+      results.push({
+        cowId: c.cowId,
+        cowBrinco: c.cowBrinco,
+        expectedDate,
+        bullInfo: pendingPat ? `${bullLabel} (paternidade pendente)` : bullLabel,
+        isFIV: false,
+        isRepasse: true,
+      });
+    }
+  });
+
+  return results.sort((a, b) => a.expectedDate.getTime() - b.expectedDate.getTime());
 };

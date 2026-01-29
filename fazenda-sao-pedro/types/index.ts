@@ -189,6 +189,29 @@ export const DEFAULT_KPI_TARGETS: KPITarget[] = [
 export type BreedingSeasonStatus = 'planning' | 'active' | 'finished' | 'cancelled';
 export type CoverageType = 'natural' | 'ia' | 'iatf' | 'fiv';
 
+export interface RepasseBull {
+  bullId: string;
+  bullBrinco: string;
+}
+
+export interface RepasseData {
+  enabled: boolean;
+  /** @deprecated Use bulls[] instead. Kept for backward compat with single-bull records. */
+  bullId?: string;
+  /** @deprecated Use bulls[] instead. */
+  bullBrinco?: string;
+  /** Touros do repasse (suporta 1 ou 2 touros na monta natural) */
+  bulls?: RepasseBull[];
+  /** ID do touro confirmado como pai (preenchido após nascimento) */
+  confirmedSireId?: string;
+  confirmedSireBrinco?: string;
+  startDate?: Date;
+  endDate?: Date;
+  notes?: string;
+  diagnosisDate?: Date;
+  diagnosisResult?: 'positive' | 'negative' | 'pending';
+}
+
 export interface CoverageRecord {
   id: string;
   cowId: string;
@@ -207,6 +230,8 @@ export interface CoverageRecord {
   pregnancyCheckDate?: Date;
   pregnancyResult?: 'positive' | 'negative' | 'pending';
   expectedCalvingDate?: Date;
+  // Repasse: monta natural para vacas vazias de IATF/FIV
+  repasse?: RepasseData;
 }
 
 export interface BreedingSeason {

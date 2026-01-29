@@ -62,6 +62,9 @@ const AppRouter: React.FC<AppRouterProps> = ({
         deleteBreedingSeason,
         addCoverageToSeason,
         updatePregnancyDiagnosis,
+        updateCoverageInSeason,
+        deleteCoverageFromSeason,
+        confirmPaternity,
         // Animal CRUD
         updateAnimal,
     } = firestore;
@@ -285,6 +288,9 @@ const AppRouter: React.FC<AppRouterProps> = ({
                     onDeleteSeason={deleteBreedingSeason}
                     onAddCoverage={addCoverageToSeason}
                     onUpdateDiagnosis={updatePregnancyDiagnosis}
+                    onUpdateCoverage={updateCoverageInSeason}
+                    onDeleteCoverage={deleteCoverageFromSeason}
+                    onConfirmPaternity={confirmPaternity}
                 />
             </Suspense>
         );

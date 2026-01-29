@@ -3,6 +3,7 @@ import { firebaseServices } from '../services/firebase';
 import { localCache } from '../services/localCache';
 import { trackReads, trackWrites, trackDeletes, isQuotaCritical, canPerformOperation } from '../services/quotaMonitor';
 import { Animal, FirestoreCollectionName, ManagementBatch, BatchPurpose, UserRole, WeighingType, AnimalStatus, Sexo, CalendarEvent, AppUser, ManagementArea, MedicationAdministration, PregnancyRecord, PregnancyType, AbortionRecord, Task, LoadingKey, LocalStateCollectionName, BreedingSeason, CoverageRecord } from '../types';
+import { PREGNANCY_TYPE_MAP, getCoverageSireName } from '../services/breedingSeasonService';
 import { QUERY_LIMITS, ARCHIVED_COLLECTION_NAME, AUTO_SYNC_INTERVAL_MS } from '../constants/app';
 import { convertTimestampsToDates, convertDatesToTimestamps } from '../utils/dateHelpers';
 import { removeUndefined } from '../utils/objectHelpers';
@@ -1910,28 +1911,27 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
 
         const updatedCoverageRecords = [...(season.coverageRecords || []), newCoverage];
 
+        // Auto-adiciona a vaca às expostas se não estiver
+        const exposedCowIds = season.exposedCowIds || [];
+        const needsExposedUpdate = !exposedCowIds.includes(coverage.cowId);
+        const updatedExposedCowIds = needsExposedUpdate
+            ? [...exposedCowIds, coverage.cowId]
+            : exposedCowIds;
+
         await updateBreedingSeason(seasonId, {
             coverageRecords: updatedCoverageRecords,
+            ...(needsExposedUpdate ? { exposedCowIds: updatedExposedCowIds } : {}),
         });
 
         // 🔧 INTEGRAÇÃO: Adiciona registro no historicoPrenhez do animal
         const animal = stateRef.current.animals.find((a: Animal) => a.id === coverage.cowId);
         if (animal) {
-            // Mapeia tipo de cobertura para PregnancyType
-            const pregnancyTypeMap: Record<string, PregnancyType> = {
-                'natural': PregnancyType.Monta,
-                'ia': PregnancyType.InseminacaoArtificial,
-                'iatf': PregnancyType.InseminacaoArtificial,
-                'fiv': PregnancyType.FIV,
-            };
-
-            // Para FIV, o código do sêmen é o nome do pai
-            const sireName = coverage.bullBrinco || coverage.semenCode || 'Desconhecido';
+            const sireName = getCoverageSireName(coverage);
 
             const pregnancyRecord: PregnancyRecord = {
                 id: newCoverage.id, // Usa mesmo ID para correlação
                 date: coverageDate,
-                type: pregnancyTypeMap[coverage.type] || PregnancyType.Monta,
+                type: PREGNANCY_TYPE_MAP[coverage.type] || PregnancyType.Monta,
                 sireName,
             };
 
@@ -2020,9 +2020,10 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
             coverageRecords: updatedCoverageRecords,
         });
 
-        // 🔧 INTEGRAÇÃO: Se resultado negativo, pode indicar perda/aborto precoce
-        // Adiciona ao histórico de abortos do animal
-        if (result === 'negative') {
+        // 🔧 INTEGRAÇÃO: Se DG negativo E o resultado anterior era 'positive', é perda gestacional
+        // Nota: DG negativo de primeiro diagnóstico (pending -> negative) = vazia, NÃO é aborto
+        const previousResult = coverage.pregnancyResult;
+        if (result === 'negative' && previousResult === 'positive') {
             const animal = stateRef.current.animals.find((a: Animal) => a.id === coverage.cowId);
             if (animal) {
                 const abortionRecord = {
@@ -2032,12 +2033,10 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
 
                 const updatedHistoricoAborto = [...(animal.historicoAborto || []), abortionRecord];
 
-                // Atualiza o animal com o registro de aborto/vazia
                 const animalRef = db.collection('animals').doc(coverage.cowId);
                 const dataWithTimestamp = convertDatesToTimestamps({ historicoAborto: updatedHistoricoAborto });
                 await animalRef.update({ ...dataWithTimestamp, updatedAt: new Date() });
 
-                // Atualização otimista local
                 dispatch({
                     type: 'LOCAL_UPDATE_ANIMAL', payload: {
                         animalId: coverage.cowId,
@@ -2045,7 +2044,6 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
                     }
                 });
 
-                // Atualiza cache local
                 const updatedAnimals = stateRef.current.animals.map((a: Animal) =>
                     a.id === coverage.cowId
                         ? { ...a, historicoAborto: updatedHistoricoAborto }
@@ -2053,6 +2051,303 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
                 );
                 await updateLocalCache('animals', updatedAnimals);
             }
+        }
+    }, [userId, db, updateBreedingSeason, updateLocalCache]);
+
+    // Atualiza uma cobertura existente na estação de monta
+    // 🔧 INTEGRAÇÃO: Sincroniza alterações com historicoPrenhez, historicoAborto e historicoProgenie
+    const updateCoverageInSeason = useCallback(async (
+        seasonId: string,
+        coverageId: string,
+        updatedCoverageData: Partial<CoverageRecord>
+    ) => {
+        if (!userId || !db) return;
+
+        const season = stateRef.current.breedingSeasons.find((s: BreedingSeason) => s.id === seasonId);
+        if (!season) throw new Error('Estação de monta não encontrada');
+
+        const oldCoverage = season.coverageRecords.find((c: CoverageRecord) => c.id === coverageId);
+        if (!oldCoverage) throw new Error('Cobertura não encontrada');
+
+        // Recalcula expectedCalvingDate se a data mudou
+        let computedFields: Partial<CoverageRecord> = {};
+        if (updatedCoverageData.date) {
+            const newDate = new Date(updatedCoverageData.date);
+            const expCalving = new Date(newDate);
+            expCalving.setDate(expCalving.getDate() + 283);
+            computedFields.expectedCalvingDate = expCalving;
+        }
+
+        const updatedCoverage = { ...oldCoverage, ...updatedCoverageData, ...computedFields };
+
+        const updatedCoverageRecords = season.coverageRecords.map((c: CoverageRecord) =>
+            c.id === coverageId ? updatedCoverage : c
+        );
+
+        await updateBreedingSeason(seasonId, { coverageRecords: updatedCoverageRecords });
+
+        // 🔧 SYNC: Atualiza historicoPrenhez do animal
+        const animal = stateRef.current.animals.find((a: Animal) => a.id === oldCoverage.cowId);
+        if (animal) {
+            const sireName = getCoverageSireName(updatedCoverage);
+            const coverageDate = new Date(updatedCoverage.date);
+
+            // Atualiza registro da cobertura principal
+            let updatedHistoricoPrenhez = (animal.historicoPrenhez || []).map((r: PregnancyRecord) =>
+                r.id === coverageId
+                    ? { ...r, date: coverageDate, type: PREGNANCY_TYPE_MAP[updatedCoverage.type] || PregnancyType.Monta, sireName }
+                    : r
+            );
+
+            // Se não encontrou o registro (pode ser caso antigo), adiciona
+            if (!updatedHistoricoPrenhez.find((r: PregnancyRecord) => r.id === coverageId)) {
+                updatedHistoricoPrenhez = [...updatedHistoricoPrenhez, {
+                    id: coverageId,
+                    date: coverageDate,
+                    type: PREGNANCY_TYPE_MAP[updatedCoverage.type] || PregnancyType.Monta,
+                    sireName,
+                }];
+            }
+
+            // 🔧 SYNC REPASSE: Gerencia registro de repasse no historicoPrenhez
+            const repasseRecordId = `repasse_${coverageId}`;
+            const oldRepasseEnabled = oldCoverage.repasse?.enabled;
+            const newRepasseEnabled = updatedCoverage.repasse?.enabled;
+
+            if (newRepasseEnabled) {
+                // Monta o nome do reprodutor do repasse
+                const repasseBulls = updatedCoverage.repasse?.bulls || [];
+                const confirmedSire = updatedCoverage.repasse?.confirmedSireBrinco;
+                let repasseSireName = 'Touro de repasse';
+                if (confirmedSire) {
+                    repasseSireName = confirmedSire;
+                } else if (repasseBulls.length === 1) {
+                    repasseSireName = repasseBulls[0].bullBrinco;
+                } else if (repasseBulls.length > 1) {
+                    repasseSireName = repasseBulls.map((b: { bullBrinco: string }) => b.bullBrinco).join(' / ') + ' (pendente)';
+                } else if (updatedCoverage.repasse?.bullBrinco) {
+                    repasseSireName = updatedCoverage.repasse.bullBrinco;
+                }
+
+                const repasseDate = updatedCoverage.repasse?.startDate
+                    ? new Date(updatedCoverage.repasse.startDate)
+                    : coverageDate;
+
+                const existingRepasseIdx = updatedHistoricoPrenhez.findIndex((r: PregnancyRecord) => r.id === repasseRecordId);
+                if (existingRepasseIdx >= 0) {
+                    updatedHistoricoPrenhez[existingRepasseIdx] = {
+                        ...updatedHistoricoPrenhez[existingRepasseIdx],
+                        date: repasseDate,
+                        type: PregnancyType.Monta,
+                        sireName: repasseSireName,
+                    };
+                } else {
+                    updatedHistoricoPrenhez = [...updatedHistoricoPrenhez, {
+                        id: repasseRecordId,
+                        date: repasseDate,
+                        type: PregnancyType.Monta,
+                        sireName: repasseSireName,
+                    }];
+                }
+            } else if (oldRepasseEnabled && !newRepasseEnabled) {
+                // Repasse foi desabilitado: remove registro de repasse
+                updatedHistoricoPrenhez = updatedHistoricoPrenhez.filter(
+                    (r: PregnancyRecord) => r.id !== repasseRecordId
+                );
+            }
+
+            const animalRef = db.collection('animals').doc(oldCoverage.cowId);
+            let animalUpdates: Record<string, unknown> = { historicoPrenhez: updatedHistoricoPrenhez };
+
+            // 🔧 SYNC: Diagnóstico da cobertura principal: só registra aborto se era positive e virou negative (perda gestacional)
+            // Nota: pending -> negative = vazia, NÃO é aborto
+            const oldResult = oldCoverage.pregnancyResult;
+            const newResult = updatedCoverageData.pregnancyResult;
+            let currentAborto = [...(animal.historicoAborto || [])];
+
+            if (newResult === 'negative' && oldResult === 'positive') {
+                const abortionRecord = { id: `abort_${coverageId}`, date: updatedCoverageData.pregnancyCheckDate || new Date() };
+                currentAborto = [...currentAborto, abortionRecord];
+            }
+            // 🔧 SYNC: Diagnóstico mudou DE negativo para outro -> remove do historicoAborto
+            if (oldResult === 'negative' && newResult && newResult !== 'negative') {
+                currentAborto = currentAborto.filter(
+                    (r: AbortionRecord) => r.id !== `abort_${coverageId}`
+                );
+            }
+
+            // 🔧 SYNC: Diagnóstico do repasse mudou (só aborto se positive -> negative)
+            const oldRepasseResult = oldCoverage.repasse?.diagnosisResult;
+            const newRepasse = updatedCoverageData.repasse;
+            const newRepasseResult = newRepasse?.diagnosisResult;
+            if (newRepasseResult === 'negative' && oldRepasseResult === 'positive') {
+                const abortionRecord = { id: `abort_repasse_${coverageId}`, date: newRepasse?.diagnosisDate || new Date() };
+                currentAborto = [...currentAborto, abortionRecord];
+            }
+            if (oldRepasseResult === 'negative' && newRepasseResult && newRepasseResult !== 'negative') {
+                currentAborto = currentAborto.filter(
+                    (r: AbortionRecord) => r.id !== `abort_repasse_${coverageId}`
+                );
+            }
+
+            // Só inclui historicoAborto nos updates se houve alteração
+            if (currentAborto.length !== (animal.historicoAborto || []).length ||
+                JSON.stringify(currentAborto) !== JSON.stringify(animal.historicoAborto || [])) {
+                animalUpdates.historicoAborto = currentAborto;
+            }
+
+            const dataWithTimestamp = convertDatesToTimestamps(animalUpdates);
+            await animalRef.update({ ...dataWithTimestamp, updatedAt: new Date() });
+
+            dispatch({ type: 'LOCAL_UPDATE_ANIMAL', payload: { animalId: oldCoverage.cowId, updatedData: animalUpdates } });
+
+            const updatedAnimals = stateRef.current.animals.map((a: Animal) =>
+                a.id === oldCoverage.cowId ? { ...a, ...animalUpdates } : a
+            );
+            await updateLocalCache('animals', updatedAnimals);
+
+            // 🔧 FIV: Se doadora mudou, atualiza progênie
+            if (updatedCoverageData.donorCowId !== undefined && oldCoverage.donorCowId !== updatedCoverageData.donorCowId) {
+                // Remove da doadora antiga
+                if (oldCoverage.donorCowId) {
+                    const oldDonor = stateRef.current.animals.find((a: Animal) => a.id === oldCoverage.donorCowId);
+                    if (oldDonor) {
+                        const cleanedProgenie = (oldDonor.historicoProgenie || []).filter(
+                            (r: { id: string }) => r.id !== `fiv_${coverageId}`
+                        );
+                        const oldDonorRef = db.collection('animals').doc(oldCoverage.donorCowId);
+                        await oldDonorRef.update({ ...convertDatesToTimestamps({ historicoProgenie: cleanedProgenie }), updatedAt: new Date() });
+                        dispatch({ type: 'LOCAL_UPDATE_ANIMAL', payload: { animalId: oldCoverage.donorCowId, updatedData: { historicoProgenie: cleanedProgenie } } });
+                    }
+                }
+                // Adiciona à nova doadora
+                if (updatedCoverageData.donorCowId) {
+                    const newDonor = stateRef.current.animals.find((a: Animal) => a.id === updatedCoverageData.donorCowId);
+                    if (newDonor) {
+                        const offspringRecord = { id: `fiv_${coverageId}`, offspringBrinco: `Embriao (receptora: ${updatedCoverage.cowBrinco})` };
+                        const newProgenie = [...(newDonor.historicoProgenie || []), offspringRecord];
+                        const newDonorRef = db.collection('animals').doc(updatedCoverageData.donorCowId);
+                        await newDonorRef.update({ ...convertDatesToTimestamps({ historicoProgenie: newProgenie }), updatedAt: new Date() });
+                        dispatch({ type: 'LOCAL_UPDATE_ANIMAL', payload: { animalId: updatedCoverageData.donorCowId, updatedData: { historicoProgenie: newProgenie } } });
+                    }
+                }
+            }
+        }
+    }, [userId, db, updateBreedingSeason, updateLocalCache]);
+
+    // Remove uma cobertura da estação e limpa registros sincronizados
+    const deleteCoverageFromSeason = useCallback(async (
+        seasonId: string,
+        coverageId: string
+    ) => {
+        if (!userId || !db) return;
+
+        const season = stateRef.current.breedingSeasons.find((s: BreedingSeason) => s.id === seasonId);
+        if (!season) throw new Error('Estação de monta não encontrada');
+
+        const coverage = season.coverageRecords.find((c: CoverageRecord) => c.id === coverageId);
+        if (!coverage) throw new Error('Cobertura não encontrada');
+
+        // Remove a cobertura da estação
+        const updatedCoverageRecords = season.coverageRecords.filter((c: CoverageRecord) => c.id !== coverageId);
+        await updateBreedingSeason(seasonId, { coverageRecords: updatedCoverageRecords });
+
+        // 🔧 SYNC: Limpa registros do animal
+        const animal = stateRef.current.animals.find((a: Animal) => a.id === coverage.cowId);
+        if (animal) {
+            const animalUpdates: Record<string, unknown> = {};
+
+            // Remove do historicoPrenhez (cobertura principal + repasse)
+            animalUpdates.historicoPrenhez = (animal.historicoPrenhez || []).filter(
+                (r: PregnancyRecord) => r.id !== coverageId && r.id !== `repasse_${coverageId}`
+            );
+
+            // Remove do historicoAborto: limpa qualquer registro de aborto vinculado a esta cobertura
+            // (independente do resultado atual, pois pode ter sido editado antes da exclusão)
+            const cleanedAborto = (animal.historicoAborto || []).filter(
+                (r: AbortionRecord) => r.id !== `abort_${coverageId}` && r.id !== `abort_repasse_${coverageId}`
+            );
+            if (cleanedAborto.length !== (animal.historicoAborto || []).length) {
+                animalUpdates.historicoAborto = cleanedAborto;
+            }
+
+            const animalRef = db.collection('animals').doc(coverage.cowId);
+            const dataWithTimestamp = convertDatesToTimestamps(animalUpdates);
+            await animalRef.update({ ...dataWithTimestamp, updatedAt: new Date() });
+
+            dispatch({ type: 'LOCAL_UPDATE_ANIMAL', payload: { animalId: coverage.cowId, updatedData: animalUpdates } });
+
+            const updatedAnimals = stateRef.current.animals.map((a: Animal) =>
+                a.id === coverage.cowId ? { ...a, ...animalUpdates } : a
+            );
+            await updateLocalCache('animals', updatedAnimals);
+        }
+
+        // 🔧 FIV: Limpa progênie da doadora
+        if (coverage.type === 'fiv' && coverage.donorCowId) {
+            const donor = stateRef.current.animals.find((a: Animal) => a.id === coverage.donorCowId);
+            if (donor) {
+                const cleanedProgenie = (donor.historicoProgenie || []).filter(
+                    (r: { id: string }) => r.id !== `fiv_${coverageId}`
+                );
+                const donorRef = db.collection('animals').doc(coverage.donorCowId);
+                await donorRef.update({ ...convertDatesToTimestamps({ historicoProgenie: cleanedProgenie }), updatedAt: new Date() });
+                dispatch({ type: 'LOCAL_UPDATE_ANIMAL', payload: { animalId: coverage.donorCowId, updatedData: { historicoProgenie: cleanedProgenie } } });
+            }
+        }
+    }, [userId, db, updateBreedingSeason, updateLocalCache]);
+
+    // Confirma a paternidade do repasse (quando 2 touros foram usados)
+    // Atualiza o confirmedSireId no repasse e sincroniza o historicoPrenhez do animal
+    const confirmPaternity = useCallback(async (
+        seasonId: string,
+        coverageId: string,
+        confirmedBullId: string,
+        confirmedBullBrinco: string
+    ) => {
+        if (!userId || !db) return;
+
+        const season = stateRef.current.breedingSeasons.find((s: BreedingSeason) => s.id === seasonId);
+        if (!season) throw new Error('Estação de monta não encontrada');
+
+        const coverage = season.coverageRecords.find((c: CoverageRecord) => c.id === coverageId);
+        if (!coverage || !coverage.repasse?.enabled) throw new Error('Cobertura/repasse não encontrada');
+
+        // Atualiza o repasse com o touro confirmado
+        const updatedRepasse = {
+            ...coverage.repasse,
+            confirmedSireId: confirmedBullId,
+            confirmedSireBrinco: confirmedBullBrinco,
+        };
+
+        const updatedCoverageRecords = season.coverageRecords.map((c: CoverageRecord) =>
+            c.id === coverageId ? { ...c, repasse: updatedRepasse } : c
+        );
+
+        await updateBreedingSeason(seasonId, { coverageRecords: updatedCoverageRecords });
+
+        // SYNC: Atualiza sireName no historicoPrenhez do animal
+        // Nota: Só atualiza o registro de repasse (repasse_{coverageId}), NÃO o da cobertura principal
+        // O pai da cobertura principal já é conhecido (touro/sêmen) — paternidade é só do repasse
+        const animal = stateRef.current.animals.find((a: Animal) => a.id === coverage.cowId);
+        if (animal) {
+            const updatedHistoricoPrenhez = (animal.historicoPrenhez || []).map((r: PregnancyRecord) => {
+                if (r.id === `repasse_${coverageId}`) {
+                    return { ...r, sireName: confirmedBullBrinco };
+                }
+                return r;
+            });
+
+            const animalRef = db.collection('animals').doc(coverage.cowId);
+            const dataWithTimestamp = convertDatesToTimestamps({ historicoPrenhez: updatedHistoricoPrenhez });
+            await animalRef.update({ ...dataWithTimestamp, updatedAt: new Date() });
+
+            dispatch({ type: 'LOCAL_UPDATE_ANIMAL', payload: { animalId: coverage.cowId, updatedData: { historicoPrenhez: updatedHistoricoPrenhez } } });
+
+            const updatedAnimals = stateRef.current.animals.map((a: Animal) =>
+                a.id === coverage.cowId ? { ...a, historicoPrenhez: updatedHistoricoPrenhez } : a
+            );
+            await updateLocalCache('animals', updatedAnimals);
         }
     }, [userId, db, updateBreedingSeason, updateLocalCache]);
 
@@ -2090,5 +2385,8 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
         deleteBreedingSeason,
         addCoverageToSeason,
         updatePregnancyDiagnosis,
+        updateCoverageInSeason,
+        deleteCoverageFromSeason,
+        confirmPaternity,
     };
 };
