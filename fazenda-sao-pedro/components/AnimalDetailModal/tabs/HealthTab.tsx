@@ -107,8 +107,16 @@ const HealthTab: React.FC<HealthTabProps> = ({
               placeholder="Motivo"
               value={medicationForm.motivo}
               onChange={onMedicationFormChange}
-              className="bg-base-700 p-2 rounded col-span-1 md:col-span-2"
+              className="bg-base-700 p-2 rounded"
               required
+            />
+            <input
+              type="text"
+              name="responsavel"
+              placeholder="Responsável"
+              value={medicationForm.responsavel}
+              onChange={onMedicationFormChange}
+              className="bg-base-700 p-2 rounded"
             />
             <button
               type="submit"

@@ -242,20 +242,20 @@ const Dashboard = ({
 
   return (
     <div ref={containerRef}>
-      {/* Dica de swipe para mobile */}
+      {/* Dica de swipe para mobile - Direita=Peso (azul), Esquerda=Medicação (vermelho) */}
       {(onQuickWeight || onQuickMedication) && (
         <div className="flex items-center justify-center gap-4 mb-4 md:hidden">
           <div className="flex items-center gap-1.5 text-xs text-gray-400">
-            <span className="w-6 h-6 rounded-full bg-blue-600/20 flex items-center justify-center">
-              <span className="text-blue-400">←</span>
+            <span className="w-6 h-6 rounded-full bg-red-600/20 flex items-center justify-center">
+              <span className="text-red-400">←</span>
             </span>
-            <span>Peso</span>
+            <span>Medicação</span>
           </div>
           <span className="text-gray-600">|</span>
           <div className="flex items-center gap-1.5 text-xs text-gray-400">
-            <span>Medicação</span>
-            <span className="w-6 h-6 rounded-full bg-red-600/20 flex items-center justify-center">
-              <span className="text-red-400">→</span>
+            <span>Peso</span>
+            <span className="w-6 h-6 rounded-full bg-blue-600/20 flex items-center justify-center">
+              <span className="text-blue-400">→</span>
             </span>
           </div>
         </div>

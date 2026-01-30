@@ -78,10 +78,19 @@ export const useAnimalActions = (userUid: string) => {
             const historicoPesagens = [...(animal.historicoPesagens || []), newEntry]
                 .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
-            await updateAnimal(animalId, {
-                historicoPesagens,
-                pesoKg: weight,
-            });
+            if (navigator.onLine) {
+                await updateAnimal(animalId, {
+                    historicoPesagens,
+                    pesoKg: weight,
+                });
+            } else {
+                offlineQueue.add({
+                    type: 'update',
+                    collection: 'animals',
+                    data: { id: animalId, historicoPesagens, pesoKg: weight }
+                });
+                alert('📱 Peso salvo localmente! Será sincronizado quando a internet voltar.');
+            }
         } catch (error) {
             console.error('Erro ao salvar peso:', error);
             alert('❌ Erro ao salvar peso');
@@ -100,7 +109,16 @@ export const useAnimalActions = (userUid: string) => {
 
             const historicoSanitario = [...(animal.historicoSanitario || []), newMedication];
 
-            await updateAnimal(animalId, { historicoSanitario });
+            if (navigator.onLine) {
+                await updateAnimal(animalId, { historicoSanitario });
+            } else {
+                offlineQueue.add({
+                    type: 'update',
+                    collection: 'animals',
+                    data: { id: animalId, historicoSanitario }
+                });
+                alert('📱 Medicação salva localmente! Será sincronizada quando a internet voltar.');
+            }
         } catch (error) {
             console.error('Erro ao salvar medicação:', error);
             alert('❌ Erro ao salvar medicação');

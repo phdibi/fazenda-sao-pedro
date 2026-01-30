@@ -378,5 +378,9 @@ const AnimalCard: React.FC<AnimalCardProps> = ({
 export default React.memo(AnimalCard, (prev, next) =>
   prev.animal === next.animal &&
   prev.onClick === next.onClick &&
-  prev.showGMD === next.showGMD
+  prev.showGMD === next.showGMD &&
+  prev.cachedGMD === next.cachedGMD &&
+  prev.onQuickWeight === next.onQuickWeight &&
+  prev.onQuickMedication === next.onQuickMedication &&
+  prev.onLongPress === next.onLongPress
 );

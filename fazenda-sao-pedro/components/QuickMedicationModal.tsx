@@ -79,7 +79,9 @@ const QuickMedicationModal: React.FC<QuickMedicationModalProps> = ({
   const handleClose = () => {
     setMedicamento('');
     setDose('');
+    setUnidade('ml');
     setMotivo('');
+    setResponsavel('Equipe Campo');
     onClose();
   };
 
