@@ -121,7 +121,7 @@ export interface BreedingSeasonMetrics {
   coveragesByType: Record<CoverageType, number>;
   coveragesByBull: { bullId: string; bullBrinco: string; count: number; pregnancies: number }[];
   dailyCoverages: { date: string; count: number }[];
-  pregnancyChecksDue: { cowId: string; cowBrinco: string; dueDate: Date; coverageId: string }[];
+  pregnancyChecksDue: { cowId: string; cowBrinco: string; dueDate: Date; coverageId: string; isRepasse: boolean }[];
   // Repasse
   repasseCount: number;
   repassePregnant: number;
@@ -270,7 +270,7 @@ export const calculateBreedingMetrics = (
     .sort((a, b) => a.date.localeCompare(b.date));
 
   // Diagnósticos pendentes (cobertura principal + repasse)
-  const pregnancyChecksDue: { cowId: string; cowBrinco: string; dueDate: Date; coverageId: string }[] = [];
+  const pregnancyChecksDue: { cowId: string; cowBrinco: string; dueDate: Date; coverageId: string; isRepasse: boolean }[] = [];
   const checkDays = season.config?.pregnancyCheckDays || 60;
 
   coverages.forEach((c) => {
@@ -283,6 +283,7 @@ export const calculateBreedingMetrics = (
           cowBrinco: c.cowBrinco,
           coverageId: c.id,
           dueDate: new Date(new Date(c.date).getTime() + checkDays * 24 * 60 * 60 * 1000),
+          isRepasse: false,
         });
       }
     }
@@ -296,6 +297,7 @@ export const calculateBreedingMetrics = (
           cowBrinco: c.cowBrinco,
           coverageId: c.id,
           dueDate: new Date(new Date(repasseStartDate).getTime() + checkDays * 24 * 60 * 60 * 1000),
+          isRepasse: true,
         });
       }
     }

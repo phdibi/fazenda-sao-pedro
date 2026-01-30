@@ -1445,6 +1445,7 @@ const BreedingSeasonManager: React.FC<BreedingSeasonManagerProps> = ({
   const [activeTab, setActiveTab] = useState<'overview' | 'coverages' | 'diagnostics' | 'calvings'>(
     'overview'
   );
+  const [tabSearch, setTabSearch] = useState('');
 
   // Dados calculados
   const eligibleCows = useMemo(() => getEligibleCows(animals), [animals]);
@@ -1549,15 +1550,28 @@ const BreedingSeasonManager: React.FC<BreedingSeasonManagerProps> = ({
     }
   }, [currentSeason, onDeleteCoverage]);
 
-  const handleQuickDiagnosis = useCallback(async (coverageId: string, result: 'positive' | 'negative') => {
+  const handleQuickDiagnosis = useCallback(async (coverageId: string, result: 'positive' | 'negative', isRepasse?: boolean) => {
     if (!currentSeason) return;
     try {
-      await onUpdateDiagnosis(currentSeason.id, coverageId, result, new Date());
+      if (isRepasse) {
+        // Atualiza o diagnóstico do repasse via onUpdateCoverage
+        const coverage = currentSeason.coverageRecords?.find((c) => c.id === coverageId);
+        if (!coverage?.repasse) return;
+        await onUpdateCoverage(currentSeason.id, coverageId, {
+          repasse: {
+            ...coverage.repasse,
+            diagnosisResult: result,
+            diagnosisDate: new Date(),
+          },
+        });
+      } else {
+        await onUpdateDiagnosis(currentSeason.id, coverageId, result, new Date());
+      }
     } catch (err) {
       console.error('Erro ao registrar diagnóstico:', err);
       alert('Erro ao registrar diagnóstico. Tente novamente.');
     }
-  }, [currentSeason, onUpdateDiagnosis]);
+  }, [currentSeason, onUpdateDiagnosis, onUpdateCoverage]);
 
   const handleConfirmPaternity = useCallback(async (coverageId: string, bullId: string, bullBrinco: string) => {
     if (!currentSeason) return;
@@ -1818,7 +1832,7 @@ const BreedingSeasonManager: React.FC<BreedingSeasonManagerProps> = ({
         ]).map((tab) => (
           <button
             key={tab.key}
-            onClick={() => setActiveTab(tab.key)}
+            onClick={() => { setActiveTab(tab.key); setTabSearch(''); }}
             className={`px-4 py-2 text-sm font-medium transition-colors whitespace-nowrap ${
               activeTab === tab.key
                 ? 'text-brand-primary border-b-2 border-brand-primary'
@@ -1944,77 +1958,117 @@ const BreedingSeasonManager: React.FC<BreedingSeasonManagerProps> = ({
       )}
 
       {/* TAB: Coberturas */}
-      {activeTab === 'coverages' && (
-        <div className="space-y-3">
-          {sortedCoverages.length === 0 ? (
-            <div className="bg-base-800 rounded-xl p-8 text-center">
-              <p className="text-gray-400">Nenhuma cobertura registrada</p>
-              <button
-                onClick={() => setShowCoverageForm(true)}
-                className="mt-3 px-4 py-2 bg-brand-primary text-white rounded-lg hover:bg-brand-primary-dark text-sm"
-              >
-                + Registrar primeira cobertura
-              </button>
-            </div>
-          ) : (
-            sortedCoverages.map((coverage) => (
-              <CoverageCard
-                key={coverage.id}
-                coverage={coverage}
-                season={currentSeason}
-                availableBulls={availableBulls}
-                onEdit={() => setEditingCoverage(coverage)}
-                onDelete={() => handleDeleteCoverage(coverage.id)}
-                onQuickDiagnosis={handleQuickDiagnosis}
-                onDiagnosisWithRepasse={handleDiagnosisWithRepasse}
-                onConfirmPaternity={handleConfirmPaternity}
+      {activeTab === 'coverages' && (() => {
+        const filtered = tabSearch.trim()
+          ? sortedCoverages.filter((c) => c.cowBrinco.toLowerCase().includes(tabSearch.toLowerCase()))
+          : sortedCoverages;
+        return (
+          <div className="space-y-3">
+            {sortedCoverages.length > 0 && (
+              <input
+                type="text"
+                value={tabSearch}
+                onChange={(e) => setTabSearch(e.target.value)}
+                placeholder="Buscar por brinco..."
+                className="w-full bg-base-800 border border-base-600 rounded-lg px-3 py-2 text-white text-sm"
               />
-            ))
-          )}
-        </div>
-      )}
+            )}
+            {sortedCoverages.length === 0 ? (
+              <div className="bg-base-800 rounded-xl p-8 text-center">
+                <p className="text-gray-400">Nenhuma cobertura registrada</p>
+                <button
+                  onClick={() => setShowCoverageForm(true)}
+                  className="mt-3 px-4 py-2 bg-brand-primary text-white rounded-lg hover:bg-brand-primary-dark text-sm"
+                >
+                  + Registrar primeira cobertura
+                </button>
+              </div>
+            ) : filtered.length === 0 ? (
+              <div className="bg-base-800 rounded-xl p-8 text-center">
+                <p className="text-gray-400">Nenhuma cobertura encontrada para "{tabSearch}"</p>
+              </div>
+            ) : (
+              filtered.map((coverage) => (
+                <CoverageCard
+                  key={coverage.id}
+                  coverage={coverage}
+                  season={currentSeason}
+                  availableBulls={availableBulls}
+                  onEdit={() => setEditingCoverage(coverage)}
+                  onDelete={() => handleDeleteCoverage(coverage.id)}
+                  onQuickDiagnosis={handleQuickDiagnosis}
+                  onDiagnosisWithRepasse={handleDiagnosisWithRepasse}
+                  onConfirmPaternity={handleConfirmPaternity}
+                />
+              ))
+            )}
+          </div>
+        );
+      })()}
 
       {/* TAB: Diagnósticos */}
-      {activeTab === 'diagnostics' && metrics && (
-        <div className="bg-base-800 rounded-xl p-6">
-          <h3 className="text-lg font-semibold text-white mb-4">
-            Diagnosticos Pendentes ({metrics.pregnancyChecksDue.length})
-          </h3>
-          {metrics.pregnancyChecksDue.length === 0 ? (
-            <p className="text-gray-400 text-center py-8">Nenhum diagnostico pendente no momento</p>
-          ) : (
-            <div className="space-y-3">
-              {metrics.pregnancyChecksDue.map((check, idx) => (
-                <div
-                  key={`${check.cowId}-${idx}`}
-                  className="flex items-center justify-between p-4 bg-base-700 rounded-lg"
-                >
-                  <div>
-                    <div className="font-medium text-white">{check.cowBrinco}</div>
-                    <div className="text-sm text-gray-400">
-                      Previsto para: {formatDate(check.dueDate)}
+      {activeTab === 'diagnostics' && metrics && (() => {
+        const checks = metrics.pregnancyChecksDue;
+        const filteredChecks = tabSearch.trim()
+          ? checks.filter((c) => c.cowBrinco.toLowerCase().includes(tabSearch.toLowerCase()))
+          : checks;
+        return (
+          <div className="bg-base-800 rounded-xl p-6">
+            <h3 className="text-lg font-semibold text-white mb-4">
+              Diagnosticos Pendentes ({checks.length})
+            </h3>
+            {checks.length > 0 && (
+              <input
+                type="text"
+                value={tabSearch}
+                onChange={(e) => setTabSearch(e.target.value)}
+                placeholder="Buscar por brinco..."
+                className="w-full bg-base-700 border border-base-600 rounded-lg px-3 py-2 text-white text-sm mb-4"
+              />
+            )}
+            {checks.length === 0 ? (
+              <p className="text-gray-400 text-center py-8">Nenhum diagnostico pendente no momento</p>
+            ) : filteredChecks.length === 0 ? (
+              <p className="text-gray-400 text-center py-8">Nenhum diagnostico encontrado para "{tabSearch}"</p>
+            ) : (
+              <div className="space-y-3">
+                {filteredChecks.map((check, idx) => (
+                  <div
+                    key={`${check.cowId}-${check.isRepasse ? 'rep' : 'main'}-${idx}`}
+                    className="flex items-center justify-between p-4 bg-base-700 rounded-lg"
+                  >
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium text-white">{check.cowBrinco}</span>
+                        {check.isRepasse && (
+                          <span className="px-2 py-0.5 bg-amber-600/20 text-amber-400 text-xs rounded-full">Repasse</span>
+                        )}
+                      </div>
+                      <div className="text-sm text-gray-400">
+                        Previsto para: {formatDate(check.dueDate)}
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => handleQuickDiagnosis(check.coverageId, 'positive', check.isRepasse)}
+                        className="px-3 py-1 bg-emerald-600 text-white text-sm rounded-lg hover:bg-emerald-700"
+                      >
+                        Prenhe
+                      </button>
+                      <button
+                        onClick={() => handleQuickDiagnosis(check.coverageId, 'negative', check.isRepasse)}
+                        className="px-3 py-1 bg-red-600 text-white text-sm rounded-lg hover:bg-red-700"
+                      >
+                        Vazia
+                      </button>
                     </div>
                   </div>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => handleQuickDiagnosis(check.coverageId, 'positive')}
-                      className="px-3 py-1 bg-emerald-600 text-white text-sm rounded-lg hover:bg-emerald-700"
-                    >
-                      Prenhe
-                    </button>
-                    <button
-                      onClick={() => handleQuickDiagnosis(check.coverageId, 'negative')}
-                      className="px-3 py-1 bg-red-600 text-white text-sm rounded-lg hover:bg-red-700"
-                    >
-                      Vazia
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {/* TAB: Partos Previstos */}
       {activeTab === 'calvings' && (
