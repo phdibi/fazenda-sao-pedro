@@ -2334,8 +2334,9 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
         }
     }, [userId, db, updateBreedingSeason, updateLocalCache]);
 
-    // Confirma a paternidade do repasse (quando 2 touros foram usados)
-    // Atualiza o confirmedSireId no repasse e sincroniza o historicoPrenhez do animal
+    // Confirma a paternidade (quando 2 touros foram usados)
+    // Suporta tanto repasse quanto monta natural direta com 2 touros
+    // Atualiza o confirmedSireId e sincroniza o historicoPrenhez do animal
     const confirmPaternity = useCallback(async (
         seasonId: string,
         coverageId: string,
@@ -2348,28 +2349,52 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
         if (!season) throw new Error('Estação de monta não encontrada');
 
         const coverage = season.coverageRecords.find((c: CoverageRecord) => c.id === coverageId);
-        if (!coverage || !coverage.repasse?.enabled) throw new Error('Cobertura/repasse não encontrada');
+        if (!coverage) throw new Error('Cobertura não encontrada');
 
-        // Atualiza o repasse com o touro confirmado
-        const updatedRepasse = {
-            ...coverage.repasse,
-            confirmedSireId: confirmedBullId,
-            confirmedSireBrinco: confirmedBullBrinco,
-        };
+        // Detecta se é confirmação da cobertura principal (natural com 2 touros) ou do repasse
+        const isMainCoveragePaternity = coverage.type === 'natural'
+            && coverage.bulls && coverage.bulls.length > 1
+            && !coverage.confirmedSireId;
+
+        const isRepassePaternity = coverage.repasse?.enabled
+            && coverage.repasse.bulls && coverage.repasse.bulls.length > 1
+            && !coverage.repasse.confirmedSireId;
+
+        if (!isMainCoveragePaternity && !isRepassePaternity) {
+            throw new Error('Nenhuma paternidade pendente encontrada');
+        }
+
+        let updatedCoverageData: Partial<CoverageRecord> = {};
+
+        if (isMainCoveragePaternity) {
+            // Confirma paternidade da cobertura principal (monta natural direta)
+            updatedCoverageData = {
+                confirmedSireId: confirmedBullId,
+                confirmedSireBrinco: confirmedBullBrinco,
+            };
+        } else {
+            // Confirma paternidade do repasse
+            updatedCoverageData = {
+                repasse: {
+                    ...coverage.repasse!,
+                    confirmedSireId: confirmedBullId,
+                    confirmedSireBrinco: confirmedBullBrinco,
+                },
+            };
+        }
 
         const updatedCoverageRecords = season.coverageRecords.map((c: CoverageRecord) =>
-            c.id === coverageId ? { ...c, repasse: updatedRepasse } : c
+            c.id === coverageId ? { ...c, ...updatedCoverageData } : c
         );
 
         await updateBreedingSeason(seasonId, { coverageRecords: updatedCoverageRecords });
 
         // SYNC: Atualiza sireName no historicoPrenhez do animal
-        // Nota: Só atualiza o registro de repasse (repasse_{coverageId}), NÃO o da cobertura principal
-        // O pai da cobertura principal já é conhecido (touro/sêmen) — paternidade é só do repasse
         const animal = stateRef.current.animals.find((a: Animal) => a.id === coverage.cowId);
         if (animal) {
+            const targetRecordId = isMainCoveragePaternity ? coverageId : `repasse_${coverageId}`;
             const updatedHistoricoPrenhez = (animal.historicoPrenhez || []).map((r: PregnancyRecord) => {
-                if (r.id === `repasse_${coverageId}`) {
+                if (r.id === targetRecordId) {
                     return { ...r, sireName: confirmedBullBrinco };
                 }
                 return r;

@@ -56,6 +56,43 @@ export const getRepasseBulls = (repasse: RepasseData): RepasseBull[] => {
 };
 
 /**
+ * Retorna touros da cobertura principal (natural) - backward compat: suporta bullId legado e bulls[]
+ */
+export const getCoverageBulls = (coverage: CoverageRecord): RepasseBull[] => {
+  if (coverage.bulls && coverage.bulls.length > 0) {
+    return coverage.bulls;
+  }
+  if (coverage.bullId) {
+    return [{ bullId: coverage.bullId, bullBrinco: coverage.bullBrinco || 'Desconhecido' }];
+  }
+  return [];
+};
+
+/**
+ * Retorna label do touro para exibição na cobertura natural
+ * Se paternidade confirmada, mostra o confirmado; senão mostra todos
+ */
+export const getCoverageBullLabel = (coverage: CoverageRecord): string => {
+  if (coverage.confirmedSireId) {
+    return coverage.confirmedSireBrinco || 'Confirmado';
+  }
+  const bulls = getCoverageBulls(coverage);
+  if (bulls.length === 0) return 'Sem touro';
+  if (bulls.length === 1) return bulls[0].bullBrinco;
+  return bulls.map((b) => b.bullBrinco).join(' / ');
+};
+
+/**
+ * Verifica se há paternidade pendente na cobertura principal (2 touros naturais, sem confirmedSireId)
+ */
+export const hasPendingCoveragePaternity = (coverage: CoverageRecord): boolean => {
+  if (coverage.type !== 'natural') return false;
+  if (coverage.pregnancyResult !== 'positive') return false;
+  const bulls = getCoverageBulls(coverage);
+  return bulls.length > 1 && !coverage.confirmedSireId;
+};
+
+/**
  * Retorna label do touro para exibição no repasse
  * Se paternidade confirmada, mostra o confirmado; senão mostra todos
  */
@@ -70,7 +107,7 @@ export const getRepasseBullLabel = (repasse: RepasseData): string => {
 };
 
 /**
- * Verifica se há paternidade pendente de confirmação (2 touros, sem confirmedSireId)
+ * Verifica se há paternidade pendente de confirmação no repasse (2 touros, sem confirmedSireId)
  */
 export const hasPendingPaternity = (repasse: RepasseData): boolean => {
   if (!repasse.enabled || repasse.diagnosisResult !== 'positive') return false;
@@ -91,9 +128,13 @@ export const PREGNANCY_TYPE_MAP: Record<string, PregnancyType> = {
 /**
  * Determina o nome do reprodutor (sireName) a partir de uma cobertura
  * Para FIV: formato "DoadoraXSêmen" (ex: 5311XLinaje)
+ * Para Natural com 2 touros: "Touro1 / Touro2 (pendente)" ou confirmado
  */
 export const getCoverageSireName = (coverage: {
   bullBrinco?: string;
+  bulls?: RepasseBull[];
+  confirmedSireId?: string;
+  confirmedSireBrinco?: string;
   semenCode?: string;
   type?: CoverageType;
   donorCowBrinco?: string;
@@ -101,6 +142,17 @@ export const getCoverageSireName = (coverage: {
   // FIV: cruzamento no formato DoadoraXSêmen
   if (coverage.type === 'fiv' && coverage.donorCowBrinco && coverage.semenCode) {
     return `${coverage.donorCowBrinco}X${coverage.semenCode}`;
+  }
+  // Natural com paternidade confirmada
+  if (coverage.type === 'natural' && coverage.confirmedSireId) {
+    return coverage.confirmedSireBrinco || 'Confirmado';
+  }
+  // Natural com múltiplos touros
+  if (coverage.type === 'natural' && coverage.bulls && coverage.bulls.length > 0) {
+    if (coverage.bulls.length === 1) {
+      return coverage.bulls[0].bullBrinco;
+    }
+    return coverage.bulls.map(b => b.bullBrinco).join(' / ') + ' (pendente)';
   }
   return coverage.bullBrinco || coverage.semenCode || 'Desconhecido';
 };
@@ -212,18 +264,47 @@ export const calculateBreedingMetrics = (
   >();
   coverages.forEach((c) => {
     // Touro/sêmen da cobertura principal
-    const bullKey = c.bullId || c.semenCode || 'desconhecido';
-    const existing = bullStats.get(bullKey) || {
-      bullId: c.bullId || '',
-      bullBrinco: c.bullBrinco || c.semenCode || 'Desconhecido',
-      count: 0,
-      pregnancies: 0,
-    };
-    existing.count++;
-    if (c.pregnancyResult === 'positive') {
-      existing.pregnancies++;
+    const mainBulls = getCoverageBulls(c);
+    if (mainBulls.length > 0 && c.type === 'natural') {
+      // Monta natural: pode ter 1 ou 2 touros
+      const isPregnant = c.pregnancyResult === 'positive';
+      const confirmedId = c.confirmedSireId;
+      mainBulls.forEach((mb) => {
+        const bullKey = mb.bullId;
+        const existing = bullStats.get(bullKey) || {
+          bullId: mb.bullId,
+          bullBrinco: mb.bullBrinco,
+          count: 0,
+          pregnancies: 0,
+        };
+        existing.count++;
+        if (isPregnant) {
+          if (confirmedId) {
+            if (confirmedId === mb.bullId) {
+              existing.pregnancies++;
+            }
+          } else if (mainBulls.length === 1) {
+            existing.pregnancies++;
+          }
+          // Se 2 touros sem confirmação, não conta prenhez para nenhum
+        }
+        bullStats.set(bullKey, existing);
+      });
+    } else {
+      // IA/IATF/FIV ou natural legado sem bulls[]
+      const bullKey = c.bullId || c.semenCode || 'desconhecido';
+      const existing = bullStats.get(bullKey) || {
+        bullId: c.bullId || '',
+        bullBrinco: c.bullBrinco || c.semenCode || 'Desconhecido',
+        count: 0,
+        pregnancies: 0,
+      };
+      existing.count++;
+      if (c.pregnancyResult === 'positive') {
+        existing.pregnancies++;
+      }
+      bullStats.set(bullKey, existing);
     }
-    bullStats.set(bullKey, existing);
 
     // Touros de repasse (suporta 1 ou 2 touros)
     if (c.repasse?.enabled) {
@@ -449,11 +530,13 @@ export const getAvailableBulls = (animals: Animal[], minAgeMonths: number = 18):
 };
 
 /**
- * Retorna coberturas com paternidade pendente (2 touros no repasse, prenhe, sem confirmação)
+ * Retorna coberturas com paternidade pendente:
+ * - Monta natural direta com 2 touros, prenhe, sem confirmação
+ * - Repasse com 2 touros, prenhe, sem confirmação
  */
 export const getPendingPaternityRecords = (season: BreedingSeason): CoverageRecord[] => {
   return (season.coverageRecords || []).filter(
-    (c) => c.repasse?.enabled && hasPendingPaternity(c.repasse!)
+    (c) => hasPendingCoveragePaternity(c) || (c.repasse?.enabled && hasPendingPaternity(c.repasse!))
   );
 };
 

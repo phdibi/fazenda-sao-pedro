@@ -482,10 +482,21 @@ export const prepareBreedingSeasonDataForExport = (
       : '';
     const recipientInfo = isFIV ? getAnimalName(coverage.cowId, coverage.cowBrinco) : '';
 
-    // Nome do touro/sêmen
-    const sire = coverage.bullBrinco
-      ? getAnimalName(coverage.bullId, coverage.bullBrinco)
-      : coverage.semenCode || '';
+    // Nome do touro/sêmen (suporta múltiplos touros na monta natural)
+    let sire = '';
+    if (coverage.type === 'natural' && coverage.bulls && coverage.bulls.length > 0) {
+      if (coverage.confirmedSireId) {
+        sire = coverage.confirmedSireBrinco || 'Confirmado';
+      } else if (coverage.bulls.length === 1) {
+        sire = getAnimalName(coverage.bulls[0].bullId, coverage.bulls[0].bullBrinco);
+      } else {
+        sire = coverage.bulls.map(b => b.bullBrinco).join(' / ') + ' (pendente)';
+      }
+    } else if (coverage.bullBrinco) {
+      sire = getAnimalName(coverage.bullId, coverage.bullBrinco);
+    } else {
+      sire = coverage.semenCode || '';
+    }
 
     return {
       cowBrinco: isFIV ? `${coverage.cowBrinco} (Receptora)` : coverage.cowBrinco,

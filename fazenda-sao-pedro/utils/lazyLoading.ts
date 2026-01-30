@@ -305,7 +305,7 @@ export const routePreloader = createRoutePreloader({
 // Componentes pesados para preload em idle
 export const heavyComponents = [
     () => import('../components/ReportsView'),
-    () => import('../components/GenealogyTree'),
+    () => import('../components/genealogy'),
     () => import('../components/WeatherWidget'),
     () => import('../components/Chatbot'),
 ];

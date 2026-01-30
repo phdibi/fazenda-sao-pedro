@@ -20,6 +20,9 @@ import {
   getRepasseBulls,
   getRepasseBullLabel,
   hasPendingPaternity,
+  getCoverageBulls,
+  getCoverageBullLabel,
+  hasPendingCoveragePaternity,
 } from '../services/breedingSeasonService';
 import {
   exportBreedingSeasonToCSV,
@@ -260,7 +263,17 @@ const CoverageForm: React.FC<{
   const [cowId, setCowId] = useState(initialData?.cowId || '');
   const [cowSearch, setCowSearch] = useState('');
   const [type, setType] = useState<CoverageType>(initialData?.type || 'iatf');
-  const [bullId, setBullId] = useState(initialData?.bullId || '');
+  // Suporte a 1 ou 2 touros na monta natural direta
+  const initialNaturalBulls: RepasseBull[] = initialData?.type === 'natural'
+    ? (initialData.bulls && initialData.bulls.length > 0
+        ? initialData.bulls
+        : initialData.bullId
+          ? [{ bullId: initialData.bullId, bullBrinco: initialData.bullBrinco || 'Desconhecido' }]
+          : [])
+    : [];
+  const [naturalBullIds, setNaturalBullIds] = useState<string[]>(
+    initialNaturalBulls.map((b) => b.bullId)
+  );
   const [bullSearch, setBullSearch] = useState('');
   const [semenCode, setSemenCode] = useState(initialData?.semenCode || '');
   const [donorCowBrinco, setDonorCowBrinco] = useState(initialData?.donorCowBrinco || '');
@@ -301,9 +314,9 @@ const CoverageForm: React.FC<{
     () => [...eligibleCows, ...allAnimals].find((c) => c.id === cowId),
     [eligibleCows, allAnimals, cowId]
   );
-  const selectedBull = useMemo(
-    () => availableBulls.find((b) => b.id === bullId),
-    [availableBulls, bullId]
+  const selectedNaturalBulls = useMemo(
+    () => naturalBullIds.map((id) => availableBulls.find((b) => b.id === id)).filter(Boolean) as Animal[],
+    [availableBulls, naturalBullIds]
   );
   const selectedRepasseBulls = useMemo(
     () => repasseBullIds.map((id) => availableBulls.find((b) => b.id === id)).filter(Boolean) as Animal[],
@@ -417,11 +430,22 @@ const CoverageForm: React.FC<{
           }
         : undefined;
 
+    const naturalBullsArray: RepasseBull[] = selectedNaturalBulls.map((b) => ({
+      bullId: b.id,
+      bullBrinco: b.brinco,
+    }));
+
     onSubmit({
       cowId,
       cowBrinco: selectedCow?.brinco || '',
-      bullId: isNatural ? bullId : undefined,
-      bullBrinco: isNatural ? selectedBull?.brinco : undefined,
+      // Backward compat: bullId/bullBrinco aponta para o primeiro touro
+      bullId: isNatural ? (naturalBullsArray[0]?.bullId || undefined) : undefined,
+      bullBrinco: isNatural ? (naturalBullsArray[0]?.bullBrinco || undefined) : undefined,
+      // Array de touros para monta natural (1 ou 2)
+      bulls: isNatural && naturalBullsArray.length > 0 ? naturalBullsArray : undefined,
+      // Preserva confirmedSireId na edição (se existir)
+      confirmedSireId: initialData?.confirmedSireId,
+      confirmedSireBrinco: initialData?.confirmedSireBrinco,
       semenCode: needsSemen ? semenCode : undefined,
       donorCowId: isFiv && donorCowId ? donorCowId : undefined,
       donorCowBrinco: isFiv && donorCowBrinco ? donorCowBrinco : undefined,
@@ -505,33 +529,66 @@ const CoverageForm: React.FC<{
           </div>
         </div>
 
-        {/* Campos para NATURAL */}
+        {/* Campos para NATURAL (suporta 1 ou 2 touros) */}
         {isNatural && (
           <div>
             <label className="block text-sm text-gray-400 mb-1">
-              Touro ({availableBulls.length} disponiveis)
+              Touros da Monta Natural (max. 2) - ({availableBulls.length} disponiveis)
             </label>
-            <input
-              type="text"
-              value={bullSearch}
-              onChange={(e) => setBullSearch(e.target.value)}
-              placeholder="Buscar por brinco ou nome..."
-              className="w-full bg-base-700 border border-base-600 rounded-lg px-3 py-2 text-white mb-2"
-            />
-            <select
-              value={bullId}
-              onChange={(e) => setBullId(e.target.value)}
-              className="w-full bg-base-700 border border-base-600 rounded-lg px-3 py-2 text-white"
-              required
-              size={4}
-            >
-              <option value="">Selecione...</option>
-              {filteredBulls.map((bull) => (
-                <option key={bull.id} value={bull.id}>
-                  {bull.brinco} - {bull.nome || 'Sem nome'}
-                </option>
-              ))}
-            </select>
+            {selectedNaturalBulls.length > 0 && (
+              <div className="flex flex-wrap gap-2 mb-2">
+                {selectedNaturalBulls.map((bull) => (
+                  <span
+                    key={bull.id}
+                    className="inline-flex items-center gap-1 px-2 py-1 bg-emerald-900/30 border border-emerald-600 rounded-full text-sm text-emerald-400"
+                  >
+                    {bull.brinco} - {bull.nome || ''}
+                    <button
+                      type="button"
+                      onClick={() => setNaturalBullIds((ids) => ids.filter((id) => id !== bull.id))}
+                      className="text-emerald-300 hover:text-red-400 ml-1"
+                    >
+                      &times;
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
+            {selectedNaturalBulls.length >= 2 ? (
+              <p className="text-xs text-amber-400">
+                Maximo de 2 touros. Apos o nascimento, voce devera confirmar qual e o pai.
+              </p>
+            ) : (
+              <>
+                <input
+                  type="text"
+                  value={bullSearch}
+                  onChange={(e) => setBullSearch(e.target.value)}
+                  placeholder="Buscar por brinco ou nome..."
+                  className="w-full bg-base-700 border border-base-600 rounded-lg px-3 py-2 text-white mb-2"
+                />
+                <select
+                  value=""
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (val && !naturalBullIds.includes(val)) {
+                      setNaturalBullIds((ids) => [...ids, val]);
+                    }
+                  }}
+                  className="w-full bg-base-700 border border-base-600 rounded-lg px-3 py-2 text-white"
+                  size={4}
+                >
+                  <option value="">Selecione...</option>
+                  {filteredBulls
+                    .filter((b) => !naturalBullIds.includes(b.id))
+                    .map((bull) => (
+                      <option key={bull.id} value={bull.id}>
+                        {bull.brinco} - {bull.nome || 'Sem nome'}
+                      </option>
+                    ))}
+                </select>
+              </>
+            )}
             <div className="mt-2 p-3 bg-blue-900/20 border border-blue-700 rounded-lg">
               <p className="text-xs text-blue-400">
                 Periodo da monta natural: {formatDate(season.startDate)} - {formatDate(season.endDate)}
@@ -1039,6 +1096,16 @@ const CoverageCard: React.FC<{
           <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${resultColors[finalResult]}`}>
             {resultLabels[finalResult]}
           </span>
+          {isNatural && coverage.confirmedSireId && (
+            <span className="px-2 py-0.5 bg-emerald-600/20 text-emerald-400 text-xs rounded-full">
+              Pai confirmado
+            </span>
+          )}
+          {isNatural && hasPendingCoveragePaternity(coverage) && (
+            <span className="px-2 py-0.5 bg-yellow-600/20 text-yellow-400 text-xs rounded-full animate-pulse">
+              Paternidade pendente
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-1">
           <button
@@ -1075,12 +1142,34 @@ const CoverageCard: React.FC<{
             : formatDate(coverage.date)}
         </div>
 
-        {isNatural && coverage.bullBrinco && (
-          <>
-            <div className="text-gray-400">Touro:</div>
-            <div className="text-white">{coverage.bullBrinco}</div>
-          </>
-        )}
+        {isNatural && (() => {
+          const mainBulls = getCoverageBulls(coverage);
+          if (mainBulls.length === 0) return null;
+          if (mainBulls.length === 1) {
+            return (
+              <>
+                <div className="text-gray-400">Touro:</div>
+                <div className="text-white">{mainBulls[0].bullBrinco}</div>
+              </>
+            );
+          }
+          // 2 touros
+          return (
+            <>
+              <div className="text-gray-400">Touros:</div>
+              <div className="text-white">
+                {coverage.confirmedSireId ? (
+                  <span className="text-emerald-400">{coverage.confirmedSireBrinco}</span>
+                ) : (
+                  <>
+                    {mainBulls.map(b => b.bullBrinco).join(' / ')}
+                    <span className="text-amber-400 text-xs ml-1">(pendente)</span>
+                  </>
+                )}
+              </div>
+            </>
+          );
+        })()}
 
         {!isNatural && coverage.semenCode && (
           <>
@@ -1152,6 +1241,33 @@ const CoverageCard: React.FC<{
             Parto previsto: {formatDate(coverage.expectedCalvingDate)}
           </p>
         )}
+
+        {/* Confirmar paternidade da monta natural (quando 2 touros) */}
+        {isNatural && hasPendingCoveragePaternity(coverage) && onConfirmPaternity && (() => {
+          const mainBulls = getCoverageBulls(coverage);
+          return (
+            <div className="mt-3 p-2 bg-yellow-900/20 border border-yellow-700 rounded-lg">
+              <p className="text-xs text-yellow-400 mb-2">
+                Dois touros na monta natural. Confirme o pai apos o nascimento:
+              </p>
+              <div className="flex gap-2">
+                {mainBulls.map((b) => (
+                  <button
+                    key={b.bullId}
+                    onClick={() => {
+                      if (confirm(`Confirmar ${b.bullBrinco} como pai deste bezerro?`)) {
+                        onConfirmPaternity(coverage.id, b.bullId, b.bullBrinco);
+                      }
+                    }}
+                    className="flex-1 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs rounded-lg font-medium transition-colors"
+                  >
+                    {b.bullBrinco}
+                  </button>
+                ))}
+              </div>
+            </div>
+          );
+        })()}
 
         {/* Fluxo inline: Vazia → Encaminhar para Repasse */}
         {showRepasseFlow && (
@@ -2080,15 +2196,32 @@ const BreedingSeasonManager: React.FC<BreedingSeasonManagerProps> = ({
                 Paternidade Pendente ({pendingPaternityRecords.length})
               </h3>
               <p className="text-sm text-yellow-300/80 mb-3">
-                Estas vacas foram repassadas com 2 touros. Confirme o pai apos o nascimento do bezerro.
+                Estas vacas foram cobertas com 2 touros. Confirme o pai apos o nascimento do bezerro.
               </p>
               <div className="space-y-2">
-                {pendingPaternityRecords.map((coverage) => {
-                  const bulls = getRepasseBulls(coverage.repasse!);
-                  return (
-                    <div key={coverage.id} className="flex items-center justify-between p-3 bg-base-800 rounded-lg">
+                {pendingPaternityRecords.flatMap((coverage) => {
+                  const entries: { key: string; source: string; bulls: RepasseBull[] }[] = [];
+                  // Paternidade pendente da cobertura principal (monta natural com 2 touros)
+                  if (hasPendingCoveragePaternity(coverage)) {
+                    entries.push({
+                      key: `${coverage.id}-main`,
+                      source: 'Monta Natural',
+                      bulls: getCoverageBulls(coverage),
+                    });
+                  }
+                  // Paternidade pendente do repasse
+                  if (coverage.repasse?.enabled && hasPendingPaternity(coverage.repasse)) {
+                    entries.push({
+                      key: `${coverage.id}-rep`,
+                      source: 'Repasse',
+                      bulls: getRepasseBulls(coverage.repasse),
+                    });
+                  }
+                  return entries.map(({ key, source, bulls }) => (
+                    <div key={key} className="flex items-center justify-between p-3 bg-base-800 rounded-lg">
                       <div>
                         <span className="font-medium text-white">{coverage.cowBrinco}</span>
+                        <span className="px-2 py-0.5 bg-base-600 text-gray-300 text-xs rounded-full ml-2">{source}</span>
                         <span className="text-sm text-gray-400 ml-2">
                           Touros: {bulls.map((b) => b.bullBrinco).join(' / ')}
                         </span>
@@ -2109,7 +2242,7 @@ const BreedingSeasonManager: React.FC<BreedingSeasonManagerProps> = ({
                         ))}
                       </div>
                     </div>
-                  );
+                  ));
                 })}
               </div>
             </div>

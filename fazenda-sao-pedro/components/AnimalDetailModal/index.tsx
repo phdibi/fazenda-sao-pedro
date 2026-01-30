@@ -2,7 +2,7 @@ import React, { useState, useCallback } from 'react';
 import { Animal, Sexo, AppUser } from '../../types';
 import Modal from '../common/Modal';
 import { TrashIcon } from '../common/Icons';
-import GenealogyTree from '../GenealogyTree';
+import GenealogyTree from '../genealogy';
 import Spinner from '../common/Spinner';
 
 // Tabs
