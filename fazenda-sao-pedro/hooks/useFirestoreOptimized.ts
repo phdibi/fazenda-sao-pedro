@@ -1906,7 +1906,7 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
             ...coverage,
             id: `cov_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
             expectedCalvingDate,
-            pregnancyResult: 'pending',
+            pregnancyResult: coverage.pregnancyResult || 'pending',
         };
 
         const updatedCoverageRecords = [...(season.coverageRecords || []), newCoverage];
@@ -1933,10 +1933,33 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
                 date: coverageDate,
                 type: PREGNANCY_TYPE_MAP[coverage.type] || PregnancyType.Monta,
                 sireName,
-                result: 'pending',
+                result: newCoverage.pregnancyResult || 'pending',
             };
 
-            const updatedHistoricoPrenhez = [...(animal.historicoPrenhez || []), pregnancyRecord];
+            let updatedHistoricoPrenhez = [...(animal.historicoPrenhez || []), pregnancyRecord];
+
+            // 🔧 SYNC REPASSE: Se repasse já vem habilitado na criação, cria registro no historicoPrenhez
+            if (newCoverage.repasse?.enabled) {
+                const repasseBulls = newCoverage.repasse.bulls || [];
+                let repasseSireName = 'Touro de repasse';
+                if (repasseBulls.length === 1) {
+                    repasseSireName = repasseBulls[0].bullBrinco;
+                } else if (repasseBulls.length > 1) {
+                    repasseSireName = repasseBulls.map((b: { bullBrinco: string }) => b.bullBrinco).join(' / ') + ' (pendente)';
+                } else if (newCoverage.repasse.bullBrinco) {
+                    repasseSireName = newCoverage.repasse.bullBrinco;
+                }
+                const repasseDate = newCoverage.repasse.startDate
+                    ? new Date(newCoverage.repasse.startDate)
+                    : coverageDate;
+                updatedHistoricoPrenhez = [...updatedHistoricoPrenhez, {
+                    id: `repasse_${newCoverage.id}`,
+                    date: repasseDate,
+                    type: PregnancyType.Monta,
+                    sireName: repasseSireName,
+                    result: newCoverage.repasse.diagnosisResult || 'pending',
+                }];
+            }
 
             // Atualiza o animal com o novo registro
             const animalRef = db.collection('animals').doc(coverage.cowId);

@@ -310,15 +310,22 @@ const CoverageForm: React.FC<{
     [availableBulls, repasseBullIds]
   );
 
+  // Vacas disponíveis = elegíveis menos as que já têm cobertura na estação
+  const availableCows = useMemo(() => {
+    if (!season?.coverageRecords?.length) return eligibleCows;
+    const coveredCowIds = new Set(season.coverageRecords.map((r) => r.cowId));
+    return eligibleCows.filter((cow) => !coveredCowIds.has(cow.id));
+  }, [eligibleCows, season]);
+
   const filteredCows = useMemo(() => {
-    if (!cowSearch.trim()) return eligibleCows.slice(0, 50);
+    if (!cowSearch.trim()) return availableCows.slice(0, 50);
     const search = cowSearch.toLowerCase();
-    return eligibleCows.filter(
+    return availableCows.filter(
       (cow) =>
         cow.brinco.toLowerCase().includes(search) ||
         cow.nome?.toLowerCase().includes(search)
     );
-  }, [eligibleCows, cowSearch]);
+  }, [availableCows, cowSearch]);
 
   const filteredBulls = useMemo(() => {
     if (!bullSearch.trim()) return availableBulls.slice(0, 50);
@@ -373,7 +380,7 @@ const CoverageForm: React.FC<{
   const isNatural = type === 'natural';
   const isFiv = type === 'fiv';
   const needsSemen = type === 'iatf' || type === 'ia' || type === 'fiv';
-  const showRepasse = !!initialData && (type === 'iatf' || type === 'fiv' || type === 'ia');
+  const showRepasse = type === 'iatf' || type === 'fiv' || type === 'ia';
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -422,11 +429,10 @@ const CoverageForm: React.FC<{
       date: coverageDate,
       technician: technician || undefined,
       notes: notes || undefined,
-      pregnancyResult: initialData ? pregnancyResult : 'pending',
-      pregnancyCheckDate:
-        initialData && pregnancyCheckDate
-          ? new Date(pregnancyCheckDate + 'T00:00:00')
-          : undefined,
+      pregnancyResult,
+      pregnancyCheckDate: pregnancyCheckDate
+        ? new Date(pregnancyCheckDate + 'T00:00:00')
+        : undefined,
       repasse,
     });
   };
@@ -445,7 +451,7 @@ const CoverageForm: React.FC<{
         {/* Seleção de vaca */}
         <div>
           <label className="block text-sm text-gray-400 mb-1">
-            Vaca {!initialData && `(${eligibleCows.length} disponiveis)`}
+            Vaca {!initialData && `(${availableCows.length} disponiveis)`}
           </label>
           {initialData ? (
             <div className="bg-base-700 rounded-lg px-3 py-2 text-white">
@@ -660,37 +666,35 @@ const CoverageForm: React.FC<{
           </div>
         </div>
 
-        {/* DIAGNOSTICO (apenas na edição) */}
-        {initialData && (
-          <div className="border-t border-base-600 pt-4">
-            <h4 className="text-sm font-semibold text-white mb-3">Diagnostico de Gestacao</h4>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm text-gray-400 mb-1">Resultado</label>
-                <select
-                  value={pregnancyResult}
-                  onChange={(e) => setPregnancyResult(e.target.value as 'positive' | 'negative' | 'pending')}
-                  className="w-full bg-base-700 border border-base-600 rounded-lg px-3 py-2 text-white"
-                >
-                  <option value="pending">Pendente</option>
-                  <option value="positive">Prenhe</option>
-                  <option value="negative">Vazia</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm text-gray-400 mb-1">Data do DG</label>
-                <input
-                  type="date"
-                  value={pregnancyCheckDate}
-                  onChange={(e) => setPregnancyCheckDate(e.target.value)}
-                  className="w-full bg-base-700 border border-base-600 rounded-lg px-3 py-2 text-white"
-                />
-              </div>
+        {/* DIAGNOSTICO */}
+        <div className="border-t border-base-600 pt-4">
+          <h4 className="text-sm font-semibold text-white mb-3">Diagnostico de Gestacao</h4>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm text-gray-400 mb-1">Resultado</label>
+              <select
+                value={pregnancyResult}
+                onChange={(e) => setPregnancyResult(e.target.value as 'positive' | 'negative' | 'pending')}
+                className="w-full bg-base-700 border border-base-600 rounded-lg px-3 py-2 text-white"
+              >
+                <option value="pending">Pendente</option>
+                <option value="positive">Prenhe</option>
+                <option value="negative">Vazia</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm text-gray-400 mb-1">Data do DG</label>
+              <input
+                type="date"
+                value={pregnancyCheckDate}
+                onChange={(e) => setPregnancyCheckDate(e.target.value)}
+                className="w-full bg-base-700 border border-base-600 rounded-lg px-3 py-2 text-white"
+              />
             </div>
           </div>
-        )}
+        </div>
 
-        {/* REPASSE (apenas na edição, para IATF/FIV/IA) */}
+        {/* REPASSE (para IATF/FIV/IA) */}
         {showRepasse && (
           <div className="border-t border-base-600 pt-4">
             <div className="flex items-center justify-between mb-3">
