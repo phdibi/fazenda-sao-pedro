@@ -467,7 +467,7 @@ export const addBull = (
  * Filtra vacas elegíveis para exposição
  * Se não tiver data de nascimento, assume que é elegível (animal antigo sem dados completos)
  */
-export const getEligibleCows = (animals: Animal[], minAgeMonths: number = 18): Animal[] => {
+export const getEligibleCows = (animals: Animal[], minAgeMonths: number = 11): Animal[] => {
   const now = new Date();
 
   return animals.filter((animal) => {
