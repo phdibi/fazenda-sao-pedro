@@ -259,8 +259,9 @@ const CoverageForm: React.FC<{
   onSubmit: (data: Omit<CoverageRecord, 'id' | 'expectedCalvingDate'>) => void;
   onCancel: () => void;
   initialData?: CoverageRecord;
-}> = ({ eligibleCows, availableBulls, allAnimals, season, onSubmit, onCancel, initialData }) => {
-  const [cowId, setCowId] = useState(initialData?.cowId || '');
+  preselectedCowId?: string;
+}> = ({ eligibleCows, availableBulls, allAnimals, season, onSubmit, onCancel, initialData, preselectedCowId }) => {
+  const [cowId, setCowId] = useState(initialData?.cowId || preselectedCowId || '');
   const [cowSearch, setCowSearch] = useState('');
   const [type, setType] = useState<CoverageType>(initialData?.type || 'iatf');
   // Suporte a 1 ou 2 touros na monta natural direta
@@ -1555,10 +1556,11 @@ const BreedingSeasonManager: React.FC<BreedingSeasonManagerProps> = ({
   const [selectedSeason, setSelectedSeason] = useState<BreedingSeason | null>(null);
   const [showNewSeasonForm, setShowNewSeasonForm] = useState(false);
   const [showCoverageForm, setShowCoverageForm] = useState(false);
+  const [preselectedCowId, setPreselectedCowId] = useState<string | undefined>(undefined);
   const [showEditSeason, setShowEditSeason] = useState(false);
   const [showExposedManager, setShowExposedManager] = useState(false);
   const [editingCoverage, setEditingCoverage] = useState<CoverageRecord | null>(null);
-  const [activeTab, setActiveTab] = useState<'overview' | 'coverages' | 'diagnostics' | 'calvings'>(
+  const [activeTab, setActiveTab] = useState<'overview' | 'coverages' | 'diagnostics' | 'calvings' | 'uncovered'>(
     'overview'
   );
   const [tabSearch, setTabSearch] = useState('');
@@ -1589,6 +1591,17 @@ const BreedingSeasonManager: React.FC<BreedingSeasonManagerProps> = ({
     () => (currentSeason ? getPendingPaternityRecords(currentSeason) : []),
     [currentSeason]
   );
+
+  // Fêmeas expostas que NÃO têm cobertura registrada (ordenadas por brinco)
+  const uncoveredCows = useMemo(() => {
+    if (!currentSeason) return [];
+    const coveredCowIds = new Set((currentSeason.coverageRecords || []).map((r) => r.cowId));
+    return (currentSeason.exposedCowIds || [])
+      .filter((id) => !coveredCowIds.has(id))
+      .map((id) => animals.find((a) => a.id === id))
+      .filter((a): a is Animal => !!a)
+      .sort((a, b) => a.brinco.localeCompare(b.brinco, 'pt-BR', { numeric: true }));
+  }, [currentSeason, animals]);
 
   // Handlers
   const handleCreateSeason = useCallback(async (data: { name: string; startDate: Date; endDate: Date }) => {
@@ -1639,6 +1652,7 @@ const BreedingSeasonManager: React.FC<BreedingSeasonManagerProps> = ({
     try {
       await onAddCoverage(currentSeason.id, data);
       setShowCoverageForm(false);
+      setPreselectedCowId(undefined);
     } catch (err) {
       console.error('Erro ao adicionar cobertura:', err);
       alert('Erro ao registrar cobertura. Tente novamente.');
@@ -1781,7 +1795,11 @@ const BreedingSeasonManager: React.FC<BreedingSeasonManagerProps> = ({
           allAnimals={animals}
           season={currentSeason}
           onSubmit={handleAddCoverage}
-          onCancel={() => setShowCoverageForm(false)}
+          onCancel={() => {
+            setShowCoverageForm(false);
+            setPreselectedCowId(undefined);
+          }}
+          preselectedCowId={preselectedCowId}
         />
       )}
 
@@ -1943,6 +1961,7 @@ const BreedingSeasonManager: React.FC<BreedingSeasonManagerProps> = ({
         {([
           { key: 'overview' as const, label: 'Visao Geral' },
           { key: 'coverages' as const, label: `Coberturas (${sortedCoverages.length})` },
+          { key: 'uncovered' as const, label: `Sem Monta (${uncoveredCows.length})` },
           { key: 'diagnostics' as const, label: `Diagnosticos (${metrics?.pregnancyChecksDue.length || 0})` },
           { key: 'calvings' as const, label: `Partos (${expectedCalvings.length})` },
         ]).map((tab) => (
@@ -2117,6 +2136,78 @@ const BreedingSeasonManager: React.FC<BreedingSeasonManagerProps> = ({
                   onConfirmPaternity={handleConfirmPaternity}
                 />
               ))
+            )}
+          </div>
+        );
+      })()}
+
+      {/* TAB: Sem Monta - Fêmeas expostas sem cobertura */}
+      {activeTab === 'uncovered' && (() => {
+        const filtered = tabSearch.trim()
+          ? uncoveredCows.filter((c) =>
+              c.brinco.toLowerCase().includes(tabSearch.toLowerCase()) ||
+              c.nome?.toLowerCase().includes(tabSearch.toLowerCase())
+            )
+          : uncoveredCows;
+        return (
+          <div className="space-y-3">
+            {uncoveredCows.length > 0 && (
+              <input
+                type="text"
+                value={tabSearch}
+                onChange={(e) => setTabSearch(e.target.value)}
+                placeholder="Buscar por brinco ou nome..."
+                className="w-full bg-base-800 border border-base-600 rounded-lg px-3 py-2 text-white text-sm"
+              />
+            )}
+            {uncoveredCows.length === 0 ? (
+              <div className="bg-base-800 rounded-xl p-8 text-center">
+                <div className="text-4xl mb-3">🎉</div>
+                <p className="text-emerald-400 font-medium">Todas as vacas expostas ja tem cobertura registrada!</p>
+                <p className="text-gray-500 text-sm mt-1">Nenhuma femea pendente de monta nesta estacao.</p>
+              </div>
+            ) : filtered.length === 0 ? (
+              <div className="bg-base-800 rounded-xl p-8 text-center">
+                <p className="text-gray-400">Nenhuma femea encontrada para "{tabSearch}"</p>
+              </div>
+            ) : (
+              <>
+                <div className="bg-amber-900/20 border border-amber-700 rounded-xl p-4 mb-4">
+                  <div className="flex items-center justify-between">
+                    <p className="text-amber-400 text-sm">
+                      <strong>{uncoveredCows.length}</strong> de <strong>{currentSeason.exposedCowIds?.length || 0}</strong> {uncoveredCows.length === 1 ? 'femea exposta ainda nao possui' : 'femeas expostas ainda nao possuem'} cobertura registrada.
+                    </p>
+                    {metrics && (
+                      <span className="text-xs text-gray-400">
+                        Taxa de Servico: {metrics.serviceRate.toFixed(0)}%
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <div className="grid gap-2">
+                  {filtered.map((cow) => (
+                    <div
+                      key={cow.id}
+                      className="flex items-center justify-between p-4 bg-base-800 rounded-lg hover:bg-base-700 transition-colors"
+                    >
+                      <div>
+                        <div className="font-medium text-white">{cow.brinco}</div>
+                        {cow.nome && <div className="text-sm text-gray-400">{cow.nome}</div>}
+                        {cow.raca && <div className="text-xs text-gray-500">{cow.raca}</div>}
+                      </div>
+                      <button
+                        onClick={() => {
+                          setPreselectedCowId(cow.id);
+                          setShowCoverageForm(true);
+                        }}
+                        className="px-3 py-1.5 bg-brand-primary text-white text-sm rounded-lg hover:bg-brand-primary-dark"
+                      >
+                        + Registrar Monta
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </>
             )}
           </div>
         );
