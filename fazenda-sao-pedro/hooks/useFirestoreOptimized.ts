@@ -3134,6 +3134,166 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
                     pendingCount++;
                 }
             }
+
+            // ============================================
+            // 🔧 NOVO: Verifica coberturas com DG NEGATIVO (sem repasse OU repasse também negativo)
+            // Para detectar falsos negativos ou prenhezes não detectadas
+            // ============================================
+            // Cenários cobertos:
+            // 1. DG negativo + sem repasse
+            // 2. DG negativo + repasse habilitado mas repasse também negativo
+            // 3. DG negativo + repasse habilitado mas repasse pendente
+            const hasNoRepasse = !coverage.repasse?.enabled;
+            const hasRepasseButNotPregnant = coverage.repasse?.enabled &&
+                coverage.repasse.diagnosisResult !== 'positive' &&
+                !coverage.repasse.calvingResult;
+            const shouldCheckForSurpriseBirth = coverage.pregnancyResult === 'negative' &&
+                !coverage.calvingResult &&
+                (hasNoRepasse || hasRepasseButNotPregnant);
+
+            if (shouldCheckForSurpriseBirth) {
+                // Calcula data esperada de parto baseada na data da cobertura
+                const coverageDate = new Date(coverage.date);
+                const expectedDate = new Date(coverageDate);
+                expectedDate.setDate(expectedDate.getDate() + 283); // 283 dias de gestação
+
+                // Busca terneiro (excluindo os já vinculados)
+                const calf = findCalfForCoverageInternal(
+                    animals,
+                    coverage.cowId,
+                    expectedDate,
+                    toleranceDays,
+                    alreadyLinkedCalfIds,
+                    coverage.type,
+                    coverage.donorCowId
+                );
+
+                if (calf) {
+                    // 🎉 Encontrou bezerro! A vaca estava prenha apesar do DG negativo
+                    // Corrige o diagnóstico e vincula o bezerro
+
+                    // Determina se a prenhez veio da cobertura principal ou do repasse
+                    const pregnancyFromRepasse = coverage.repasse?.enabled === true;
+
+                    // 🔧 PATERNIDADE: Se tem 2 touros e configuração de troca, confirma automaticamente
+                    // Usa touros do repasse se a prenhez veio do repasse, senão usa da cobertura principal
+                    let confirmedSireId: string | undefined;
+                    let confirmedSireBrinco: string | undefined;
+
+                    if (pregnancyFromRepasse) {
+                        // Prenhez do repasse - usa touros do repasse
+                        confirmedSireId = coverage.repasse?.confirmedSireId;
+                        confirmedSireBrinco = coverage.repasse?.confirmedSireBrinco;
+
+                        const repasseBulls = coverage.repasse?.bulls;
+                        const hasTwoBulls = repasseBulls && repasseBulls.length === 2;
+                        const switchConfig = switchConfigMap.get(`${coverage.id}_repasse`);
+                        const hasConfig = switchConfig && (switchConfig.switchDate || switchConfig.selectedBullIndex !== undefined);
+                        const needsPaternityConfirmation = hasTwoBulls && !confirmedSireId && hasConfig;
+
+                        if (needsPaternityConfirmation && repasseBulls && switchConfig) {
+                            let selectedBull;
+
+                            if (switchConfig.selectedBullIndex !== undefined) {
+                                selectedBull = repasseBulls[switchConfig.selectedBullIndex];
+                            } else if (switchConfig.switchDate) {
+                                const bullSwitchTime = new Date(switchConfig.switchDate).getTime();
+                                const calfBirthTime = calf.dataNascimento ? new Date(calf.dataNascimento).getTime() : expectedDate.getTime();
+                                const estimatedCoverageTime = calfBirthTime - (283 * 24 * 60 * 60 * 1000);
+
+                                selectedBull = estimatedCoverageTime < bullSwitchTime
+                                    ? repasseBulls[0]
+                                    : repasseBulls[1];
+                            }
+
+                            if (selectedBull) {
+                                confirmedSireId = selectedBull.bullId;
+                                confirmedSireBrinco = selectedBull.bullBrinco;
+                                paternityConfirmedCount++;
+
+                                calfPaternityUpdates.set(calf.id, {
+                                    paiId: confirmedSireId,
+                                    paiNome: confirmedSireBrinco
+                                });
+                            }
+                        }
+                    } else {
+                        // Prenhez da cobertura principal - usa touros da cobertura
+                        confirmedSireId = coverage.confirmedSireId;
+                        confirmedSireBrinco = coverage.confirmedSireBrinco;
+
+                        const hasTwoBulls = coverage.bulls && coverage.bulls.length === 2;
+                        const switchConfig = switchConfigMap.get(coverage.id);
+                        const hasConfig = switchConfig && (switchConfig.switchDate || switchConfig.selectedBullIndex !== undefined);
+                        const needsPaternityConfirmation = hasTwoBulls && !confirmedSireId && hasConfig;
+
+                        if (needsPaternityConfirmation && coverage.bulls && switchConfig) {
+                            let selectedBull;
+
+                            if (switchConfig.selectedBullIndex !== undefined) {
+                                selectedBull = coverage.bulls[switchConfig.selectedBullIndex];
+                            } else if (switchConfig.switchDate) {
+                                const bullSwitchTime = new Date(switchConfig.switchDate).getTime();
+                                const calfBirthTime = calf.dataNascimento ? new Date(calf.dataNascimento).getTime() : expectedDate.getTime();
+                                const estimatedCoverageTime = calfBirthTime - (283 * 24 * 60 * 60 * 1000);
+
+                                selectedBull = estimatedCoverageTime < bullSwitchTime
+                                    ? coverage.bulls[0]
+                                    : coverage.bulls[1];
+                            }
+
+                            if (selectedBull) {
+                                confirmedSireId = selectedBull.bullId;
+                                confirmedSireBrinco = selectedBull.bullBrinco;
+                                paternityConfirmedCount++;
+
+                                calfPaternityUpdates.set(calf.id, {
+                                    paiId: confirmedSireId,
+                                    paiNome: confirmedSireBrinco
+                                });
+                            }
+                        }
+                    }
+
+                    // Atualiza a cobertura de acordo com a origem da prenhez
+                    if (pregnancyFromRepasse) {
+                        // Atualiza o REPASSE: corrige DG do repasse para positivo e vincula bezerro
+                        updatedCoverageRecords[i] = {
+                            ...coverage,
+                            repasse: {
+                                ...coverage.repasse!,
+                                diagnosisResult: 'positive', // Corrige o diagnóstico do repasse
+                                calvingResult: 'realizado',
+                                calfId: calf.id,
+                                calfBrinco: calf.brinco,
+                                actualCalvingDate: calf.dataNascimento || new Date(),
+                                calvingNotes: 'Prenhez descoberta retroativamente - DG do repasse era negativo',
+                                ...(confirmedSireId ? { confirmedSireId, confirmedSireBrinco } : {}),
+                            },
+                        };
+                        console.log(`🔍 [DISCOVER] Prenhez descoberta em repasse com DG negativo: ${coverage.cowBrinco} → Bezerro ${calf.brinco}`);
+                    } else {
+                        // Atualiza a COBERTURA PRINCIPAL: corrige DG para positivo e vincula bezerro
+                        updatedCoverageRecords[i] = {
+                            ...coverage,
+                            pregnancyResult: 'positive', // Corrige o diagnóstico
+                            expectedCalvingDate: expectedDate, // Adiciona data esperada
+                            calvingResult: 'realizado',
+                            calfId: calf.id,
+                            calfBrinco: calf.brinco,
+                            actualCalvingDate: calf.dataNascimento || new Date(),
+                            calvingNotes: 'Prenhez descoberta retroativamente - DG original era negativo',
+                            ...(confirmedSireId ? { confirmedSireId, confirmedSireBrinco } : {}),
+                        };
+                        console.log(`🔍 [DISCOVER] Prenhez descoberta em vaca com DG negativo: ${coverage.cowBrinco} → Bezerro ${calf.brinco}`);
+                    }
+
+                    alreadyLinkedCalfIds.add(calf.id);
+                    linkedCount++;
+                    discoveredCount++; // Conta como descoberto pois foi uma surpresa
+                }
+                // Se não encontrou bezerro, não faz nada - DG negativo sem repasse = vaca vazia mesmo
+            }
         }
 
         // ============================================
