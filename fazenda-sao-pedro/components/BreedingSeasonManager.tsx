@@ -1998,7 +1998,7 @@ const BreedingSeasonManager: React.FC<BreedingSeasonManagerProps> = ({
               <div className="text-center">
                 <div className="text-3xl font-bold text-cyan-400">{metrics.pregnancyRate}%</div>
                 <div className="text-sm text-gray-400">Prenhez 1o Servico</div>
-                <div className="text-xs text-gray-500">Prenhes (sem repasse) / Expostas</div>
+                <div className="text-xs text-gray-500">Prenhes (sem repasse) / Cobertas</div>
               </div>
               <div className="text-center">
                 <div className="text-3xl font-bold text-purple-400">{metrics.overallPregnancyRate}%</div>

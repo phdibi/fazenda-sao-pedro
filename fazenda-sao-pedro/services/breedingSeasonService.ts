@@ -239,8 +239,8 @@ export const calculateBreedingMetrics = (
   const totalPending = pendingCowIds.size;
 
   // Taxas
-  // pregnancyRate = taxa de prenhez da primeira cobertura (sem repasse)
-  const pregnancyRate = totalExposed > 0 ? (firstServicePregnant.size / totalExposed) * 100 : 0;
+  // pregnancyRate = taxa de prenhez da primeira cobertura (sem repasse) / cobertas
+  const pregnancyRate = totalCovered > 0 ? (firstServicePregnant.size / totalCovered) * 100 : 0;
   const serviceRate = totalExposed > 0 ? (totalCovered / totalExposed) * 100 : 0;
   const conceptionRate = totalCovered > 0 ? (totalPregnant / totalCovered) * 100 : 0;
   // overallPregnancyRate = taxa geral (incluindo repasse)
