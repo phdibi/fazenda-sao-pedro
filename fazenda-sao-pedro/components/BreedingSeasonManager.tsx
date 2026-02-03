@@ -23,6 +23,9 @@ import {
   getCoverageBulls,
   getCoverageBullLabel,
   hasPendingCoveragePaternity,
+  getRegisteredAbortions,
+  verifyCalvings,
+  CalvingVerificationResult,
 } from '../services/breedingSeasonService';
 import {
   exportBreedingSeasonToCSV,
@@ -61,6 +64,10 @@ interface BreedingSeasonManagerProps {
     confirmedBullId: string,
     confirmedBullBrinco: string
   ) => Promise<void>;
+  onVerifyAndRegisterAbortions?: (
+    seasonId: string,
+    toleranceDays?: number
+  ) => Promise<{ registered: number; linked: number; pending: number; discovered: number }>;
 }
 
 // ============================================
@@ -1552,6 +1559,7 @@ const BreedingSeasonManager: React.FC<BreedingSeasonManagerProps> = ({
   onUpdateCoverage,
   onDeleteCoverage,
   onConfirmPaternity,
+  onVerifyAndRegisterAbortions,
 }) => {
   const [selectedSeason, setSelectedSeason] = useState<BreedingSeason | null>(null);
   const [showNewSeasonForm, setShowNewSeasonForm] = useState(false);
@@ -1602,6 +1610,22 @@ const BreedingSeasonManager: React.FC<BreedingSeasonManagerProps> = ({
       .filter((a): a is Animal => !!a)
       .sort((a, b) => a.brinco.localeCompare(b.brinco, 'pt-BR', { numeric: true }));
   }, [currentSeason, animals]);
+
+  // Abortos registrados na estação
+  const registeredAbortions = useMemo(
+    () => (currentSeason ? getRegisteredAbortions(currentSeason) : []),
+    [currentSeason]
+  );
+
+  // Verificação de partos (com e sem terneiros cadastrados)
+  const calvingVerifications = useMemo(
+    () => (currentSeason ? verifyCalvings(currentSeason, animals, 30) : []),
+    [currentSeason, animals]
+  );
+
+  // Estado para controlar a verificação de partos
+  const [isVerifyingCalvings, setIsVerifyingCalvings] = useState(false);
+  const [verificationResult, setVerificationResult] = useState<{ registered: number; linked: number; pending: number; discovered: number } | null>(null);
 
   // Handlers
   const handleCreateSeason = useCallback(async (data: { name: string; startDate: Date; endDate: Date }) => {
@@ -1712,6 +1736,51 @@ const BreedingSeasonManager: React.FC<BreedingSeasonManagerProps> = ({
       alert('Erro ao confirmar paternidade. Tente novamente.');
     }
   }, [currentSeason, onConfirmPaternity]);
+
+  // Handler para verificar partos e registrar abortos automaticamente
+  const handleVerifyCalvings = useCallback(async () => {
+    if (!currentSeason || !onVerifyAndRegisterAbortions) return;
+
+    const confirmMessage = `Esta ação irá:
+
+• Verificar todas as vacas com DG positivo
+• Vincular automaticamente os terneiros já cadastrados
+• Marcar como ABORTO as vacas sem terneiros cadastrados após 30 dias da data prevista
+• Atualizar o histórico de abortos das vacas afetadas
+
+Certifique-se de que TODOS os terneiros desta geração já foram cadastrados.
+
+Deseja continuar?`;
+
+    if (!confirm(confirmMessage)) return;
+
+    setIsVerifyingCalvings(true);
+    setVerificationResult(null);
+
+    try {
+      const result = await onVerifyAndRegisterAbortions(currentSeason.id, 30);
+      setVerificationResult(result);
+
+      if (result.registered > 0 || result.linked > 0) {
+        alert(`Verificação concluída!
+
+✓ ${result.linked} parto(s) vinculado(s) a terneiros cadastrados
+✗ ${result.registered} aborto(s) registrado(s) automaticamente
+⏳ ${result.pending} verificação(ões) pendente(s) (ainda dentro do prazo)`);
+      } else if (result.pending > 0) {
+        alert(`Nenhuma alteração necessária.
+
+⏳ ${result.pending} verificação(ões) pendente(s) - ainda dentro do prazo de 30 dias após data prevista.`);
+      } else {
+        alert('Nenhuma cobertura com DG positivo pendente de verificação.');
+      }
+    } catch (err) {
+      console.error('Erro ao verificar partos:', err);
+      alert('Erro ao verificar partos. Tente novamente.');
+    } finally {
+      setIsVerifyingCalvings(false);
+    }
+  }, [currentSeason, onVerifyAndRegisterAbortions]);
 
   // Handler combinado: marca DG como vazia + habilita repasse em uma ÚNICA operação
   // Usa onUpdateCoverage que atualiza pregnancyResult + repasse atomicamente no mesmo coverageRecord
@@ -2280,6 +2349,101 @@ const BreedingSeasonManager: React.FC<BreedingSeasonManagerProps> = ({
       {/* TAB: Partos Previstos */}
       {activeTab === 'calvings' && (
         <div className="space-y-4">
+          {/* Botão de Verificação de Partos */}
+          {onVerifyAndRegisterAbortions && expectedCalvings.length > 0 && (
+            <div className="bg-base-800 rounded-xl p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-lg font-semibold text-white">Verificar Nascimentos</h3>
+                  <p className="text-sm text-gray-400 mt-1">
+                    Após cadastrar todos os terneiros da geração, clique para verificar partos e registrar abortos automaticamente.
+                  </p>
+                </div>
+                <button
+                  onClick={handleVerifyCalvings}
+                  disabled={isVerifyingCalvings}
+                  className="px-4 py-2 bg-amber-600 hover:bg-amber-700 disabled:bg-amber-800 disabled:cursor-not-allowed text-white rounded-lg font-medium flex items-center gap-2"
+                >
+                  {isVerifyingCalvings ? (
+                    <>
+                      <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                      </svg>
+                      Verificando...
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      Verificar Partos
+                    </>
+                  )}
+                </button>
+              </div>
+              {verificationResult && (
+                <div className="mt-3 p-3 bg-base-700 rounded-lg text-sm">
+                  <div className="flex flex-wrap gap-4">
+                    <span className="text-emerald-400">✓ {verificationResult.linked} vinculado(s)</span>
+                    <span className="text-red-400">✗ {verificationResult.registered} aborto(s)</span>
+                    <span className="text-yellow-400">⏳ {verificationResult.pending} pendente(s)</span>
+                    {verificationResult.discovered > 0 && (
+                      <span className="text-blue-400">🔍 {verificationResult.discovered} descoberto(s)</span>
+                    )}
+                  </div>
+                  {verificationResult.discovered > 0 && (
+                    <p className="text-xs text-blue-300/70 mt-2">
+                      Vacas expostas sem cobertura prévia que tiveram terneiros. Registros retroativos criados.
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Seção de Abortos */}
+          {registeredAbortions.length > 0 && (
+            <div className="bg-red-900/20 border border-red-700 rounded-xl p-4">
+              <h3 className="text-lg font-semibold text-red-400 mb-3">
+                Abortos ({registeredAbortions.length})
+              </h3>
+              <p className="text-sm text-red-300/80 mb-3">
+                Vacas que tiveram diagnóstico positivo mas não tiveram terneiros cadastrados.
+              </p>
+              <div className="space-y-2">
+                {registeredAbortions.map((abortion) => (
+                  <div
+                    key={`${abortion.coverageId}-${abortion.isRepasse ? 'rep' : 'main'}`}
+                    className="flex items-center justify-between p-3 bg-base-800 rounded-lg"
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium text-white">{abortion.cowBrinco}</span>
+                      {abortion.isRepasse && (
+                        <span className="px-2 py-0.5 bg-amber-500/20 text-amber-400 text-xs rounded">
+                          Repasse
+                        </span>
+                      )}
+                      <span className="px-2 py-0.5 bg-red-500/20 text-red-400 text-xs rounded">
+                        Aborto
+                      </span>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-sm text-gray-400">
+                        Previsto: {formatDate(abortion.expectedDate)}
+                      </div>
+                      {abortion.notes && (
+                        <div className="text-xs text-gray-500 max-w-xs truncate">
+                          {abortion.notes}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Alerta de paternidade pendente */}
           {pendingPaternityRecords.length > 0 && (
             <div className="bg-yellow-900/20 border border-yellow-700 rounded-xl p-4">

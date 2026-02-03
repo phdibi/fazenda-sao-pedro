@@ -309,6 +309,29 @@ export const useAnimalDetailForm = ({
           maeReceptoraId: undefined
         } : null);
       }
+    } else if (name === 'paiNome') {
+      // 🔧 SYNC: Busca o pai (touro) automaticamente pelo brinco e atualiza paiId
+      const fatherBrinco = value.toLowerCase().trim();
+      const father = animals.find(
+        (a) => a.brinco.toLowerCase().trim() === fatherBrinco && a.sexo === Sexo.Macho
+      );
+
+      if (father) {
+        // Encontrou o pai - atualiza brinco e ID
+        setEditableAnimal((prev) => prev ? {
+          ...prev,
+          paiNome: value,
+          paiId: father.id
+        } : null);
+      } else {
+        // Não encontrou - atualiza apenas o brinco e limpa o ID
+        // (pode ser um touro externo/sêmen não cadastrado)
+        setEditableAnimal((prev) => prev ? {
+          ...prev,
+          paiNome: value,
+          paiId: undefined
+        } : null);
+      }
     } else {
       setEditableAnimal((prev) => (prev ? { ...prev, [name]: value } : null));
     }

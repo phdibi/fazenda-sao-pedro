@@ -210,6 +210,17 @@ export interface RepasseData {
   notes?: string;
   diagnosisDate?: Date;
   diagnosisResult?: 'positive' | 'negative' | 'pending';
+  // Resultado do parto (para repasse com DG positivo)
+  /** Resultado do parto do repasse: 'realizado' = terneiro nasceu, 'aborto' = não nasceu */
+  calvingResult?: 'realizado' | 'aborto' | 'pending';
+  /** Data real do parto do repasse */
+  actualCalvingDate?: Date;
+  /** ID do terneiro nascido do repasse */
+  calfId?: string;
+  /** Brinco do terneiro nascido do repasse */
+  calfBrinco?: string;
+  /** Observações sobre o parto ou aborto do repasse */
+  calvingNotes?: string;
 }
 
 export interface CoverageRecord {
@@ -237,6 +248,17 @@ export interface CoverageRecord {
   pregnancyCheckDate?: Date;
   pregnancyResult?: 'positive' | 'negative' | 'pending';
   expectedCalvingDate?: Date;
+  // Resultado do parto (verificação pós-nascimentos)
+  /** Resultado do parto: 'realizado' = terneiro nasceu, 'aborto' = não nasceu/perdeu, 'pending' = aguardando */
+  calvingResult?: 'realizado' | 'aborto' | 'pending';
+  /** Data real do parto (quando realizado) */
+  actualCalvingDate?: Date;
+  /** ID do terneiro nascido (link com animal cadastrado) */
+  calfId?: string;
+  /** Brinco do terneiro nascido */
+  calfBrinco?: string;
+  /** Observações sobre o parto ou aborto */
+  calvingNotes?: string;
   // Repasse: monta natural para vacas vazias de IATF/FIV
   repasse?: RepasseData;
 }

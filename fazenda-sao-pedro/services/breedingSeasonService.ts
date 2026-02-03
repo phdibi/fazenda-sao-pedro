@@ -608,3 +608,257 @@ export const getExpectedCalvings = (
 
   return results.sort((a, b) => a.expectedDate.getTime() - b.expectedDate.getTime());
 };
+
+// ============================================
+// VERIFICAÇÃO DE PARTOS E REGISTRO DE ABORTOS
+// ============================================
+
+export interface CalvingVerificationResult {
+  coverageId: string;
+  cowId: string;
+  cowBrinco: string;
+  expectedDate: Date;
+  status: 'realizado' | 'aborto' | 'pendente';
+  isRepasse: boolean;
+  calfId?: string;
+  calfBrinco?: string;
+  actualCalvingDate?: Date;
+}
+
+export interface AbortionRegistration {
+  coverageId: string;
+  cowId: string;
+  cowBrinco: string;
+  expectedDate: Date;
+  isRepasse: boolean;
+  abortionDate: Date;
+}
+
+/**
+ * Verifica quais vacas prenhes tiveram filhos nascidos e quais não tiveram.
+ * Retorna lista de coberturas com status de parto (realizado, aborto ou pendente).
+ *
+ * @param season - Estação de monta
+ * @param animals - Lista de animais do plantel
+ * @param toleranceDays - Dias de tolerância após data prevista para considerar aborto (default: 30)
+ */
+export const verifyCalvings = (
+  season: BreedingSeason,
+  animals: Animal[],
+  toleranceDays: number = 30
+): CalvingVerificationResult[] => {
+  const results: CalvingVerificationResult[] = [];
+  const today = new Date();
+
+  (season.coverageRecords || []).forEach((coverage) => {
+    // Verifica cobertura principal com DG positivo
+    if (coverage.pregnancyResult === 'positive' && coverage.expectedCalvingDate) {
+      const expectedDate = new Date(coverage.expectedCalvingDate);
+
+      // Se já tem resultado de parto registrado, usa ele
+      if (coverage.calvingResult) {
+        results.push({
+          coverageId: coverage.id,
+          cowId: coverage.cowId,
+          cowBrinco: coverage.cowBrinco,
+          expectedDate,
+          status: coverage.calvingResult === 'realizado' ? 'realizado' : 'aborto',
+          isRepasse: false,
+          calfId: coverage.calfId,
+          calfBrinco: coverage.calfBrinco,
+          actualCalvingDate: coverage.actualCalvingDate ? new Date(coverage.actualCalvingDate) : undefined,
+        });
+        return;
+      }
+
+      // Busca terneiros nascidos da mãe dentro da janela de tempo
+      const calf = findCalfForCoverage(animals, coverage.cowId, expectedDate, toleranceDays);
+
+      if (calf) {
+        results.push({
+          coverageId: coverage.id,
+          cowId: coverage.cowId,
+          cowBrinco: coverage.cowBrinco,
+          expectedDate,
+          status: 'realizado',
+          isRepasse: false,
+          calfId: calf.id,
+          calfBrinco: calf.brinco,
+          actualCalvingDate: calf.dataNascimento ? new Date(calf.dataNascimento) : undefined,
+        });
+      } else {
+        // Se passou da data prevista + tolerância, marca como pendente de verificação
+        const deadlineDate = new Date(expectedDate);
+        deadlineDate.setDate(deadlineDate.getDate() + toleranceDays);
+
+        results.push({
+          coverageId: coverage.id,
+          cowId: coverage.cowId,
+          cowBrinco: coverage.cowBrinco,
+          expectedDate,
+          status: today > deadlineDate ? 'aborto' : 'pendente',
+          isRepasse: false,
+        });
+      }
+    }
+
+    // Verifica repasse com DG positivo (só processa se cobertura principal foi negativa)
+    if (coverage.repasse?.enabled && coverage.repasse.diagnosisResult === 'positive' && coverage.pregnancyResult === 'negative') {
+      const repasseStartDate = coverage.repasse.startDate || coverage.date;
+      const expectedDate = new Date(repasseStartDate);
+      expectedDate.setDate(expectedDate.getDate() + 283);
+
+      // Se já tem resultado de parto registrado no repasse, usa ele
+      if (coverage.repasse.calvingResult) {
+        results.push({
+          coverageId: coverage.id,
+          cowId: coverage.cowId,
+          cowBrinco: coverage.cowBrinco,
+          expectedDate,
+          status: coverage.repasse.calvingResult === 'realizado' ? 'realizado' : 'aborto',
+          isRepasse: true,
+          calfId: coverage.repasse.calfId,
+          calfBrinco: coverage.repasse.calfBrinco,
+          actualCalvingDate: coverage.repasse.actualCalvingDate ? new Date(coverage.repasse.actualCalvingDate) : undefined,
+        });
+        return;
+      }
+
+      // Busca terneiros nascidos da mãe dentro da janela de tempo
+      const calf = findCalfForCoverage(animals, coverage.cowId, expectedDate, toleranceDays);
+
+      if (calf) {
+        results.push({
+          coverageId: coverage.id,
+          cowId: coverage.cowId,
+          cowBrinco: coverage.cowBrinco,
+          expectedDate,
+          status: 'realizado',
+          isRepasse: true,
+          calfId: calf.id,
+          calfBrinco: calf.brinco,
+          actualCalvingDate: calf.dataNascimento ? new Date(calf.dataNascimento) : undefined,
+        });
+      } else {
+        const deadlineDate = new Date(expectedDate);
+        deadlineDate.setDate(deadlineDate.getDate() + toleranceDays);
+
+        results.push({
+          coverageId: coverage.id,
+          cowId: coverage.cowId,
+          cowBrinco: coverage.cowBrinco,
+          expectedDate,
+          status: today > deadlineDate ? 'aborto' : 'pendente',
+          isRepasse: true,
+        });
+      }
+    }
+  });
+
+  return results.sort((a, b) => a.expectedDate.getTime() - b.expectedDate.getTime());
+};
+
+/**
+ * Busca um terneiro que nasceu de uma mãe específica dentro de uma janela de tempo.
+ * Considera a data prevista de parto ± tolerância.
+ */
+const findCalfForCoverage = (
+  animals: Animal[],
+  motherId: string,
+  expectedCalvingDate: Date,
+  toleranceDays: number
+): Animal | undefined => {
+  const minDate = new Date(expectedCalvingDate);
+  minDate.setDate(minDate.getDate() - toleranceDays);
+  const maxDate = new Date(expectedCalvingDate);
+  maxDate.setDate(maxDate.getDate() + toleranceDays);
+
+  // Busca a mãe pelo ID para pegar o brinco
+  const mother = animals.find(a => a.id === motherId);
+  if (!mother) return undefined;
+
+  const motherBrinco = mother.brinco.toLowerCase().trim();
+
+  // Busca terneiros que:
+  // 1. Tem a mãe pelo ID ou brinco
+  // 2. Nasceram dentro da janela de tempo
+  return animals.find((animal) => {
+    // Verifica se é filho desta mãe
+    const isMaeById = animal.maeId === motherId;
+    const isMaeByBrinco = animal.maeNome?.toLowerCase().trim() === motherBrinco;
+    if (!isMaeById && !isMaeByBrinco) return false;
+
+    // Verifica se nasceu dentro da janela de tempo
+    if (!animal.dataNascimento) return false;
+    const birthDate = new Date(animal.dataNascimento);
+    return birthDate >= minDate && birthDate <= maxDate;
+  });
+};
+
+/**
+ * Retorna lista de coberturas que deveriam ter gerado parto mas não tiveram
+ * (vacas que provavelmente abortaram).
+ */
+export const getUnverifiedCalvings = (
+  season: BreedingSeason,
+  animals: Animal[],
+  toleranceDays: number = 30
+): CalvingVerificationResult[] => {
+  const verifications = verifyCalvings(season, animals, toleranceDays);
+  return verifications.filter(v => v.status === 'aborto' || v.status === 'pendente');
+};
+
+/**
+ * Retorna lista de abortos registrados na estação de monta.
+ */
+export const getRegisteredAbortions = (
+  season: BreedingSeason
+): {
+  coverageId: string;
+  cowId: string;
+  cowBrinco: string;
+  expectedDate: Date;
+  isRepasse: boolean;
+  notes?: string;
+}[] => {
+  const abortions: {
+    coverageId: string;
+    cowId: string;
+    cowBrinco: string;
+    expectedDate: Date;
+    isRepasse: boolean;
+    notes?: string;
+  }[] = [];
+
+  (season.coverageRecords || []).forEach((coverage) => {
+    // Abortos da cobertura principal
+    if (coverage.calvingResult === 'aborto' && coverage.expectedCalvingDate) {
+      abortions.push({
+        coverageId: coverage.id,
+        cowId: coverage.cowId,
+        cowBrinco: coverage.cowBrinco,
+        expectedDate: new Date(coverage.expectedCalvingDate),
+        isRepasse: false,
+        notes: coverage.calvingNotes,
+      });
+    }
+
+    // Abortos do repasse
+    if (coverage.repasse?.calvingResult === 'aborto') {
+      const repasseStartDate = coverage.repasse.startDate || coverage.date;
+      const expectedDate = new Date(repasseStartDate);
+      expectedDate.setDate(expectedDate.getDate() + 283);
+
+      abortions.push({
+        coverageId: coverage.id,
+        cowId: coverage.cowId,
+        cowBrinco: coverage.cowBrinco,
+        expectedDate,
+        isRepasse: true,
+        notes: coverage.repasse.calvingNotes,
+      });
+    }
+  });
+
+  return abortions.sort((a, b) => a.expectedDate.getTime() - b.expectedDate.getTime());
+};

@@ -2,11 +2,21 @@ import { useState, useEffect, useCallback, useReducer, useRef } from 'react';
 import { firebaseServices } from '../services/firebase';
 import { localCache } from '../services/localCache';
 import { trackReads, trackWrites, trackDeletes, isQuotaCritical, canPerformOperation } from '../services/quotaMonitor';
-import { Animal, FirestoreCollectionName, ManagementBatch, BatchPurpose, UserRole, WeighingType, AnimalStatus, Sexo, CalendarEvent, AppUser, ManagementArea, MedicationAdministration, PregnancyRecord, PregnancyType, AbortionRecord, Task, LoadingKey, LocalStateCollectionName, BreedingSeason, CoverageRecord } from '../types';
+import { Animal, FirestoreCollectionName, ManagementBatch, BatchPurpose, UserRole, WeighingType, AnimalStatus, Sexo, CalendarEvent, AppUser, ManagementArea, MedicationAdministration, PregnancyRecord, PregnancyType, AbortionRecord, Task, LoadingKey, LocalStateCollectionName, BreedingSeason, CoverageRecord, CoverageType } from '../types';
 import { PREGNANCY_TYPE_MAP, getCoverageSireName } from '../services/breedingSeasonService';
 import { QUERY_LIMITS, ARCHIVED_COLLECTION_NAME, AUTO_SYNC_INTERVAL_MS } from '../constants/app';
 import { convertTimestampsToDates, convertDatesToTimestamps } from '../utils/dateHelpers';
 import { removeUndefined } from '../utils/objectHelpers';
+
+// ============================================
+// 🔧 CONSTANTES DE TIPO DE COBERTURA
+// ============================================
+const CoverageTypes = {
+    FIV: 'fiv' as CoverageType,
+    MontaNatural: 'natural' as CoverageType,
+    IA: 'ia' as CoverageType,
+    IATF: 'iatf' as CoverageType,
+};
 
 // ============================================
 // 🔧 OTIMIZAÇÃO: Configuração de Listeners
@@ -1072,6 +1082,220 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
         }
     }, [userId, updateLocalCache, forceSync]);
 
+    // ============================================
+    // 🔧 SYNC REVERSO: Paternidade Animal → Estação de Monta
+    // ============================================
+    /**
+     * Sincroniza alteração de paternidade de um bezerro para a estação de monta.
+     *
+     * Casos tratados:
+     * 1. Correção de pai após nascimento (touro diferente do registrado)
+     * 2. Prenhez era do repasse, não da IATF
+     * 3. Confirmação de paternidade quando havia 2 touros
+     *
+     * @param calfId - ID do bezerro
+     * @param newPaiId - Novo ID do pai (touro)
+     * @param newPaiNome - Novo brinco/nome do pai
+     * @param calfBirthDate - Data de nascimento do bezerro
+     * @param motherId - ID da mãe do bezerro (para não-FIV) ou da receptora (para FIV)
+     * @param isFIVCalf - Se o bezerro é de FIV
+     * @param donorId - ID da doadora (mãe biológica) para bezerros FIV
+     */
+    const syncPaternityToBreedingSeason = useCallback(async (
+        calfId: string,
+        newPaiId: string | undefined,
+        newPaiNome: string | undefined,
+        calfBirthDate: Date | undefined,
+        motherId: string | undefined,
+        isFIVCalf?: boolean,
+        donorId?: string
+    ): Promise<void> => {
+        if (!userId || !db) return;
+        if (!newPaiNome && !newPaiId) return; // Sem pai para sincronizar
+        if (!motherId) return; // Sem mãe/receptora, não consegue encontrar cobertura
+        if (!calfBirthDate) return; // Sem data de nascimento, não consegue correlacionar
+
+        const breedingSeasons = stateRef.current.breedingSeasons;
+        if (!breedingSeasons || breedingSeasons.length === 0) return;
+
+        // Encontra o touro pelo brinco/nome ou ID
+        const animals = stateRef.current.animals;
+        let newSire: Animal | undefined;
+
+        if (newPaiId) {
+            newSire = animals.find((a: Animal) => a.id === newPaiId && a.sexo === Sexo.Macho);
+        }
+        if (!newSire && newPaiNome) {
+            const paiNomeLower = newPaiNome.toLowerCase().trim();
+            newSire = animals.find((a: Animal) =>
+                a.brinco.toLowerCase().trim() === paiNomeLower && a.sexo === Sexo.Macho
+            );
+        }
+
+        // Determina o ID e brinco do pai para usar na cobertura
+        const confirmedSireId = newSire?.id || newPaiId || '';
+        const confirmedSireBrinco = newSire?.brinco || newPaiNome || '';
+
+        if (!confirmedSireId && !confirmedSireBrinco) return;
+
+        // Calcula a data aproximada da cobertura (283 dias antes do nascimento)
+        const birthTime = new Date(calfBirthDate).getTime();
+        const estimatedCoverageTime = birthTime - (283 * 24 * 60 * 60 * 1000);
+        const toleranceMs = 45 * 24 * 60 * 60 * 1000; // ±45 dias de tolerância
+
+        // Procura em todas as estações de monta por coberturas da mãe
+        // Ordena por data (mais recente primeiro) para priorizar estações mais recentes
+        const sortedSeasons = [...breedingSeasons].sort((a, b) =>
+            new Date(b.startDate).getTime() - new Date(a.startDate).getTime()
+        );
+
+        for (const season of sortedSeasons) {
+            if (!season.coverageRecords || season.coverageRecords.length === 0) continue;
+
+            // Verifica se a data estimada da cobertura está dentro do período da estação (com margem)
+            const seasonStart = new Date(season.startDate).getTime();
+            const seasonEnd = new Date(season.endDate).getTime();
+            const marginMs = 60 * 24 * 60 * 60 * 1000; // 60 dias de margem para coberturas próximas ao fim da estação
+
+            if (estimatedCoverageTime < seasonStart - marginMs || estimatedCoverageTime > seasonEnd + marginMs) {
+                continue; // Pula estações fora do período
+            }
+
+            // 🔧 FIV: Busca coberturas considerando se o bezerro é de FIV ou não
+            // Para FIV: cowId = receptora (quem gestou), donorCowId = doadora (mãe biológica)
+            // Para não-FIV: cowId = mãe direta
+            const coverageIndex = season.coverageRecords.findIndex((c: CoverageRecord) => {
+                // A vaca da cobertura deve ser a "mãe" (receptora para FIV, mãe direta para outros)
+                if (c.cowId !== motherId) return false;
+
+                // 🔧 FIV: Se o bezerro é de FIV, a cobertura também deve ser FIV
+                // E se tiver doadora especificada, deve bater
+                if (isFIVCalf) {
+                    if (c.type !== CoverageTypes.FIV) return false;
+                    // Se tiver doadora especificada no bezerro, verifica se bate com a cobertura
+                    if (donorId && c.donorCowId && c.donorCowId !== donorId) return false;
+                } else {
+                    // Para não-FIV, a cobertura NÃO deve ser FIV (para evitar confusão)
+                    if (c.type === CoverageTypes.FIV) return false;
+                }
+
+                const coverageTime = new Date(c.date).getTime();
+                const timeDiff = Math.abs(coverageTime - estimatedCoverageTime);
+
+                return timeDiff <= toleranceMs;
+            });
+
+            if (coverageIndex === -1) continue;
+
+            const coverage = season.coverageRecords[coverageIndex];
+
+            // Determina se deve atualizar a cobertura principal ou o repasse
+            // Se a prenhez foi do repasse (DG principal negativo + repasse positivo), atualiza repasse
+            const isRepassePregnancy = coverage.pregnancyResult === 'negative' &&
+                                       coverage.repasse?.enabled &&
+                                       coverage.repasse?.diagnosisResult === 'positive';
+
+            let updatedCoverage: CoverageRecord;
+            let updatedHistoricoPrenhez: PregnancyRecord[] | undefined;
+
+            if (isRepassePregnancy) {
+                // Atualiza o repasse
+                updatedCoverage = {
+                    ...coverage,
+                    repasse: {
+                        ...coverage.repasse!,
+                        confirmedSireId: confirmedSireId,
+                        confirmedSireBrinco: confirmedSireBrinco,
+                    }
+                };
+
+                // Atualiza historicoPrenhez da mãe (registro de repasse)
+                const mother = animals.find((a: Animal) => a.id === motherId);
+                if (mother?.historicoPrenhez) {
+                    const repasseRecordId = `repasse_${coverage.id}`;
+                    updatedHistoricoPrenhez = mother.historicoPrenhez.map((r: PregnancyRecord) =>
+                        r.id === repasseRecordId
+                            ? { ...r, sireName: confirmedSireBrinco }
+                            : r
+                    );
+                }
+            } else {
+                // Atualiza a cobertura principal
+                updatedCoverage = {
+                    ...coverage,
+                    confirmedSireId: confirmedSireId,
+                    confirmedSireBrinco: confirmedSireBrinco,
+                };
+
+                // Atualiza historicoPrenhez da mãe (registro principal)
+                const mother = animals.find((a: Animal) => a.id === motherId);
+                if (mother?.historicoPrenhez) {
+                    updatedHistoricoPrenhez = mother.historicoPrenhez.map((r: PregnancyRecord) =>
+                        r.id === coverage.id
+                            ? { ...r, sireName: confirmedSireBrinco }
+                            : r
+                    );
+                }
+            }
+
+            // Atualiza a estação de monta
+            const updatedCoverageRecords = season.coverageRecords.map((c: CoverageRecord, idx: number) =>
+                idx === coverageIndex ? updatedCoverage : c
+            );
+
+            try {
+                // Atualiza a estação de monta no Firestore
+                const seasonRef = db.collection('breedingSeasons').doc(season.id);
+                await seasonRef.update({
+                    coverageRecords: convertDatesToTimestamps(updatedCoverageRecords),
+                    updatedAt: new Date()
+                });
+
+                // Atualização otimista local da estação
+                const updatedSeason = { ...season, coverageRecords: updatedCoverageRecords };
+                dispatch({
+                    type: 'LOCAL_UPDATE_BREEDING_SEASON',
+                    payload: { seasonId: season.id, updatedData: { coverageRecords: updatedCoverageRecords } }
+                });
+
+                // Atualiza o cache local das estações
+                const updatedSeasons = stateRef.current.breedingSeasons.map((s: BreedingSeason) =>
+                    s.id === season.id ? updatedSeason : s
+                );
+                await updateLocalCache('breedingSeasons', updatedSeasons);
+
+                // Atualiza o historicoPrenhez da mãe se necessário
+                if (updatedHistoricoPrenhez) {
+                    const motherRef = db.collection('animals').doc(motherId);
+                    await motherRef.update({
+                        historicoPrenhez: convertDatesToTimestamps(updatedHistoricoPrenhez),
+                        updatedAt: new Date()
+                    });
+
+                    dispatch({
+                        type: 'LOCAL_UPDATE_ANIMAL',
+                        payload: { animalId: motherId, updatedData: { historicoPrenhez: updatedHistoricoPrenhez } }
+                    });
+
+                    const updatedAnimals = stateRef.current.animals.map((a: Animal) =>
+                        a.id === motherId ? { ...a, historicoPrenhez: updatedHistoricoPrenhez } : a
+                    );
+                    await updateLocalCache('animals', updatedAnimals);
+                }
+
+                console.log(`✅ [SYNC_PATERNITY] Paternidade sincronizada: Bezerro ${calfId} → Pai ${confirmedSireBrinco} na estação ${season.name}`);
+
+                // Encontrou e atualizou, pode parar
+                return;
+            } catch (error) {
+                console.error('❌ [SYNC_PATERNITY] Erro ao sincronizar paternidade:', error);
+                // Não propaga erro para não bloquear a atualização do animal
+            }
+        }
+
+        console.log(`ℹ️ [SYNC_PATERNITY] Nenhuma cobertura encontrada para sincronizar (Mãe: ${motherId}, Nascimento: ${calfBirthDate})`);
+    }, [userId, db, updateLocalCache]);
+
     const updateAnimal = useCallback(async (animalId: string, updatedData: Partial<Omit<Animal, 'id'>>) => {
         if (!userId || !db) return;
 
@@ -1210,12 +1434,94 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
                 a.id === animalId ? { ...a, ...sanitizedData } : a
             );
             await updateLocalCache('animals', updatedAnimals);
+
+            // ============================================
+            // 🔧 SYNC REVERSO: Paternidade → Estação de Monta
+            // ============================================
+            // Se paiNome ou paiId foi alterado, sincroniza com a estação de monta
+            const paternityChanged = updatedData.paiNome !== undefined || updatedData.paiId !== undefined;
+            if (paternityChanged && currentAnimal) {
+                // Determina os valores atualizados
+                const newPaiId = updatedData.paiId ?? currentAnimal.paiId;
+                const newPaiNome = updatedData.paiNome ?? currentAnimal.paiNome;
+                const birthDate = updatedData.dataNascimento ?? currentAnimal.dataNascimento;
+
+                // 🔧 FIV: Verifica se o bezerro é de FIV para determinar qual "mãe" usar na busca
+                // Considera FIV se: isFIV=true OU tem maeReceptoraId/maeReceptoraNome preenchido
+                const hasReceptora = !!(updatedData.maeReceptoraId ?? currentAnimal.maeReceptoraId) ||
+                                     !!(updatedData.maeReceptoraNome ?? currentAnimal.maeReceptoraNome);
+                const isFIVCalf = (updatedData.isFIV ?? currentAnimal.isFIV) || hasReceptora;
+
+                let resolvedMotherId: string | undefined;
+                let resolvedDonorId: string | undefined;
+
+                if (isFIVCalf) {
+                    // Para bezerros FIV: a "mãe" na cobertura é a RECEPTORA
+                    const receptoraId = updatedData.maeReceptoraId ?? currentAnimal.maeReceptoraId;
+                    if (!receptoraId) {
+                        // Busca receptora pelo brinco
+                        const receptoraNome = updatedData.maeReceptoraNome ?? currentAnimal.maeReceptoraNome;
+                        if (receptoraNome) {
+                            const receptoraNomeLower = receptoraNome.toLowerCase().trim();
+                            const receptora = stateRef.current.animals.find((a: Animal) =>
+                                a.brinco.toLowerCase().trim() === receptoraNomeLower && a.sexo === Sexo.Femea
+                            );
+                            resolvedMotherId = receptora?.id;
+                        }
+                    } else {
+                        resolvedMotherId = receptoraId;
+                    }
+
+                    // Também resolve a doadora (mãe biológica) para validação adicional
+                    const donorId = updatedData.maeBiologicaId ?? currentAnimal.maeBiologicaId;
+                    if (!donorId) {
+                        const donorNome = updatedData.maeBiologicaNome ?? currentAnimal.maeBiologicaNome;
+                        if (donorNome) {
+                            const donorNomeLower = donorNome.toLowerCase().trim();
+                            const donor = stateRef.current.animals.find((a: Animal) =>
+                                a.brinco.toLowerCase().trim() === donorNomeLower && a.sexo === Sexo.Femea
+                            );
+                            resolvedDonorId = donor?.id;
+                        }
+                    } else {
+                        resolvedDonorId = donorId;
+                    }
+                } else {
+                    // Para bezerros não-FIV: usa maeId normalmente
+                    const motherId = updatedData.maeId ?? currentAnimal.maeId;
+                    if (!motherId) {
+                        const maeNome = updatedData.maeNome ?? currentAnimal.maeNome;
+                        if (maeNome) {
+                            const maeNomeLower = maeNome.toLowerCase().trim();
+                            const mae = stateRef.current.animals.find((a: Animal) =>
+                                a.brinco.toLowerCase().trim() === maeNomeLower && a.sexo === Sexo.Femea
+                            );
+                            resolvedMotherId = mae?.id;
+                        }
+                    } else {
+                        resolvedMotherId = motherId;
+                    }
+                }
+
+                // Chama a sincronização (não bloqueia, executa em background)
+                syncPaternityToBreedingSeason(
+                    animalId,
+                    newPaiId,
+                    newPaiNome,
+                    birthDate,
+                    resolvedMotherId,
+                    isFIVCalf,
+                    resolvedDonorId
+                ).catch(err => {
+                    console.warn('⚠️ [UPDATE_ANIMAL] Falha na sincronização de paternidade:', err);
+                });
+            }
         } catch (error) {
             console.error("Erro ao atualizar animal:", error);
             await forceSync();
             throw error;
         }
-    }, [userId, updateLocalCache, forceSync]);
+    }, [userId, updateLocalCache, forceSync, syncPaternityToBreedingSeason]);
 
     const deleteAnimal = useCallback(async (animalId: string): Promise<void> => {
         if (!userId || !db) throw new Error("Não autenticado");
@@ -2413,6 +2719,578 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
         }
     }, [userId, db, updateBreedingSeason, updateLocalCache]);
 
+    // ============================================
+    // 🔧 VERIFICAÇÃO DE PARTOS E REGISTRO DE ABORTOS
+    // ============================================
+
+    /**
+     * Registra um aborto para uma cobertura específica.
+     * Atualiza a cobertura na estação de monta e o historicoAborto do animal.
+     */
+    const registerAbortion = useCallback(async (
+        seasonId: string,
+        coverageId: string,
+        isRepasse: boolean,
+        abortionDate?: Date,
+        notes?: string
+    ) => {
+        if (!userId || !db) return;
+
+        const season = stateRef.current.breedingSeasons.find((s: BreedingSeason) => s.id === seasonId);
+        if (!season) throw new Error('Estação de monta não encontrada');
+
+        const coverage = season.coverageRecords.find((c: CoverageRecord) => c.id === coverageId);
+        if (!coverage) throw new Error('Cobertura não encontrada');
+
+        const effectiveAbortionDate = abortionDate || new Date();
+
+        // Atualiza a cobertura
+        let updatedCoverage: CoverageRecord;
+        if (isRepasse && coverage.repasse) {
+            updatedCoverage = {
+                ...coverage,
+                repasse: {
+                    ...coverage.repasse,
+                    calvingResult: 'aborto',
+                    calvingNotes: notes,
+                },
+            };
+        } else {
+            updatedCoverage = {
+                ...coverage,
+                calvingResult: 'aborto',
+                calvingNotes: notes,
+            };
+        }
+
+        const updatedCoverageRecords = season.coverageRecords.map((c: CoverageRecord) =>
+            c.id === coverageId ? updatedCoverage : c
+        );
+
+        await updateBreedingSeason(seasonId, { coverageRecords: updatedCoverageRecords });
+
+        // Atualiza o historicoAborto do animal
+        const animal = stateRef.current.animals.find((a: Animal) => a.id === coverage.cowId);
+        if (animal) {
+            const newAbortionRecord: AbortionRecord = {
+                id: `abort_${coverageId}${isRepasse ? '_repasse' : ''}`,
+                date: effectiveAbortionDate,
+            };
+
+            const existingAbortions = animal.historicoAborto || [];
+            // Verifica se já existe um registro para esta cobertura
+            const alreadyExists = existingAbortions.some((a: AbortionRecord) => a.id === newAbortionRecord.id);
+
+            if (!alreadyExists) {
+                const updatedHistoricoAborto = [...existingAbortions, newAbortionRecord];
+
+                const animalRef = db.collection('animals').doc(coverage.cowId);
+                await animalRef.update({
+                    historicoAborto: convertDatesToTimestamps(updatedHistoricoAborto),
+                    updatedAt: new Date()
+                });
+
+                dispatch({
+                    type: 'LOCAL_UPDATE_ANIMAL',
+                    payload: { animalId: coverage.cowId, updatedData: { historicoAborto: updatedHistoricoAborto } }
+                });
+
+                const updatedAnimals = stateRef.current.animals.map((a: Animal) =>
+                    a.id === coverage.cowId ? { ...a, historicoAborto: updatedHistoricoAborto } : a
+                );
+                await updateLocalCache('animals', updatedAnimals);
+            }
+        }
+
+        console.log(`✅ [ABORTION] Aborto registrado: Vaca ${coverage.cowBrinco}, Cobertura ${coverageId}${isRepasse ? ' (repasse)' : ''}`);
+    }, [userId, db, updateBreedingSeason, updateLocalCache]);
+
+    /**
+     * Registra que um parto foi realizado para uma cobertura específica.
+     * Vincula o terneiro à cobertura.
+     */
+    const registerCalving = useCallback(async (
+        seasonId: string,
+        coverageId: string,
+        isRepasse: boolean,
+        calfId: string,
+        calfBrinco: string,
+        actualCalvingDate?: Date
+    ) => {
+        if (!userId || !db) return;
+
+        const season = stateRef.current.breedingSeasons.find((s: BreedingSeason) => s.id === seasonId);
+        if (!season) throw new Error('Estação de monta não encontrada');
+
+        const coverage = season.coverageRecords.find((c: CoverageRecord) => c.id === coverageId);
+        if (!coverage) throw new Error('Cobertura não encontrada');
+
+        // Atualiza a cobertura
+        let updatedCoverage: CoverageRecord;
+        if (isRepasse && coverage.repasse) {
+            updatedCoverage = {
+                ...coverage,
+                repasse: {
+                    ...coverage.repasse,
+                    calvingResult: 'realizado',
+                    calfId,
+                    calfBrinco,
+                    actualCalvingDate: actualCalvingDate || new Date(),
+                },
+            };
+        } else {
+            updatedCoverage = {
+                ...coverage,
+                calvingResult: 'realizado',
+                calfId,
+                calfBrinco,
+                actualCalvingDate: actualCalvingDate || new Date(),
+            };
+        }
+
+        const updatedCoverageRecords = season.coverageRecords.map((c: CoverageRecord) =>
+            c.id === coverageId ? updatedCoverage : c
+        );
+
+        await updateBreedingSeason(seasonId, { coverageRecords: updatedCoverageRecords });
+
+        console.log(`✅ [CALVING] Parto registrado: Vaca ${coverage.cowBrinco}, Terneiro ${calfBrinco}`);
+    }, [userId, db, updateBreedingSeason]);
+
+    /**
+     * Verifica todas as coberturas com DG positivo e registra abortos automaticamente
+     * para aquelas que não tiveram terneiros nascidos após a data prevista + tolerância.
+     *
+     * 🔧 NOVO: Também detecta vacas expostas SEM cobertura registrada que tiveram bezerros,
+     * criando registros de cobertura retroativos e atualizando métricas da estação.
+     *
+     * @returns Estatísticas da verificação
+     */
+    const verifyAndRegisterAbortions = useCallback(async (
+        seasonId: string,
+        toleranceDays: number = 30
+    ): Promise<{ registered: number; linked: number; pending: number; discovered: number }> => {
+        if (!userId || !db) return { registered: 0, linked: 0, pending: 0, discovered: 0 };
+
+        const season = stateRef.current.breedingSeasons.find((s: BreedingSeason) => s.id === seasonId);
+        if (!season) throw new Error('Estação de monta não encontrada');
+
+        const animals = stateRef.current.animals;
+        const today = new Date();
+        let registeredCount = 0;
+        let linkedCount = 0;
+        let pendingCount = 0;
+        let discoveredCount = 0; // Partos descobertos de vacas expostas sem cobertura
+
+        const updatedCoverageRecords = [...season.coverageRecords];
+        const animalUpdates: Map<string, { historicoAborto?: AbortionRecord[] }> = new Map();
+
+        // Rastreia terneiros já vinculados para evitar duplicatas
+        const alreadyLinkedCalfIds = new Set<string>();
+
+        // Primeiro, coleta IDs de terneiros já vinculados em coberturas existentes (desta e outras estações)
+        for (const s of stateRef.current.breedingSeasons) {
+            for (const c of (s.coverageRecords || [])) {
+                if (c.calfId) alreadyLinkedCalfIds.add(c.calfId);
+                if (c.repasse?.calfId) alreadyLinkedCalfIds.add(c.repasse.calfId);
+            }
+        }
+
+        for (let i = 0; i < updatedCoverageRecords.length; i++) {
+            const coverage = updatedCoverageRecords[i];
+
+            // Verifica cobertura principal com DG positivo
+            if (coverage.pregnancyResult === 'positive' && coverage.expectedCalvingDate && !coverage.calvingResult) {
+                const expectedDate = new Date(coverage.expectedCalvingDate);
+                const deadlineDate = new Date(expectedDate);
+                deadlineDate.setDate(deadlineDate.getDate() + toleranceDays);
+
+                // Busca terneiro (excluindo os já vinculados)
+                // 🔧 FIV: Passa o tipo de cobertura e ID da doadora para diferenciar filhos diretos de embriões
+                const calf = findCalfForCoverageInternal(
+                    animals,
+                    coverage.cowId,
+                    expectedDate,
+                    toleranceDays,
+                    alreadyLinkedCalfIds,
+                    coverage.type,
+                    coverage.donorCowId // ID da doadora para FIV
+                );
+
+                if (calf) {
+                    // Vincula o terneiro à cobertura
+                    updatedCoverageRecords[i] = {
+                        ...coverage,
+                        calvingResult: 'realizado',
+                        calfId: calf.id,
+                        calfBrinco: calf.brinco,
+                        actualCalvingDate: calf.dataNascimento || new Date(),
+                    };
+                    // Marca o terneiro como vinculado para evitar duplicatas
+                    alreadyLinkedCalfIds.add(calf.id);
+                    linkedCount++;
+                } else if (today > deadlineDate) {
+                    // Registra aborto
+                    updatedCoverageRecords[i] = {
+                        ...coverage,
+                        calvingResult: 'aborto',
+                        calvingNotes: 'Registrado automaticamente - sem terneiro cadastrado após período previsto',
+                    };
+
+                    // Prepara atualização do historicoAborto
+                    const animal = animals.find((a: Animal) => a.id === coverage.cowId);
+                    if (animal) {
+                        const existing = animalUpdates.get(animal.id) || { historicoAborto: [...(animal.historicoAborto || [])] };
+                        const abortionId = `abort_${coverage.id}`;
+                        if (!existing.historicoAborto!.some((a: AbortionRecord) => a.id === abortionId)) {
+                            existing.historicoAborto!.push({ id: abortionId, date: expectedDate });
+                            animalUpdates.set(animal.id, existing);
+                        }
+                    }
+                    registeredCount++;
+                } else {
+                    pendingCount++;
+                }
+            }
+
+            // Verifica repasse com DG positivo (só processa se cobertura principal foi negativa)
+            if (coverage.repasse?.enabled && coverage.repasse.diagnosisResult === 'positive' && coverage.pregnancyResult === 'negative' && !coverage.repasse.calvingResult) {
+                const repasseStartDate = coverage.repasse.startDate || coverage.date;
+                const expectedDate = new Date(repasseStartDate);
+                expectedDate.setDate(expectedDate.getDate() + 283);
+                const deadlineDate = new Date(expectedDate);
+                deadlineDate.setDate(deadlineDate.getDate() + toleranceDays);
+
+                // Busca terneiro (excluindo os já vinculados)
+                // 🔧 Repasse é sempre monta natural - busca filho direto (não FIV)
+                const calf = findCalfForCoverageInternal(
+                    animals,
+                    coverage.cowId,
+                    expectedDate,
+                    toleranceDays,
+                    alreadyLinkedCalfIds,
+                    CoverageTypes.MontaNatural // Repasse é sempre monta natural
+                );
+
+                if (calf) {
+                    // Vincula o terneiro ao repasse
+                    updatedCoverageRecords[i] = {
+                        ...updatedCoverageRecords[i],
+                        repasse: {
+                            ...updatedCoverageRecords[i].repasse!,
+                            calvingResult: 'realizado',
+                            calfId: calf.id,
+                            calfBrinco: calf.brinco,
+                            actualCalvingDate: calf.dataNascimento || new Date(),
+                        },
+                    };
+                    // Marca o terneiro como vinculado para evitar duplicatas
+                    alreadyLinkedCalfIds.add(calf.id);
+                    linkedCount++;
+                } else if (today > deadlineDate) {
+                    // Registra aborto no repasse
+                    updatedCoverageRecords[i] = {
+                        ...updatedCoverageRecords[i],
+                        repasse: {
+                            ...updatedCoverageRecords[i].repasse!,
+                            calvingResult: 'aborto',
+                            calvingNotes: 'Registrado automaticamente - sem terneiro cadastrado após período previsto',
+                        },
+                    };
+
+                    // Prepara atualização do historicoAborto
+                    const animal = animals.find((a: Animal) => a.id === coverage.cowId);
+                    if (animal) {
+                        const existing = animalUpdates.get(animal.id) || { historicoAborto: [...(animal.historicoAborto || [])] };
+                        const abortionId = `abort_${coverage.id}_repasse`;
+                        if (!existing.historicoAborto!.some((a: AbortionRecord) => a.id === abortionId)) {
+                            existing.historicoAborto!.push({ id: abortionId, date: expectedDate });
+                            animalUpdates.set(animal.id, existing);
+                        }
+                    }
+                    registeredCount++;
+                } else {
+                    pendingCount++;
+                }
+            }
+        }
+
+        // ============================================
+        // 🔧 NOVO: Detecta vacas EXPOSTAS SEM COBERTURA que tiveram bezerros
+        // ============================================
+        // Calcula a janela de datas esperadas para partos desta estação
+        // Partos esperados: data da estação + 283 dias (gestação) ± tolerância
+        const seasonStartTime = new Date(season.startDate).getTime();
+        const seasonEndTime = new Date(season.endDate).getTime();
+        const gestationDays = 283;
+        const gestationMs = gestationDays * 24 * 60 * 60 * 1000;
+        const toleranceMs = toleranceDays * 24 * 60 * 60 * 1000;
+
+        // Janela de nascimentos esperados para esta estação
+        const expectedBirthWindowStart = new Date(seasonStartTime + gestationMs - toleranceMs);
+        const expectedBirthWindowEnd = new Date(seasonEndTime + gestationMs + toleranceMs);
+
+        // IDs das vacas que já têm cobertura registrada nesta estação
+        const cowsWithCoverage = new Set(updatedCoverageRecords.map(c => c.cowId));
+
+        // Vacas expostas que NÃO têm cobertura registrada
+        const exposedCowsWithoutCoverage = (season.exposedCowIds || []).filter(
+            cowId => !cowsWithCoverage.has(cowId)
+        );
+
+        // Para cada vaca exposta sem cobertura, busca se teve bezerro na janela esperada
+        for (const cowId of exposedCowsWithoutCoverage) {
+            const cow = animals.find((a: Animal) => a.id === cowId);
+            if (!cow) continue;
+
+            const cowBrinco = cow.brinco.toLowerCase().trim();
+
+            // Busca bezerros desta vaca nascidos na janela esperada
+            // Considera tanto filhos diretos quanto de FIV (onde ela é receptora)
+            const calves = animals.filter((animal: Animal) => {
+                // Já vinculado a outra cobertura?
+                if (alreadyLinkedCalfIds.has(animal.id)) return false;
+
+                // Verifica se é filho desta vaca (direta ou como receptora)
+                const isMaeById = animal.maeId === cowId;
+                const isMaeByBrinco = animal.maeNome?.toLowerCase().trim() === cowBrinco;
+                const isReceptoraById = animal.maeReceptoraId === cowId;
+                const isReceptoraByBrinco = animal.maeReceptoraNome?.toLowerCase().trim() === cowBrinco;
+
+                const isChild = isMaeById || isMaeByBrinco || isReceptoraById || isReceptoraByBrinco;
+                if (!isChild) return false;
+
+                // Verifica se nasceu na janela esperada
+                if (!animal.dataNascimento) return false;
+                const birthTime = new Date(animal.dataNascimento).getTime();
+                return birthTime >= expectedBirthWindowStart.getTime() && birthTime <= expectedBirthWindowEnd.getTime();
+            });
+
+            // Se encontrou bezerros, cria registros de cobertura retroativos
+            for (const calf of calves) {
+                const birthDate = new Date(calf.dataNascimento!);
+                // Estima a data de cobertura (283 dias antes do nascimento)
+                const estimatedCoverageDate = new Date(birthDate);
+                estimatedCoverageDate.setDate(estimatedCoverageDate.getDate() - gestationDays);
+
+                // Determina o tipo de cobertura baseado no bezerro
+                // É FIV se: isFIV=true OU se a vaca é receptora (maeReceptoraId = cowId)
+                const isReceptoraMatch = calf.maeReceptoraId === cowId ||
+                                         calf.maeReceptoraNome?.toLowerCase().trim() === cowBrinco;
+                const isFIVCalf = calf.isFIV === true || isReceptoraMatch;
+                const coverageType = isFIVCalf ? CoverageTypes.FIV : CoverageTypes.MontaNatural;
+
+                // Tenta identificar o pai pelo registro do bezerro
+                const sireId = calf.paiId;
+                const sireBrinco = calf.paiNome;
+
+                // Cria novo registro de cobertura retroativo
+                const newCoverageId = `discovered_${cowId}_${calf.id}`;
+                const newCoverage: CoverageRecord = {
+                    id: newCoverageId,
+                    cowId: cowId,
+                    cowBrinco: cow.brinco,
+                    date: estimatedCoverageDate,
+                    type: coverageType,
+                    // Para FIV, a doadora é a mãe biológica
+                    ...(isFIVCalf && calf.maeBiologicaId ? {
+                        donorCowId: calf.maeBiologicaId,
+                        donorCowBrinco: calf.maeBiologicaNome
+                    } : {}),
+                    // Para monta natural, registra o touro se conhecido
+                    ...(coverageType === CoverageTypes.MontaNatural && sireId ? {
+                        bullId: sireId,
+                        bullBrinco: sireBrinco
+                    } : {}),
+                    // Se tiver sêmen conhecido (IATF sem cobertura registrada)
+                    ...(sireBrinco && coverageType !== CoverageTypes.MontaNatural ? {
+                        semenCode: sireBrinco
+                    } : {}),
+                    // Marca como prenhez confirmada (retroativo)
+                    pregnancyResult: 'positive',
+                    expectedCalvingDate: birthDate,
+                    // Marca parto como realizado
+                    calvingResult: 'realizado',
+                    calfId: calf.id,
+                    calfBrinco: calf.brinco,
+                    actualCalvingDate: birthDate,
+                    calvingNotes: 'Cobertura descoberta retroativamente - vaca exposta sem registro prévio',
+                    // Confirma o pai se conhecido
+                    ...(sireId ? {
+                        confirmedSireId: sireId,
+                        confirmedSireBrinco: sireBrinco
+                    } : {}),
+                };
+
+                updatedCoverageRecords.push(newCoverage);
+                alreadyLinkedCalfIds.add(calf.id);
+                discoveredCount++;
+
+                console.log(`🔍 [DISCOVER] Parto descoberto: Vaca ${cow.brinco} → Bezerro ${calf.brinco} (sem cobertura prévia)`);
+            }
+        }
+
+        // Atualiza a estação de monta com todos os registros (existentes + descobertos)
+        await updateBreedingSeason(seasonId, { coverageRecords: updatedCoverageRecords });
+
+        // Atualiza os animais com abortos
+        const batch = db.batch();
+        for (const [animalId, updates] of animalUpdates) {
+            const animalRef = db.collection('animals').doc(animalId);
+            batch.update(animalRef, {
+                ...convertDatesToTimestamps(updates),
+                updatedAt: new Date()
+            });
+
+            dispatch({
+                type: 'LOCAL_UPDATE_ANIMAL',
+                payload: { animalId, updatedData: updates }
+            });
+        }
+
+        if (animalUpdates.size > 0) {
+            await batch.commit();
+
+            // Atualiza cache local
+            const updatedAnimals = stateRef.current.animals.map((a: Animal) => {
+                const updates = animalUpdates.get(a.id);
+                return updates ? { ...a, ...updates } : a;
+            });
+            await updateLocalCache('animals', updatedAnimals);
+        }
+
+        // ============================================
+        // 🔧 RECALCULA MÉTRICAS DA ESTAÇÃO
+        // ============================================
+        const updatedSeason = stateRef.current.breedingSeasons.find((s: BreedingSeason) => s.id === seasonId);
+        if (updatedSeason) {
+            const allCoverages = updatedCoverageRecords;
+            const totalExposed = (updatedSeason.exposedCowIds || []).length;
+            const totalCovered = allCoverages.length;
+
+            // Conta prenhes (DG positivo na cobertura principal OU no repasse)
+            const totalPregnant = allCoverages.filter(c =>
+                c.pregnancyResult === 'positive' ||
+                (c.repasse?.enabled && c.repasse.diagnosisResult === 'positive')
+            ).length;
+
+            // Conta partos realizados
+            const totalCalvings = allCoverages.filter(c =>
+                c.calvingResult === 'realizado' ||
+                (c.repasse?.calvingResult === 'realizado')
+            ).length;
+
+            const metrics = {
+                totalExposed,
+                totalCovered,
+                totalPregnant,
+                pregnancyRate: totalExposed > 0 ? (totalPregnant / totalExposed) * 100 : 0,
+                serviceRate: totalExposed > 0 ? (totalCovered / totalExposed) * 100 : 0,
+                conceptionRate: totalCovered > 0 ? (totalPregnant / totalCovered) * 100 : 0,
+            };
+
+            // Atualiza métricas na estação
+            await updateBreedingSeason(seasonId, { metrics });
+
+            console.log(`📊 [METRICS] Métricas atualizadas: ${totalCovered} cobertas, ${totalPregnant} prenhes, ${totalCalvings} partos`);
+        }
+
+        console.log(`✅ [VERIFY_CALVINGS] Verificação concluída: ${linkedCount} partos vinculados, ${registeredCount} abortos registrados, ${pendingCount} pendentes, ${discoveredCount} descobertos`);
+
+        return { registered: registeredCount, linked: linkedCount, pending: pendingCount, discovered: discoveredCount };
+    }, [userId, db, updateBreedingSeason, updateLocalCache]);
+
+    // Função auxiliar interna para buscar terneiro
+    // Verifica também se o terneiro já não está vinculado a outra cobertura
+    // 🔧 FIV: Considera a distinção entre filhos diretos e filhos de FIV (receptora vs doadora)
+    const findCalfForCoverageInternal = (
+        animals: Animal[],
+        motherId: string,
+        expectedCalvingDate: Date,
+        toleranceDays: number,
+        alreadyLinkedCalfIds?: Set<string>,
+        coverageType?: CoverageType,
+        donorCowId?: string // ID da doadora para coberturas FIV
+    ): Animal | undefined => {
+        const minDate = new Date(expectedCalvingDate);
+        minDate.setDate(minDate.getDate() - toleranceDays);
+        const maxDate = new Date(expectedCalvingDate);
+        maxDate.setDate(maxDate.getDate() + toleranceDays);
+
+        const mother = animals.find((a: Animal) => a.id === motherId);
+        if (!mother) return undefined;
+
+        const motherBrinco = mother.brinco.toLowerCase().trim();
+        const isFIVCoverage = coverageType === CoverageTypes.FIV;
+
+        // Para FIV, também precisamos do brinco da doadora se houver
+        let donorBrinco: string | undefined;
+        if (isFIVCoverage && donorCowId) {
+            const donor = animals.find((a: Animal) => a.id === donorCowId);
+            donorBrinco = donor?.brinco.toLowerCase().trim();
+        }
+
+        // Busca terneiros que:
+        // 1. São filhos desta mãe (considerando FIV vs não-FIV)
+        // 2. Nasceram dentro da janela de tempo
+        // 3. Ainda não foram vinculados a outra cobertura nesta verificação
+        const potentialCalves = animals.filter((animal: Animal) => {
+            // Verifica se já foi vinculado nesta mesma execução
+            if (alreadyLinkedCalfIds && alreadyLinkedCalfIds.has(animal.id)) return false;
+
+            let isChildOfThisCow = false;
+
+            if (isFIVCoverage) {
+                // 🔧 FIV: A vaca da cobertura (motherId) é a RECEPTORA
+                // O bezerro terá maeReceptoraId = motherId (quem gestou)
+                // E opcionalmente maeBiologicaId = donorCowId (doadora genética)
+                const isReceptoraById = animal.maeReceptoraId === motherId;
+                const isReceptoraByBrinco = animal.maeReceptoraNome?.toLowerCase().trim() === motherBrinco;
+
+                // Verifica se a doadora bate (se especificada na cobertura E no bezerro)
+                let donorMatches = true;
+                if (donorCowId && (animal.maeBiologicaId || animal.maeBiologicaNome)) {
+                    const isDonorById = animal.maeBiologicaId === donorCowId;
+                    const isDonorByBrinco = donorBrinco && animal.maeBiologicaNome?.toLowerCase().trim() === donorBrinco;
+                    donorMatches = isDonorById || isDonorByBrinco || false;
+                }
+
+                // Bezerro é de FIV se: tem isFIV=true OU tem maeReceptoraId preenchido
+                const isFIVCalf = animal.isFIV === true || !!animal.maeReceptoraId || !!animal.maeReceptoraNome;
+
+                isChildOfThisCow = (isReceptoraById || isReceptoraByBrinco) && donorMatches && isFIVCalf;
+            } else {
+                // 🔧 Não-FIV (IATF, Monta Natural): A vaca é a mãe direta
+                // O bezerro terá maeId = motherId
+                // E NÃO deve ser um bezerro de FIV (para evitar confusão)
+                const isMaeById = animal.maeId === motherId;
+                const isMaeByBrinco = animal.maeNome?.toLowerCase().trim() === motherBrinco;
+                // Bezerro NÃO é de FIV se: não tem isFIV=true E não tem maeReceptoraId
+                const isNotFIVCalf = animal.isFIV !== true && !animal.maeReceptoraId && !animal.maeReceptoraNome;
+
+                isChildOfThisCow = (isMaeById || isMaeByBrinco) && isNotFIVCalf;
+            }
+
+            if (!isChildOfThisCow) return false;
+
+            if (!animal.dataNascimento) return false;
+            const birthDate = new Date(animal.dataNascimento);
+            return birthDate >= minDate && birthDate <= maxDate;
+        });
+
+        // Se houver múltiplos candidatos, retorna o que tem data de nascimento mais próxima da esperada
+        if (potentialCalves.length > 1) {
+            const expectedTime = expectedCalvingDate.getTime();
+            return potentialCalves.reduce((closest, current) => {
+                const closestDiff = Math.abs(new Date(closest.dataNascimento!).getTime() - expectedTime);
+                const currentDiff = Math.abs(new Date(current.dataNascimento!).getTime() - expectedTime);
+                return currentDiff < closestDiff ? current : closest;
+            });
+        }
+
+        return potentialCalves[0];
+    };
+
     return {
         state,
         db,
@@ -2450,5 +3328,9 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
         updateCoverageInSeason,
         deleteCoverageFromSeason,
         confirmPaternity,
+        // Verificação de Partos e Abortos
+        registerAbortion,
+        registerCalving,
+        verifyAndRegisterAbortions,
     };
 };
