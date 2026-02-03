@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useReducer, useRef } from 'react';
 import { firebaseServices } from '../services/firebase';
 import { localCache } from '../services/localCache';
 import { trackReads, trackWrites, trackDeletes, isQuotaCritical, canPerformOperation } from '../services/quotaMonitor';
-import { Animal, FirestoreCollectionName, ManagementBatch, BatchPurpose, UserRole, WeighingType, AnimalStatus, Sexo, CalendarEvent, AppUser, ManagementArea, MedicationAdministration, PregnancyRecord, PregnancyType, AbortionRecord, Task, LoadingKey, LocalStateCollectionName, BreedingSeason, CoverageRecord, CoverageType } from '../types';
+import { Animal, FirestoreCollectionName, ManagementBatch, BatchPurpose, UserRole, WeighingType, AnimalStatus, Sexo, CalendarEvent, AppUser, ManagementArea, MedicationAdministration, PregnancyRecord, PregnancyType, AbortionRecord, Task, LoadingKey, LocalStateCollectionName, BreedingSeason, CoverageRecord, CoverageType, BullSwitchConfig } from '../types';
 import { PREGNANCY_TYPE_MAP, getCoverageSireName } from '../services/breedingSeasonService';
 import { QUERY_LIMITS, ARCHIVED_COLLECTION_NAME, AUTO_SYNC_INTERVAL_MS } from '../constants/app';
 import { convertTimestampsToDates, convertDatesToTimestamps } from '../utils/dateHelpers';
@@ -2864,13 +2864,20 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
      * 🔧 NOVO: Também detecta vacas expostas SEM cobertura registrada que tiveram bezerros,
      * criando registros de cobertura retroativos e atualizando métricas da estação.
      *
+     * 🔧 NOVO: Se fornecida bullSwitchDate, confirma automaticamente a paternidade em
+     * coberturas com 2 touros baseado na data estimada de cobertura vs data de troca.
+     *
+     * @param seasonId - ID da estação de monta
+     * @param toleranceDays - Dias de tolerância após data prevista de parto
+     * @param bullSwitchDate - Data de troca de touros (para confirmação automática de paternidade)
      * @returns Estatísticas da verificação
      */
     const verifyAndRegisterAbortions = useCallback(async (
         seasonId: string,
-        toleranceDays: number = 30
-    ): Promise<{ registered: number; linked: number; pending: number; discovered: number }> => {
-        if (!userId || !db) return { registered: 0, linked: 0, pending: 0, discovered: 0 };
+        toleranceDays: number = 30,
+        bullSwitchConfigs?: BullSwitchConfig[]
+    ): Promise<{ registered: number; linked: number; pending: number; discovered: number; paternityConfirmed: number }> => {
+        if (!userId || !db) return { registered: 0, linked: 0, pending: 0, discovered: 0, paternityConfirmed: 0 };
 
         const season = stateRef.current.breedingSeasons.find((s: BreedingSeason) => s.id === seasonId);
         if (!season) throw new Error('Estação de monta não encontrada');
@@ -2881,9 +2888,22 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
         let linkedCount = 0;
         let pendingCount = 0;
         let discoveredCount = 0; // Partos descobertos de vacas expostas sem cobertura
+        let paternityConfirmedCount = 0; // Paternidades confirmadas automaticamente
 
         const updatedCoverageRecords = [...season.coverageRecords];
         const animalUpdates: Map<string, { historicoAborto?: AbortionRecord[] }> = new Map();
+        // 🔧 SYNC: Rastreia bezerros que precisam ter paternidade atualizada
+        const calfPaternityUpdates: Map<string, { paiId: string; paiNome: string }> = new Map();
+
+        // 🔧 Cria Map de configurações de troca de touros por cobertura para acesso rápido
+        // Chave: coverageId para cobertura principal, coverageId_repasse para repasse
+        const switchConfigMap = new Map<string, BullSwitchConfig>();
+        if (bullSwitchConfigs) {
+            for (const config of bullSwitchConfigs) {
+                const key = config.isRepasse ? `${config.coverageId}_repasse` : config.coverageId;
+                switchConfigMap.set(key, config);
+            }
+        }
 
         // Rastreia terneiros já vinculados para evitar duplicatas
         const alreadyLinkedCalfIds = new Set<string>();
@@ -2918,6 +2938,54 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
                 );
 
                 if (calf) {
+                    // 🔧 PATERNIDADE: Se tem 2 touros e configuração de troca, confirma automaticamente
+                    let confirmedSireId = coverage.confirmedSireId;
+                    let confirmedSireBrinco = coverage.confirmedSireBrinco;
+
+                    // Verifica se precisa confirmar paternidade (2 touros sem confirmação)
+                    const hasTwoBulls = coverage.bulls && coverage.bulls.length === 2;
+                    // Busca configuração específica para esta cobertura
+                    const switchConfig = switchConfigMap.get(coverage.id);
+                    const hasConfig = switchConfig && (switchConfig.switchDate || switchConfig.selectedBullIndex !== undefined);
+                    const needsPaternityConfirmation = hasTwoBulls && !confirmedSireId && hasConfig;
+
+                    if (needsPaternityConfirmation && coverage.bulls && switchConfig) {
+                        let selectedBull;
+
+                        // Se tem índice de touro selecionado diretamente, usa ele
+                        if (switchConfig.selectedBullIndex !== undefined) {
+                            selectedBull = coverage.bulls[switchConfig.selectedBullIndex];
+                            console.log(`🧬 [PATERNITY] Paternidade confirmada por seleção direta: Vaca ${coverage.cowBrinco} → Pai ${selectedBull.bullBrinco} (touro ${switchConfig.selectedBullIndex + 1})`);
+                        } else if (switchConfig.switchDate) {
+                            // Calcula baseado na data de troca
+                            const bullSwitchTime = new Date(switchConfig.switchDate).getTime();
+                            const calfBirthTime = calf.dataNascimento ? new Date(calf.dataNascimento).getTime() : expectedDate.getTime();
+                            const estimatedCoverageTime = calfBirthTime - (283 * 24 * 60 * 60 * 1000);
+
+                            // Se a cobertura foi ANTES da data de troca, o pai é o primeiro touro
+                            // Se foi DEPOIS, o pai é o segundo touro
+                            selectedBull = estimatedCoverageTime < bullSwitchTime
+                                ? coverage.bulls[0]
+                                : coverage.bulls[1];
+
+                            console.log(`🧬 [PATERNITY] Paternidade confirmada por data de troca: Vaca ${coverage.cowBrinco} → Pai ${selectedBull.bullBrinco} (cobertura ${estimatedCoverageTime < bullSwitchTime ? 'antes' : 'depois'} da troca)`);
+                        }
+
+                        if (selectedBull) {
+                            confirmedSireId = selectedBull.bullId;
+                            confirmedSireBrinco = selectedBull.bullBrinco;
+                            paternityConfirmedCount++;
+
+                            // 🔧 SYNC: Registra atualização de paternidade para o bezerro
+                            if (confirmedSireId && confirmedSireBrinco) {
+                                calfPaternityUpdates.set(calf.id, {
+                                    paiId: confirmedSireId,
+                                    paiNome: confirmedSireBrinco
+                                });
+                            }
+                        }
+                    }
+
                     // Vincula o terneiro à cobertura
                     updatedCoverageRecords[i] = {
                         ...coverage,
@@ -2925,6 +2993,8 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
                         calfId: calf.id,
                         calfBrinco: calf.brinco,
                         actualCalvingDate: calf.dataNascimento || new Date(),
+                        // Adiciona confirmação de paternidade se calculada
+                        ...(confirmedSireId ? { confirmedSireId, confirmedSireBrinco } : {}),
                     };
                     // Marca o terneiro como vinculado para evitar duplicatas
                     alreadyLinkedCalfIds.add(calf.id);
@@ -2973,6 +3043,55 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
                 );
 
                 if (calf) {
+                    // 🔧 PATERNIDADE: Se repasse tem 2 touros e configuração de troca, confirma automaticamente
+                    let confirmedSireId = coverage.repasse?.confirmedSireId;
+                    let confirmedSireBrinco = coverage.repasse?.confirmedSireBrinco;
+
+                    // Verifica se precisa confirmar paternidade no repasse (2 touros sem confirmação)
+                    const repasseBulls = coverage.repasse?.bulls;
+                    const hasTwoBulls = repasseBulls && repasseBulls.length === 2;
+                    // Busca configuração específica para o repasse (chave com _repasse)
+                    const repasseSwitchConfig = switchConfigMap.get(`${coverage.id}_repasse`);
+                    const hasConfig = repasseSwitchConfig && (repasseSwitchConfig.switchDate || repasseSwitchConfig.selectedBullIndex !== undefined);
+                    const needsPaternityConfirmation = hasTwoBulls && !confirmedSireId && hasConfig;
+
+                    if (needsPaternityConfirmation && repasseBulls && repasseSwitchConfig) {
+                        let selectedBull;
+
+                        // Se tem índice de touro selecionado diretamente, usa ele
+                        if (repasseSwitchConfig.selectedBullIndex !== undefined) {
+                            selectedBull = repasseBulls[repasseSwitchConfig.selectedBullIndex];
+                            console.log(`🧬 [PATERNITY] Paternidade do repasse confirmada por seleção direta: Vaca ${coverage.cowBrinco} → Pai ${selectedBull.bullBrinco} (touro ${repasseSwitchConfig.selectedBullIndex + 1})`);
+                        } else if (repasseSwitchConfig.switchDate) {
+                            // Calcula baseado na data de troca
+                            const bullSwitchTime = new Date(repasseSwitchConfig.switchDate).getTime();
+                            const calfBirthTime = calf.dataNascimento ? new Date(calf.dataNascimento).getTime() : expectedDate.getTime();
+                            const estimatedCoverageTime = calfBirthTime - (283 * 24 * 60 * 60 * 1000);
+
+                            // Se a cobertura foi ANTES da data de troca, o pai é o primeiro touro
+                            // Se foi DEPOIS, o pai é o segundo touro
+                            selectedBull = estimatedCoverageTime < bullSwitchTime
+                                ? repasseBulls[0]
+                                : repasseBulls[1];
+
+                            console.log(`🧬 [PATERNITY] Paternidade do repasse confirmada por data de troca: Vaca ${coverage.cowBrinco} → Pai ${selectedBull.bullBrinco}`);
+                        }
+
+                        if (selectedBull) {
+                            confirmedSireId = selectedBull.bullId;
+                            confirmedSireBrinco = selectedBull.bullBrinco;
+                            paternityConfirmedCount++;
+
+                            // 🔧 SYNC: Registra atualização de paternidade para o bezerro do repasse
+                            if (confirmedSireId && confirmedSireBrinco) {
+                                calfPaternityUpdates.set(calf.id, {
+                                    paiId: confirmedSireId,
+                                    paiNome: confirmedSireBrinco
+                                });
+                            }
+                        }
+                    }
+
                     // Vincula o terneiro ao repasse
                     updatedCoverageRecords[i] = {
                         ...updatedCoverageRecords[i],
@@ -2982,6 +3101,8 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
                             calfId: calf.id,
                             calfBrinco: calf.brinco,
                             actualCalvingDate: calf.dataNascimento || new Date(),
+                            // Adiciona confirmação de paternidade se calculada
+                            ...(confirmedSireId ? { confirmedSireId, confirmedSireBrinco } : {}),
                         },
                     };
                     // Marca o terneiro como vinculado para evitar duplicatas
@@ -3160,6 +3281,53 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
         }
 
         // ============================================
+        // 🔧 SYNC: Atualiza paternidade nos bezerros
+        // ============================================
+        if (calfPaternityUpdates.size > 0) {
+            const paternityBatch = db.batch();
+
+            for (const [calfId, paternityData] of calfPaternityUpdates) {
+                const calfRef = db.collection('animals').doc(calfId);
+                paternityBatch.update(calfRef, {
+                    paiId: paternityData.paiId,
+                    paiNome: paternityData.paiNome,
+                    updatedAt: new Date()
+                });
+
+                dispatch({
+                    type: 'LOCAL_UPDATE_ANIMAL',
+                    payload: {
+                        animalId: calfId,
+                        updatedData: {
+                            paiId: paternityData.paiId,
+                            paiNome: paternityData.paiNome
+                        }
+                    }
+                });
+
+                console.log(`🧬 [CALF_PATERNITY] Bezerro ${calfId} atualizado: Pai ${paternityData.paiNome}`);
+            }
+
+            await paternityBatch.commit();
+
+            // Atualiza cache local com as paternidades
+            const animalsWithPaternity = stateRef.current.animals.map((a: Animal) => {
+                const paternityUpdate = calfPaternityUpdates.get(a.id);
+                if (paternityUpdate) {
+                    return {
+                        ...a,
+                        paiId: paternityUpdate.paiId,
+                        paiNome: paternityUpdate.paiNome
+                    };
+                }
+                return a;
+            });
+            await updateLocalCache('animals', animalsWithPaternity);
+
+            console.log(`🧬 [CALF_PATERNITY] ${calfPaternityUpdates.size} bezerro(s) atualizado(s) com paternidade confirmada`);
+        }
+
+        // ============================================
         // 🔧 RECALCULA MÉTRICAS DA ESTAÇÃO
         // ============================================
         const updatedSeason = stateRef.current.breedingSeasons.find((s: BreedingSeason) => s.id === seasonId);
@@ -3195,9 +3363,9 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
             console.log(`📊 [METRICS] Métricas atualizadas: ${totalCovered} cobertas, ${totalPregnant} prenhes, ${totalCalvings} partos`);
         }
 
-        console.log(`✅ [VERIFY_CALVINGS] Verificação concluída: ${linkedCount} partos vinculados, ${registeredCount} abortos registrados, ${pendingCount} pendentes, ${discoveredCount} descobertos`);
+        console.log(`✅ [VERIFY_CALVINGS] Verificação concluída: ${linkedCount} partos vinculados, ${registeredCount} abortos registrados, ${pendingCount} pendentes, ${discoveredCount} descobertos, ${paternityConfirmedCount} paternidades confirmadas`);
 
-        return { registered: registeredCount, linked: linkedCount, pending: pendingCount, discovered: discoveredCount };
+        return { registered: registeredCount, linked: linkedCount, pending: pendingCount, discovered: discoveredCount, paternityConfirmed: paternityConfirmedCount };
     }, [userId, db, updateBreedingSeason, updateLocalCache]);
 
     // Função auxiliar interna para buscar terneiro

@@ -302,6 +302,22 @@ export interface BreedingSeason {
 }
 
 // ============================================
+// 🔧 CONFIGURAÇÃO DE TROCA DE TOUROS
+// ============================================
+
+/** Configuração de troca de touros por cobertura para confirmação de paternidade */
+export interface BullSwitchConfig {
+  /** ID da cobertura */
+  coverageId: string;
+  /** Se é do repasse (true) ou cobertura principal (false) */
+  isRepasse: boolean;
+  /** Data de troca de touros - usado para calcular qual touro é o pai */
+  switchDate?: Date;
+  /** Índice do touro selecionado diretamente (0 = primeiro, 1 = segundo) - se definido, ignora switchDate */
+  selectedBullIndex?: 0 | 1;
+}
+
+// ============================================
 // 🔧 DEP - DIFERENÇA ESPERADA NA PROGÊNIE
 // ============================================
 

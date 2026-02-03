@@ -8,6 +8,7 @@ import {
   RepasseData,
   RepasseBull,
   Sexo,
+  BullSwitchConfig,
 } from '../types';
 import {
   calculateBreedingMetrics,
@@ -66,8 +67,9 @@ interface BreedingSeasonManagerProps {
   ) => Promise<void>;
   onVerifyAndRegisterAbortions?: (
     seasonId: string,
-    toleranceDays?: number
-  ) => Promise<{ registered: number; linked: number; pending: number; discovered: number }>;
+    toleranceDays?: number,
+    bullSwitchConfigs?: BullSwitchConfig[]
+  ) => Promise<{ registered: number; linked: number; pending: number; discovered: number; paternityConfirmed: number }>;
 }
 
 // ============================================
@@ -1625,7 +1627,13 @@ const BreedingSeasonManager: React.FC<BreedingSeasonManagerProps> = ({
 
   // Estado para controlar a verificação de partos
   const [isVerifyingCalvings, setIsVerifyingCalvings] = useState(false);
-  const [verificationResult, setVerificationResult] = useState<{ registered: number; linked: number; pending: number; discovered: number } | null>(null);
+  const [verificationResult, setVerificationResult] = useState<{ registered: number; linked: number; pending: number; discovered: number; paternityConfirmed: number } | null>(null);
+
+  // Estado para modal avançado de paternidades pendentes
+  const [showPaternityModal, setShowPaternityModal] = useState(false);
+  const [paternityConfigs, setPaternityConfigs] = useState<Map<string, { switchDate: string; selectedBullIndex?: 0 | 1 }>>(new Map());
+  const [selectedPaternities, setSelectedPaternities] = useState<Set<string>>(new Set());
+  const [batchSwitchDate, setBatchSwitchDate] = useState<string>('');
 
   // Handlers
   const handleCreateSeason = useCallback(async (data: { name: string; startDate: Date; endDate: Date }) => {
@@ -1737,16 +1745,107 @@ const BreedingSeasonManager: React.FC<BreedingSeasonManagerProps> = ({
     }
   }, [currentSeason, onConfirmPaternity]);
 
-  // Handler para verificar partos e registrar abortos automaticamente
-  const handleVerifyCalvings = useCallback(async () => {
+  // Estrutura detalhada das paternidades pendentes (para o quadro)
+  interface PendingPaternityItem {
+    key: string; // coverageId ou coverageId_repasse
+    coverageId: string;
+    isRepasse: boolean;
+    cowId: string;
+    cowBrinco: string;
+    bulls: RepasseBull[];
+    expectedCalvingDate?: Date;
+    coverageDate: Date;
+  }
+
+  // Lista detalhada de todas as paternidades pendentes
+  // Apenas coberturas com DG positivo que precisam de confirmação de paternidade
+  const pendingPaternityItems = useMemo((): PendingPaternityItem[] => {
+    if (!currentSeason) return [];
+    const items: PendingPaternityItem[] = [];
+
+    for (const c of currentSeason.coverageRecords) {
+      // Cobertura principal com 2 touros, DG positivo, sem confirmação de paternidade
+      const mainHasTwoBulls = c.bulls && c.bulls.length === 2;
+      const mainIsPregnant = c.pregnancyResult === 'positive';
+      const mainNeedsPaternity = mainHasTwoBulls && mainIsPregnant && !c.confirmedSireId;
+
+      if (mainNeedsPaternity) {
+        items.push({
+          key: c.id,
+          coverageId: c.id,
+          isRepasse: false,
+          cowId: c.cowId,
+          cowBrinco: c.cowBrinco,
+          bulls: c.bulls!,
+          expectedCalvingDate: c.expectedCalvingDate ? new Date(c.expectedCalvingDate) : undefined,
+          coverageDate: new Date(c.date),
+        });
+      }
+
+      // Repasse com 2 touros, DG positivo, sem confirmação de paternidade
+      // Repasse só é relevante se cobertura principal foi negativa
+      const repasseActive = c.repasse?.enabled && c.pregnancyResult === 'negative';
+      const repasseHasTwoBulls = c.repasse?.bulls && c.repasse.bulls.length === 2;
+      const repasseIsPregnant = c.repasse?.diagnosisResult === 'positive';
+      const repasseNeedsPaternity = repasseActive && repasseHasTwoBulls && repasseIsPregnant && !c.repasse?.confirmedSireId;
+
+      if (repasseNeedsPaternity && c.repasse?.bulls) {
+        items.push({
+          key: `${c.id}_repasse`,
+          coverageId: c.id,
+          isRepasse: true,
+          cowId: c.cowId,
+          cowBrinco: c.cowBrinco,
+          bulls: c.repasse.bulls,
+          expectedCalvingDate: c.repasse.startDate
+            ? new Date(new Date(c.repasse.startDate).getTime() + 283 * 24 * 60 * 60 * 1000)
+            : undefined,
+          coverageDate: c.repasse.startDate ? new Date(c.repasse.startDate) : new Date(c.date),
+        });
+      }
+    }
+
+    return items;
+  }, [currentSeason]);
+
+  // Handler para iniciar verificação - verifica se precisa pedir configuração de paternidade
+  const handleStartVerifyCalvings = useCallback(() => {
     if (!currentSeason || !onVerifyAndRegisterAbortions) return;
 
+    // Se há paternidades pendentes, abre modal avançado
+    if (pendingPaternityItems.length > 0) {
+      // Inicializa configurações com data do meio da estação como sugestão
+      const startDate = new Date(currentSeason.startDate);
+      const endDate = new Date(currentSeason.endDate);
+      const midDate = new Date((startDate.getTime() + endDate.getTime()) / 2);
+      const defaultSwitchDate = midDate.toISOString().split('T')[0];
+
+      const initialConfigs = new Map<string, { switchDate: string; selectedBullIndex?: 0 | 1 }>();
+      for (const item of pendingPaternityItems) {
+        initialConfigs.set(item.key, { switchDate: defaultSwitchDate });
+      }
+      setPaternityConfigs(initialConfigs);
+      setSelectedPaternities(new Set());
+      setBatchSwitchDate(defaultSwitchDate);
+      setShowPaternityModal(true);
+    } else {
+      // Sem paternidades pendentes, executa direto
+      executeVerifyCalvings();
+    }
+  }, [currentSeason, onVerifyAndRegisterAbortions, pendingPaternityItems]);
+
+  // Handler que executa a verificação com configurações individuais
+  const executeVerifyCalvings = useCallback(async (configs?: BullSwitchConfig[]) => {
+    if (!currentSeason || !onVerifyAndRegisterAbortions) return;
+
+    const hasConfigs = configs && configs.length > 0;
     const confirmMessage = `Esta ação irá:
 
 • Verificar todas as vacas com DG positivo
 • Vincular automaticamente os terneiros já cadastrados
 • Marcar como ABORTO as vacas sem terneiros cadastrados após 30 dias da data prevista
 • Atualizar o histórico de abortos das vacas afetadas
+${hasConfigs ? `• Confirmar ${configs.length} paternidade(s) baseado nas configurações definidas` : ''}
 
 Certifique-se de que TODOS os terneiros desta geração já foram cadastrados.
 
@@ -1756,21 +1855,21 @@ Deseja continuar?`;
 
     setIsVerifyingCalvings(true);
     setVerificationResult(null);
+    setShowPaternityModal(false);
 
     try {
-      const result = await onVerifyAndRegisterAbortions(currentSeason.id, 30);
+      const result = await onVerifyAndRegisterAbortions(currentSeason.id, 30, configs);
       setVerificationResult(result);
 
-      if (result.registered > 0 || result.linked > 0) {
-        alert(`Verificação concluída!
+      const messages: string[] = [];
+      if (result.linked > 0) messages.push(`✓ ${result.linked} parto(s) vinculado(s)`);
+      if (result.registered > 0) messages.push(`✗ ${result.registered} aborto(s) registrado(s)`);
+      if (result.discovered > 0) messages.push(`🔍 ${result.discovered} parto(s) descoberto(s)`);
+      if (result.paternityConfirmed > 0) messages.push(`🧬 ${result.paternityConfirmed} paternidade(s) confirmada(s)`);
+      if (result.pending > 0) messages.push(`⏳ ${result.pending} pendente(s)`);
 
-✓ ${result.linked} parto(s) vinculado(s) a terneiros cadastrados
-✗ ${result.registered} aborto(s) registrado(s) automaticamente
-⏳ ${result.pending} verificação(ões) pendente(s) (ainda dentro do prazo)`);
-      } else if (result.pending > 0) {
-        alert(`Nenhuma alteração necessária.
-
-⏳ ${result.pending} verificação(ões) pendente(s) - ainda dentro do prazo de 30 dias após data prevista.`);
+      if (messages.length > 0) {
+        alert(`Verificação concluída!\n\n${messages.join('\n')}`);
       } else {
         alert('Nenhuma cobertura com DG positivo pendente de verificação.');
       }
@@ -1781,6 +1880,88 @@ Deseja continuar?`;
       setIsVerifyingCalvings(false);
     }
   }, [currentSeason, onVerifyAndRegisterAbortions]);
+
+  // Handler para atualizar configuração individual
+  const handleUpdatePaternityConfig = useCallback((key: string, update: { switchDate?: string; selectedBullIndex?: 0 | 1 }) => {
+    setPaternityConfigs(prev => {
+      const newMap = new Map(prev);
+      const existing = newMap.get(key) || { switchDate: '' };
+      newMap.set(key, { ...existing, ...update });
+      return newMap;
+    });
+  }, []);
+
+  // Handler para toggle de seleção
+  const handleTogglePaternitySelection = useCallback((key: string) => {
+    setSelectedPaternities(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(key)) {
+        newSet.delete(key);
+      } else {
+        newSet.add(key);
+      }
+      return newSet;
+    });
+  }, []);
+
+  // Handler para selecionar/desselecionar todos
+  const handleToggleSelectAllPaternities = useCallback(() => {
+    if (selectedPaternities.size === pendingPaternityItems.length) {
+      setSelectedPaternities(new Set());
+    } else {
+      setSelectedPaternities(new Set(pendingPaternityItems.map(i => i.key)));
+    }
+  }, [selectedPaternities.size, pendingPaternityItems]);
+
+  // Handler para aplicar data em lote aos selecionados
+  const handleApplyBatchSwitchDate = useCallback(() => {
+    if (!batchSwitchDate || selectedPaternities.size === 0) return;
+    setPaternityConfigs(prev => {
+      const newMap = new Map(prev);
+      for (const key of selectedPaternities) {
+        const existing = newMap.get(key) || { switchDate: '' };
+        newMap.set(key, { ...existing, switchDate: batchSwitchDate, selectedBullIndex: undefined });
+      }
+      return newMap;
+    });
+  }, [batchSwitchDate, selectedPaternities]);
+
+  // Handler para aplicar touro específico em lote (índice 0 ou 1)
+  const handleApplyBatchBullIndex = useCallback((index: 0 | 1) => {
+    if (selectedPaternities.size === 0) return;
+    setPaternityConfigs(prev => {
+      const newMap = new Map(prev);
+      for (const key of selectedPaternities) {
+        const existing = newMap.get(key) || { switchDate: '' };
+        newMap.set(key, { ...existing, selectedBullIndex: index });
+      }
+      return newMap;
+    });
+  }, [selectedPaternities]);
+
+  // Handler para confirmar configurações e executar verificação
+  const handleConfirmPaternityConfigs = useCallback(() => {
+    // Converte o Map de configs para o array de BullSwitchConfig
+    const configs: BullSwitchConfig[] = [];
+    for (const item of pendingPaternityItems) {
+      const config = paternityConfigs.get(item.key);
+      if (config) {
+        configs.push({
+          coverageId: item.coverageId,
+          isRepasse: item.isRepasse,
+          switchDate: config.switchDate ? new Date(config.switchDate) : undefined,
+          selectedBullIndex: config.selectedBullIndex,
+        });
+      }
+    }
+    executeVerifyCalvings(configs);
+  }, [pendingPaternityItems, paternityConfigs, executeVerifyCalvings]);
+
+  // Handler para executar sem confirmação de paternidade
+  const handleSkipPaternityConfirmation = useCallback(() => {
+    setShowPaternityModal(false);
+    executeVerifyCalvings();
+  }, [executeVerifyCalvings]);
 
   // Handler combinado: marca DG como vazia + habilita repasse em uma ÚNICA operação
   // Usa onUpdateCoverage que atualiza pregnancyResult + repasse atomicamente no mesmo coverageRecord
@@ -1898,6 +2079,219 @@ Deseja continuar?`;
               onSubmit={handleEditSeason}
               onCancel={() => setShowEditSeason(false)}
             />
+          </div>
+        </div>
+      )}
+
+      {/* Modal Avançado de Gerenciamento de Paternidades */}
+      {showPaternityModal && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 overflow-y-auto">
+          <div className="w-full max-w-4xl bg-base-800 rounded-xl p-6 my-4 relative" onClick={(e) => e.stopPropagation()}>
+            <button
+              onClick={() => setShowPaternityModal(false)}
+              className="absolute top-4 right-4 text-gray-400 hover:text-white z-10"
+            >
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+
+            <h3 className="text-xl font-bold text-white mb-4">🧬 Confirmação de Paternidades</h3>
+
+            <div className="bg-purple-900/30 border border-purple-700 rounded-lg p-4 mb-4">
+              <p className="text-sm text-purple-200">
+                Foram encontradas <strong>{pendingPaternityItems.length}</strong> cobertura(s) com 2 touros
+                onde a paternidade ainda não foi confirmada.
+              </p>
+              <p className="text-sm text-purple-200 mt-2">
+                Configure individualmente a <strong>data de troca</strong> ou selecione diretamente qual touro é o pai.
+                Use a seleção em lote para aplicar a mesma configuração a múltiplos registros.
+              </p>
+            </div>
+
+            {/* Controles de Lote */}
+            <div className="bg-base-700 rounded-lg p-4 mb-4">
+              <div className="flex flex-wrap items-center gap-3 mb-3">
+                <button
+                  onClick={handleToggleSelectAllPaternities}
+                  className="px-3 py-1.5 text-sm bg-base-600 hover:bg-base-500 text-gray-300 rounded-lg"
+                >
+                  {selectedPaternities.size === pendingPaternityItems.length ? 'Desmarcar todos' : 'Selecionar todos'}
+                </button>
+                <span className="text-sm text-gray-400">
+                  {selectedPaternities.size} selecionado(s)
+                </span>
+              </div>
+
+              {selectedPaternities.size > 0 && (
+                <div className="flex flex-wrap items-end gap-3 pt-3 border-t border-base-600">
+                  <div className="flex-1 min-w-[200px]">
+                    <label className="block text-xs text-gray-400 mb-1">Aplicar data de troca em lote</label>
+                    <div className="flex gap-2">
+                      <input
+                        type="date"
+                        value={batchSwitchDate}
+                        onChange={(e) => setBatchSwitchDate(e.target.value)}
+                        className="flex-1 px-3 py-1.5 text-sm bg-base-600 border border-base-500 rounded-lg text-white"
+                        min={currentSeason ? toInputDate(currentSeason.startDate) : undefined}
+                        max={currentSeason ? toInputDate(currentSeason.endDate) : undefined}
+                      />
+                      <button
+                        onClick={handleApplyBatchSwitchDate}
+                        disabled={!batchSwitchDate}
+                        className="px-3 py-1.5 text-sm bg-purple-600 hover:bg-purple-700 disabled:bg-purple-800 disabled:cursor-not-allowed text-white rounded-lg"
+                      >
+                        Aplicar
+                      </button>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs text-gray-400 mb-1">Ou definir touro diretamente</label>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => handleApplyBatchBullIndex(0)}
+                        className="px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg"
+                        title="Definir 1° touro como pai para todos selecionados"
+                      >
+                        1° Touro
+                      </button>
+                      <button
+                        onClick={() => handleApplyBatchBullIndex(1)}
+                        className="px-3 py-1.5 text-sm bg-amber-600 hover:bg-amber-700 text-white rounded-lg"
+                        title="Definir 2° touro como pai para todos selecionados"
+                      >
+                        2° Touro
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Quadro de Paternidades Pendentes */}
+            <div className="max-h-[400px] overflow-y-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-base-700 sticky top-0">
+                  <tr>
+                    <th className="px-3 py-2 text-left text-gray-400 w-10">
+                      <input
+                        type="checkbox"
+                        checked={selectedPaternities.size === pendingPaternityItems.length && pendingPaternityItems.length > 0}
+                        onChange={handleToggleSelectAllPaternities}
+                        className="rounded border-gray-500 bg-base-600 text-purple-500 focus:ring-purple-500"
+                      />
+                    </th>
+                    <th className="px-3 py-2 text-left text-gray-400">Vaca</th>
+                    <th className="px-3 py-2 text-left text-gray-400">Tipo</th>
+                    <th className="px-3 py-2 text-left text-gray-400">1° Touro</th>
+                    <th className="px-3 py-2 text-left text-gray-400">2° Touro</th>
+                    <th className="px-3 py-2 text-left text-gray-400">Data Troca</th>
+                    <th className="px-3 py-2 text-left text-gray-400">Pai Selecionado</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-base-700">
+                  {pendingPaternityItems.map((item) => {
+                    const config = paternityConfigs.get(item.key) || { switchDate: '' };
+                    const isSelected = selectedPaternities.has(item.key);
+
+                    // Determina qual touro será selecionado baseado na config
+                    let selectedBullLabel = '-';
+                    let selectedBullColor = 'text-gray-500';
+                    if (config.selectedBullIndex !== undefined) {
+                      const bull = item.bulls[config.selectedBullIndex];
+                      selectedBullLabel = bull?.bullBrinco || `Touro ${config.selectedBullIndex + 1}`;
+                      selectedBullColor = config.selectedBullIndex === 0 ? 'text-blue-400' : 'text-amber-400';
+                    } else if (config.switchDate && item.expectedCalvingDate) {
+                      // Calcula baseado na data de troca
+                      const switchTime = new Date(config.switchDate).getTime();
+                      const birthTime = item.expectedCalvingDate.getTime();
+                      const estimatedCoverageTime = birthTime - (283 * 24 * 60 * 60 * 1000);
+                      const bullIndex = estimatedCoverageTime < switchTime ? 0 : 1;
+                      const bull = item.bulls[bullIndex];
+                      selectedBullLabel = `${bull?.bullBrinco || `Touro ${bullIndex + 1}`} (calc.)`;
+                      selectedBullColor = bullIndex === 0 ? 'text-blue-400' : 'text-amber-400';
+                    }
+
+                    return (
+                      <tr key={item.key} className={`${isSelected ? 'bg-purple-900/20' : ''} hover:bg-base-700/50`}>
+                        <td className="px-3 py-2">
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => handleTogglePaternitySelection(item.key)}
+                            className="rounded border-gray-500 bg-base-600 text-purple-500 focus:ring-purple-500"
+                          />
+                        </td>
+                        <td className="px-3 py-2 text-white font-medium">{item.cowBrinco}</td>
+                        <td className="px-3 py-2">
+                          <span className={`px-2 py-0.5 rounded text-xs ${item.isRepasse ? 'bg-amber-500/20 text-amber-400' : 'bg-emerald-500/20 text-emerald-400'}`}>
+                            {item.isRepasse ? 'Repasse' : 'Principal'}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2 text-blue-400">{item.bulls[0]?.bullBrinco || '-'}</td>
+                        <td className="px-3 py-2 text-amber-400">{item.bulls[1]?.bullBrinco || '-'}</td>
+                        <td className="px-3 py-2">
+                          <input
+                            type="date"
+                            value={config.switchDate || ''}
+                            onChange={(e) => handleUpdatePaternityConfig(item.key, { switchDate: e.target.value, selectedBullIndex: undefined })}
+                            className="w-full px-2 py-1 text-xs bg-base-600 border border-base-500 rounded text-white"
+                            min={currentSeason ? toInputDate(currentSeason.startDate) : undefined}
+                            max={currentSeason ? toInputDate(currentSeason.endDate) : undefined}
+                          />
+                        </td>
+                        <td className="px-3 py-2">
+                          <div className="flex items-center gap-2">
+                            <span className={`font-medium ${selectedBullColor}`}>{selectedBullLabel}</span>
+                            <div className="flex gap-1">
+                              <button
+                                onClick={() => handleUpdatePaternityConfig(item.key, { selectedBullIndex: 0 })}
+                                className={`w-6 h-6 rounded text-xs ${config.selectedBullIndex === 0 ? 'bg-blue-600 text-white' : 'bg-base-600 text-gray-400 hover:bg-blue-600/50'}`}
+                                title={`Definir ${item.bulls[0]?.bullBrinco || '1° touro'} como pai`}
+                              >
+                                1
+                              </button>
+                              <button
+                                onClick={() => handleUpdatePaternityConfig(item.key, { selectedBullIndex: 1 })}
+                                className={`w-6 h-6 rounded text-xs ${config.selectedBullIndex === 1 ? 'bg-amber-600 text-white' : 'bg-base-600 text-gray-400 hover:bg-amber-600/50'}`}
+                                title={`Definir ${item.bulls[1]?.bullBrinco || '2° touro'} como pai`}
+                              >
+                                2
+                              </button>
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Legenda e Ações */}
+            <div className="mt-4 pt-4 border-t border-base-600">
+              <p className="text-xs text-gray-500 mb-4">
+                <strong>Legenda:</strong> A data de troca define qual touro é o pai baseado na data estimada de cobertura (nascimento - 283 dias).
+                Cobertura antes da troca = 1° touro (azul). Depois da troca = 2° touro (amarelo).
+                Você também pode selecionar diretamente o touro usando os botões 1 ou 2.
+              </p>
+
+              <div className="flex gap-3">
+                <button
+                  onClick={handleSkipPaternityConfirmation}
+                  className="flex-1 px-4 py-2 bg-base-600 hover:bg-base-500 text-gray-300 rounded-lg font-medium"
+                >
+                  Pular (não confirmar paternidades)
+                </button>
+                <button
+                  onClick={handleConfirmPaternityConfigs}
+                  className="flex-1 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-medium"
+                >
+                  Confirmar e Verificar Partos
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
@@ -2360,7 +2754,7 @@ Deseja continuar?`;
                   </p>
                 </div>
                 <button
-                  onClick={handleVerifyCalvings}
+                  onClick={handleStartVerifyCalvings}
                   disabled={isVerifyingCalvings}
                   className="px-4 py-2 bg-amber-600 hover:bg-amber-700 disabled:bg-amber-800 disabled:cursor-not-allowed text-white rounded-lg font-medium flex items-center gap-2"
                 >
@@ -2391,10 +2785,18 @@ Deseja continuar?`;
                     {verificationResult.discovered > 0 && (
                       <span className="text-blue-400">🔍 {verificationResult.discovered} descoberto(s)</span>
                     )}
+                    {verificationResult.paternityConfirmed > 0 && (
+                      <span className="text-purple-400">🧬 {verificationResult.paternityConfirmed} paternidade(s)</span>
+                    )}
                   </div>
                   {verificationResult.discovered > 0 && (
                     <p className="text-xs text-blue-300/70 mt-2">
                       Vacas expostas sem cobertura prévia que tiveram terneiros. Registros retroativos criados.
+                    </p>
+                  )}
+                  {verificationResult.paternityConfirmed > 0 && (
+                    <p className="text-xs text-purple-300/70 mt-2">
+                      Paternidades confirmadas automaticamente baseado na data de troca de touros. Você pode editar manualmente se necessário.
                     </p>
                   )}
                 </div>
