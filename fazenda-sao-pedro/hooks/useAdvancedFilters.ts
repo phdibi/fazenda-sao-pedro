@@ -163,9 +163,10 @@ export const useAdvancedFilters = ({
         const hasOr = trimmedSearch.includes(' ou ');
         const hasAnd = trimmedSearch.includes(' e ');
 
-        // Se termina com espaço E não tem operadores booleanos,
-        // busca exata no brinco (ex: "J15 " → só J15)
-        const exactBrincoMatch = searchLower.endsWith(' ') && !hasOr && !hasAnd;
+        // Busca exata no brinco quando:
+        // - Termo único termina com espaço (ex: "J15 " → só J15)
+        // - Usa operadores "ou"/"e" (ex: "J14 ou J15" → só J14 e J15)
+        const exactBrincoMatch = searchLower.endsWith(' ') || hasOr || hasAnd;
 
         let searchTerms: string[];
         let matchMode: 'or' | 'and' | 'single';

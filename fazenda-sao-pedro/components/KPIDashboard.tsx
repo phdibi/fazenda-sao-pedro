@@ -186,7 +186,7 @@ const HerdDetails: React.FC<{
       </div>
       <div className="text-center">
         <div className="text-xl font-bold text-purple-400">{details.pregnantCows}</div>
-        <div className="text-xs text-gray-400">Prenhes</div>
+        <div className="text-xs text-gray-400">Cobertas</div>
       </div>
       <div className="text-center">
         <div className="text-xl font-bold text-cyan-400">{details.calvesWeaned}</div>
