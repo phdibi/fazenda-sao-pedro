@@ -24,10 +24,8 @@ import {
 } from '../types';
 import { calcularGMDAnimal } from '../utils/gmdCalculations';
 import {
-  isInReferencePeriod,
   filterByReferencePeriod,
   getReferencePeriodStats,
-  REFERENCE_PERIOD_DISPLAY,
 } from '../utils/referencePeriod';
 
 // ============================================
@@ -343,15 +341,15 @@ export const calculateZootechnicalKPIs = (
   const { breedingSeasons = [], preCalculatedGMD } = options;
   const warnings: string[] = [];
 
-  // Estatísticas do período de referência
+  // Estatísticas do período de referência (informativo)
   const referencePeriodStats = getReferencePeriodStats(animals);
-  warnings.push(`Cálculos baseados em animais nascidos a partir de ${REFERENCE_PERIOD_DISPLAY}`);
 
-  // IMPORTANTE: Filtra animais pelo período de referência para corrigir viés de seleção
-  const animalsInPeriod = filterByReferencePeriod(animals);
+  // Contagens e taxas usam TODOS os animais (rebanho real)
+  const agg = aggregateAnimals(animals);
 
-  // Agregação em passagem única (usando apenas animais do período)
-  const agg = aggregateAnimals(animalsInPeriod);
+  // Pesos e desmamados usam período de referência (2025+) para evitar viés de seleção:
+  // animais antigos no sistema são amostra enviesada (só os não vendidos).
+  const aggPeriod = aggregateAnimals(filterByReferencePeriod(animals));
 
   // ============================================
   // 1. TAXA DE MORTALIDADE
@@ -361,24 +359,24 @@ export const calculateZootechnicalKPIs = (
     : 0;
 
   // ============================================
-  // 2. PESOS MÉDIOS
+  // 2. PESOS MÉDIOS (período de referência)
   // ============================================
-  const avgBirthWeight = mean(agg.birthWeights);
-  const avgWeaningWeight = mean(agg.weaningWeights);
-  const avgYearlingWeight = mean(agg.yearlingWeights);
+  const avgBirthWeight = mean(aggPeriod.birthWeights);
+  const avgWeaningWeight = mean(aggPeriod.weaningWeights);
+  const avgYearlingWeight = mean(aggPeriod.yearlingWeights);
 
-  if (agg.birthWeights.length < 5) {
+  if (aggPeriod.birthWeights.length < 5) {
     warnings.push('Poucos registros de peso ao nascimento para cálculo preciso');
   }
-  if (agg.weaningWeights.length < 5) {
+  if (aggPeriod.weaningWeights.length < 5) {
     warnings.push('Poucos registros de peso ao desmame para cálculo preciso');
   }
 
   // ============================================
-  // 3. TAXA DE DESMAME
+  // 3. TAXA DE DESMAME (período de referência)
   // ============================================
   const weaningRate = agg.breedingAgeFemales.length > 0
-    ? (agg.weanedCalves.length / agg.breedingAgeFemales.length) * 100
+    ? (aggPeriod.weanedCalves.length / agg.breedingAgeFemales.length) * 100
     : 0;
 
   // ============================================
@@ -409,8 +407,7 @@ export const calculateZootechnicalKPIs = (
   // ============================================
   const oneYearAgo = new Date();
   oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
-  // CORRIGIDO: Usa animalsInPeriod para manter consistência com o período de referência
-  const birthsLastYear = animalsInPeriod.filter(
+  const birthsLastYear = animals.filter(
     (a) => a.dataNascimento && new Date(a.dataNascimento) >= oneYearAgo
   );
   const birthRate = agg.breedingAgeFemales.length > 0
@@ -422,9 +419,8 @@ export const calculateZootechnicalKPIs = (
   // ============================================
   const calvingIntervals: number[] = [];
 
-  for (const cow of agg.females) {
-    // CORRIGIDO: Usa animalsInPeriod para manter consistência
-    const progeny = getUnifiedProgeny(cow, agg, animalsInPeriod);
+  for (const cow of agg.activeFemales) {
+    const progeny = getUnifiedProgeny(cow, agg, animals);
 
     if (progeny.length >= 2) {
       const birthDates = progeny
@@ -483,8 +479,7 @@ export const calculateZootechnicalKPIs = (
   for (const cow of agg.females) {
     if (!cow.dataNascimento) continue;
 
-    // CORRIGIDO: Usa animalsInPeriod para manter consistência
-    const progeny = getUnifiedProgeny(cow, agg, animalsInPeriod);
+    const progeny = getUnifiedProgeny(cow, agg, animals);
     if (progeny.length === 0) continue;
 
     // Ordena progênie por data de nascimento
@@ -528,13 +523,13 @@ export const calculateZootechnicalKPIs = (
   return {
     kpis,
     details: {
-      totalAnimals: animals.length, // Total geral (sem filtro)
+      totalAnimals: animals.length,
       totalFemales: agg.females.length,
       totalMales: agg.males.length,
       totalActive: agg.active.length,
       totalDeaths: agg.dead.length,
       totalSold: agg.sold.length,
-      calvesWeaned: agg.weanedCalves.length,
+      calvesWeaned: aggPeriod.weanedCalves.length,
       exposedCows: agg.breedingAgeFemales.length,
       pregnantCows: pregnantCows.length,
       births: birthsLastYear.length,

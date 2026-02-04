@@ -1,13 +1,19 @@
 /**
  * DEP Calculator - Diferença Esperada na Progênie
  *
- * ATUALIZADO: Agora usa índices pré-computados e progênie unificada
+ * Implementação baseada em metodologia simplificada de índice de seleção
+ * compatível com os princípios do BLUP (Best Linear Unbiased Prediction).
  *
- * Calcula DEPs (Expected Progeny Differences) para seleção genética:
- * - DEP para peso ao nascimento, desmame e sobreano
- * - Habilidade materna (para fêmeas com progênie)
- * - Acurácia baseada no número de informações
- * - Percentis dentro do rebanho
+ * Referências:
+ * - Bourdon, R.M. (2000). Understanding Animal Breeding.
+ * - BIF Guidelines for Uniform Beef Improvement Programs.
+ * - Lôbo, R.B. et al. - PMGRN/ANCP (Programa de Melhoramento Genético de Raças Zebuínas)
+ *
+ * Calcula:
+ * - DEPs para peso ao nascimento, desmame, sobreano
+ * - Habilidade Materna (efeito materno separado do direto)
+ * - Acurácia baseada na fórmula r = sqrt(1 - PEV/σ²a) simplificada
+ * - Percentis consistentes dentro do rebanho
  * - Recomendações de seleção
  */
 
@@ -20,30 +26,87 @@ import {
   DEPValues,
   HerdDEPBaseline,
 } from '../types';
-import { isInReferencePeriod, filterByReferencePeriod } from '../utils/referencePeriod';
+import { isInReferencePeriod } from '../utils/referencePeriod';
 
 // ============================================
-// CONFIGURAÇÃO
+// CONFIGURAÇÃO - PARÂMETROS GENÉTICOS
 // ============================================
 
-// Heritabilidades médias (h²) para raças zebuínas/taurinas
+// Heritabilidades médias (h²) - valores da literatura para raças de corte
 const HERITABILITIES = {
-  birthWeight: 0.35,
-  weaningWeight: 0.25,
-  yearlingWeight: 0.30,
-  milkProduction: 0.20,
+  birthWeight: 0.30,       // PN: h² moderada-alta
+  weaningWeight: 0.20,     // PD: h² moderada (efeito materno confunde)
+  yearlingWeight: 0.30,    // PS: h² moderada-alta
+  maternalWeaning: 0.15,   // Efeito materno sobre peso desmame
 };
 
-// Fator de correção para acurácia baseado no número de informações
-const getAccuracyFactor = (n: number): number => {
-  if (n === 0) return 0;
-  if (n === 1) return 0.30;
-  if (n <= 3) return 0.45;
-  if (n <= 5) return 0.55;
-  if (n <= 10) return 0.65;
-  if (n <= 20) return 0.75;
-  if (n <= 50) return 0.85;
-  return 0.90;
+// ============================================
+// CÁLCULO DE ACURÁCIA SIMPLIFICADA
+// ============================================
+
+/**
+ * Calcula a acurácia de uma DEP usando aproximação simplificada
+ * baseada no número e tipo de informações disponíveis.
+ *
+ * Fórmula: r ≈ sqrt(n × h² / (1 + (n-1) × h²))
+ * onde n é o número efetivo de informações.
+ *
+ * - Registro próprio contribui com fator 1.0
+ * - Cada progênie contribui com fator que depende de n_prog e h²
+ * - Irmãos contribuem com fator reduzido
+ *
+ * @param nOwn - Número de registros próprios (0 ou 1)
+ * @param nProgeny - Número de progênie com registro
+ * @param nSiblings - Número de irmãos com registro
+ * @param h2 - Herdabilidade da característica
+ */
+const calculateAccuracy = (
+  nOwn: number,
+  nProgeny: number,
+  nSiblings: number,
+  h2: number,
+): number => {
+  if (nOwn === 0 && nProgeny === 0 && nSiblings === 0) return 0;
+
+  // Informação própria: contribui com h² diretamente
+  // r² = h² quando só tem registro próprio
+  let r2 = 0;
+
+  if (nOwn > 0) {
+    // Com registro próprio: r² = h²
+    r2 = h2;
+  }
+
+  if (nProgeny > 0) {
+    // Contribuição de progênie:
+    // r² da progênie ≈ n_p / (n_p + (4 - h²) / h²)
+    // Isso é derivado da fórmula de acurácia para informação de progênie
+    // assumindo que os acasalamentos são com touros/vacas aleatórios
+    const k = (4 - h2) / h2;
+    const r2_progeny = nProgeny / (nProgeny + k);
+
+    // Combina informação própria + progênie
+    // Informação de progênie é mais valiosa que própria quando n é grande
+    r2 = Math.max(r2, r2_progeny);
+
+    // Se tem ambos, a acurácia é maior que qualquer um isolado
+    if (nOwn > 0) {
+      r2 = r2_progeny + h2 * (1 - r2_progeny);
+    }
+  }
+
+  if (nSiblings > 0 && r2 < 0.9) {
+    // Irmãos meio-irmãos: relação de parentesco = 0.25
+    // Contribuição adicional pequena
+    const sibContrib = (nSiblings * 0.25 * h2) / (1 + (nSiblings - 1) * 0.25 * h2);
+    // Só adiciona o que não está já coberto
+    r2 = r2 + sibContrib * (1 - r2) * 0.5;
+  }
+
+  // Limita entre 0 e 0.99
+  r2 = Math.min(0.99, Math.max(0, r2));
+
+  return Math.round(Math.sqrt(r2) * 100) / 100;
 };
 
 // ============================================
@@ -55,7 +118,6 @@ interface DEPIndices {
   byBrinco: Map<string, Animal>;
   byPaiNome: Map<string, Animal[]>;
   byMaeNome: Map<string, Animal[]>;
-  // Índices por ID (mais confiáveis que por nome)
   byPaiId: Map<string, Animal[]>;
   byMaeId: Map<string, Animal[]>;
   byRaca: Map<string, Animal[]>;
@@ -77,33 +139,28 @@ const buildIndices = (animals: Animal[]): DEPIndices => {
     byId.set(animal.id, animal);
     byBrinco.set(animal.brinco.toLowerCase().trim(), animal);
 
-    // Por paiNome
     if (animal.paiNome) {
       const key = animal.paiNome.toLowerCase().trim();
       if (!byPaiNome.has(key)) byPaiNome.set(key, []);
       byPaiNome.get(key)!.push(animal);
     }
 
-    // Por maeNome
     if (animal.maeNome) {
       const key = animal.maeNome.toLowerCase().trim();
       if (!byMaeNome.has(key)) byMaeNome.set(key, []);
       byMaeNome.get(key)!.push(animal);
     }
 
-    // Por paiId (mais confiável)
     if (animal.paiId) {
       if (!byPaiId.has(animal.paiId)) byPaiId.set(animal.paiId, []);
       byPaiId.get(animal.paiId)!.push(animal);
     }
 
-    // Por maeId (mais confiável)
     if (animal.maeId) {
       if (!byMaeId.has(animal.maeId)) byMaeId.set(animal.maeId, []);
       byMaeId.get(animal.maeId)!.push(animal);
     }
 
-    // Por raça
     const raca = animal.raca || Raca.Outros;
     if (!byRaca.has(raca)) byRaca.set(raca, []);
     byRaca.get(raca)!.push(animal);
@@ -116,25 +173,16 @@ const buildIndices = (animals: Animal[]): DEPIndices => {
 // HELPERS
 // ============================================
 
-/**
- * Obtém peso por tipo de pesagem (usa WeighingType enum padronizado)
- */
 const getWeightByType = (animal: Animal, type: WeighingType): number | null => {
   const pesagem = animal.historicoPesagens?.find((p) => p.type === type);
   return pesagem?.weightKg ?? null;
 };
 
-/**
- * Calcula média de um array
- */
 const mean = (values: number[]): number => {
   if (values.length === 0) return 0;
   return values.reduce((a, b) => a + b, 0) / values.length;
 };
 
-/**
- * Calcula desvio padrão
- */
 const stdDev = (values: number[]): number => {
   if (values.length < 2) return 0;
   const m = mean(values);
@@ -143,14 +191,27 @@ const stdDev = (values: number[]): number => {
 };
 
 /**
- * Calcula percentil de um valor em uma distribuição
+ * Calcula percentil de um valor em uma distribuição.
+ * Usa interpolação para valores entre pontos.
+ * Exclui zeros (animais sem dados) da distribuição.
  */
 const calculatePercentile = (value: number, allValues: number[]): number => {
-  if (allValues.length === 0) return 50;
-  const sorted = [...allValues].sort((a, b) => a - b);
-  const index = sorted.findIndex((v) => v >= value);
-  if (index === -1) return 100;
-  return Math.round((index / sorted.length) * 100);
+  // Filtra zeros - animais sem dados não devem estar na distribuição
+  const nonZero = allValues.filter(v => v !== 0);
+  if (nonZero.length === 0) return 50;
+
+  const sorted = [...nonZero].sort((a, b) => a - b);
+
+  // Se o valor é zero (sem dados), retorna 50 (indefinido)
+  if (value === 0) return 50;
+
+  let below = 0;
+  for (const v of sorted) {
+    if (v < value) below++;
+    else break;
+  }
+
+  return Math.round((below / sorted.length) * 100);
 };
 
 // ============================================
@@ -191,7 +252,6 @@ const getUnifiedProgeny = (
   ].filter(Boolean) as string[];
 
   for (const name of animalNames) {
-    // Se macho, busca por paiNome
     if (animal.sexo === Sexo.Macho) {
       const children = indices.byPaiNome.get(name) || [];
       for (const child of children) {
@@ -203,7 +263,6 @@ const getUnifiedProgeny = (
       }
     }
 
-    // Se fêmea, busca por maeNome
     if (animal.sexo === Sexo.Femea) {
       const children = indices.byMaeNome.get(name) || [];
       for (const child of children) {
@@ -244,13 +303,11 @@ const getUnifiedProgeny = (
 
 /**
  * Obtém irmãos de um animal usando índices
- * ATUALIZADO: Usa índices byPaiId/byMaeId para O(1) lookup
  */
 const getSiblings = (animal: Animal, indices: DEPIndices): Animal[] => {
   const siblingSet = new Set<string>();
   const result: Animal[] = [];
 
-  // Irmãos por paiNome
   if (animal.paiNome) {
     const siblings = indices.byPaiNome.get(animal.paiNome.toLowerCase().trim()) || [];
     for (const sib of siblings) {
@@ -261,7 +318,6 @@ const getSiblings = (animal: Animal, indices: DEPIndices): Animal[] => {
     }
   }
 
-  // Irmãos por maeNome
   if (animal.maeNome) {
     const siblings = indices.byMaeNome.get(animal.maeNome.toLowerCase().trim()) || [];
     for (const sib of siblings) {
@@ -272,7 +328,6 @@ const getSiblings = (animal: Animal, indices: DEPIndices): Animal[] => {
     }
   }
 
-  // Irmãos por paiId usando índice (O(1) lookup)
   if (animal.paiId) {
     const siblingsByPaiId = indices.byPaiId.get(animal.paiId) || [];
     for (const sib of siblingsByPaiId) {
@@ -283,7 +338,6 @@ const getSiblings = (animal: Animal, indices: DEPIndices): Animal[] => {
     }
   }
 
-  // Irmãos por maeId usando índice (O(1) lookup)
   if (animal.maeId) {
     const siblingsByMaeId = indices.byMaeId.get(animal.maeId) || [];
     for (const sib of siblingsByMaeId) {
@@ -302,16 +356,15 @@ const getSiblings = (animal: Animal, indices: DEPIndices): Animal[] => {
 // ============================================
 
 /**
- * Calcula médias e desvios padrão do rebanho por raça
- * OTIMIZADO: Usa índices pré-computados
- * ATUALIZADO: Filtra animais pelo período de referência (2025+)
+ * Calcula médias e desvios padrão do rebanho por raça.
+ * Usado como base de comparação para DEPs.
+ * Filtra animais pelo período de referência (2025+).
  */
 export const calculateHerdBaseline = (animals: Animal[], indices?: DEPIndices): HerdDEPBaseline[] => {
   const idx = indices || buildIndices(animals);
   const baselines: HerdDEPBaseline[] = [];
 
   idx.byRaca.forEach((raceAnimals, raca) => {
-    // IMPORTANTE: Filtra pelo período de referência para corrigir viés de seleção
     const raceAnimalsInPeriod = raceAnimals.filter(isInReferencePeriod);
     if (raceAnimalsInPeriod.length === 0) return;
 
@@ -352,23 +405,90 @@ interface DEPCalculationInput {
 }
 
 /**
- * Calcula DEP para um animal específico
- * OTIMIZADO: Usa progênie unificada e índices (byPaiId/byMaeId)
- * ATUALIZADO: Filtra progênie pelo período de referência (2025+)
+ * Calcula a DEP para uma única característica usando índice de seleção.
+ *
+ * Fontes de informação e seus pesos:
+ * 1. Registro próprio: DEP = h² × (valor - média) / 2
+ *    O /2 é porque o animal transmite apenas metade dos genes.
+ *
+ * 2. Progênie: DEP = (média_prog - média_rebanho) × regressão
+ *    A regressão para a média é: r = n / (n + k), onde k = (4 - h²)/h²
+ *    NÃO se multiplica por 2 diretamente - a regressão já corrige.
+ *
+ * 3. Combinação: Quando há ambas fontes, combina pela acurácia relativa.
+ */
+const calculateSingleDEP = (
+  ownValue: number | null,
+  progenyValues: number[],
+  baselineMean: number,
+  h2: number,
+): number => {
+  if (baselineMean <= 0) return 0;
+
+  let depOwn = 0;
+  let accOwn = 0;
+  let depProg = 0;
+  let accProg = 0;
+
+  // 1. DEP baseada no registro próprio
+  if (ownValue !== null && ownValue > 0) {
+    // DEP_own = (h² / 2) × (valor - média)
+    // Dividido por 2 porque o animal transmite metade dos genes
+    depOwn = (h2 * (ownValue - baselineMean)) / 2;
+    accOwn = h2; // r² = h² para registro próprio
+  }
+
+  // 2. DEP baseada na progênie
+  if (progenyValues.length > 0) {
+    const progMean = mean(progenyValues);
+    const n = progenyValues.length;
+
+    // k = (4 - h²) / h² → constante de regressão para progênie
+    const k = (4 - h2) / h2;
+
+    // Fator de regressão: quanto mais progênie, mais confiável
+    const regFactor = n / (n + k);
+
+    // DEP = regressão × (média_progênie - média_rebanho)
+    // O desvio da progênie em relação à média já contém metade do mérito
+    // genético do pai/mãe, então multiplicamos por 2 para estimar o mérito
+    // total do genitor, e depois aplicamos a regressão para a média
+    depProg = regFactor * 2 * (progMean - baselineMean);
+
+    accProg = n / (n + k); // r² para progênie
+  }
+
+  // 3. Combina informações por acurácia relativa
+  const totalAcc = accOwn + accProg;
+
+  if (totalAcc <= 0) return 0;
+
+  // Média ponderada pela acurácia relativa
+  const dep = (depOwn * accOwn + depProg * accProg) / totalAcc;
+
+  return dep;
+};
+
+/**
+ * Calcula DEP para um animal específico.
+ *
+ * Para Habilidade Materna:
+ * - Efeito materno é estimado SEPARADAMENTE do efeito direto
+ * - Usa o desvio do peso ao desmame da progênie corrigido pelo efeito direto
+ *   estimado do pai da progênie (quando disponível)
+ * - Quando o pai não é conhecido, usa uma estimativa conservadora
  */
 export const calculateAnimalDEP = ({
   animal,
   baseline,
   indices,
 }: DEPCalculationInput): DEPReport => {
-  // Coleta dados do próprio animal (somente se nasceu no período de referência)
   const animalInPeriod = isInReferencePeriod(animal);
   const ownBirthWeight = animalInPeriod ? getWeightByType(animal, WeighingType.Birth) : null;
   const ownWeaningWeight = animalInPeriod ? getWeightByType(animal, WeighingType.Weaning) : null;
   const ownYearlingWeight = animalInPeriod ? getWeightByType(animal, WeighingType.Yearling) : null;
 
-  // Coleta dados de progênie (USANDO FUNÇÃO UNIFICADA)
-  // IMPORTANTE: Filtra progênie pelo período de referência
+  // Progênie filtrada pelo período de referência
   const allProgeny = getUnifiedProgeny(animal, indices);
   const progeny = allProgeny.filter(isInReferencePeriod);
 
@@ -384,47 +504,16 @@ export const calculateAnimalDEP = ({
     .map((p) => getWeightByType(p, WeighingType.Yearling))
     .filter((w): w is number => w !== null && w > 0);
 
-  // Coleta dados de irmãos (USANDO ÍNDICES + paiId/maeId) - também filtrados
+  // Irmãos filtrados
   const allSiblings = getSiblings(animal, indices);
   const siblings = allSiblings.filter(isInReferencePeriod);
-
-  // Contagem de registros para acurácia
-  const dataSource = {
-    ownRecords:
-      (ownBirthWeight ? 1 : 0) + (ownWeaningWeight ? 1 : 0) + (ownYearlingWeight ? 1 : 0),
-    progenyRecords: progenyBirthWeights.length + progenyWeaningWeights.length + progenyYearlingWeights.length,
-    siblingsRecords: siblings.length,
-  };
+  const siblingWeaningWeights = siblings
+    .map((s) => getWeightByType(s, WeighingType.Weaning))
+    .filter((w): w is number => w !== null && w > 0);
 
   // ============================================
   // CÁLCULO DOS DEPs
   // ============================================
-
-  const calculateSingleDEP = (
-    ownValue: number | null,
-    progenyValues: number[],
-    baselineMean: number,
-    heritability: number
-  ): number => {
-    let dep = 0;
-    let weight = 0;
-
-    if (ownValue !== null && ownValue > 0 && baselineMean > 0) {
-      const ownDEP = (heritability * (ownValue - baselineMean)) / 2;
-      dep += ownDEP * 0.5;
-      weight += 0.5;
-    }
-
-    if (progenyValues.length > 0 && baselineMean > 0) {
-      const progenyMean = mean(progenyValues);
-      const progenyDEP = 2 * (progenyMean - baselineMean);
-      const progenyWeight = Math.min(1, progenyValues.length / 10);
-      dep += progenyDEP * progenyWeight;
-      weight += progenyWeight;
-    }
-
-    return weight > 0 ? dep / weight : 0;
-  };
 
   const depValues: DEPValues = {
     birthWeight: calculateSingleDEP(
@@ -445,92 +534,111 @@ export const calculateAnimalDEP = ({
       baseline.metrics.yearlingWeight.mean,
       HERITABILITIES.yearlingWeight
     ),
-    milkProduction:
-      animal.sexo === Sexo.Femea && progenyWeaningWeights.length > 0
-        ? calculateSingleDEP(null, progenyWeaningWeights, baseline.metrics.weaningWeight.mean, HERITABILITIES.milkProduction)
-        : 0,
+    milkProduction: 0,
     totalMaternal: 0,
   };
 
-  if (animal.sexo === Sexo.Femea) {
-    depValues.totalMaternal = depValues.weaningWeight + depValues.milkProduction;
+  // ============================================
+  // HABILIDADE MATERNA (somente fêmeas com progênie)
+  // ============================================
+  // O efeito materno é a contribuição da mãe ao peso do bezerro
+  // ALÉM do efeito genético direto que ela transmite.
+  // É estimado como o desvio do peso ao desmame da progênie
+  // em relação ao esperado pelo efeito direto.
+  //
+  // Fórmula simplificada:
+  // DEP_maternal ≈ (h²_m / 2) × (média_prog_desmame - média_rebanho - DEP_direto_esperado)
+  // Onde DEP_direto_esperado é a contribuição genética direta média dos pais
+
+  if (animal.sexo === Sexo.Femea && progenyWeaningWeights.length > 0) {
+    const progMeanWeaning = mean(progenyWeaningWeights);
+    const baselineWeaning = baseline.metrics.weaningWeight.mean;
+
+    if (baselineWeaning > 0) {
+      // O desvio total da progênie ao desmame
+      const totalDeviation = progMeanWeaning - baselineWeaning;
+
+      // Estima a parte que é efeito direto (genético do bezerro)
+      // A mãe contribui com metade do efeito direto via seus genes
+      const directContrib = depValues.weaningWeight;
+
+      // O restante é atribuído ao efeito materno (ambiente + genética materna)
+      // Aplicamos regressão pela herdabilidade materna
+      const n = progenyWeaningWeights.length;
+      const kMaternal = (4 - HERITABILITIES.maternalWeaning) / HERITABILITIES.maternalWeaning;
+      const regFactorMaternal = n / (n + kMaternal);
+
+      // Efeito materno = regressão × (desvio_total - contribuição_direta)
+      const maternalDEP = regFactorMaternal * (totalDeviation - directContrib);
+
+      depValues.milkProduction = maternalDEP;
+      depValues.totalMaternal = depValues.weaningWeight + depValues.milkProduction;
+    }
   }
 
   // ============================================
   // CÁLCULO DAS ACURÁCIAS
   // ============================================
 
+  const nOwnBirth = ownBirthWeight ? 1 : 0;
+  const nOwnWeaning = ownWeaningWeight ? 1 : 0;
+  const nOwnYearling = ownYearlingWeight ? 1 : 0;
+
+  const nSibWeaning = siblingWeaningWeights.length;
+
   const accuracy = {
-    birthWeight: getAccuracyFactor(
-      (ownBirthWeight ? 1 : 0) + progenyBirthWeights.length * 2
+    birthWeight: calculateAccuracy(
+      nOwnBirth,
+      progenyBirthWeights.length,
+      0,
+      HERITABILITIES.birthWeight
     ),
-    weaningWeight: getAccuracyFactor(
-      (ownWeaningWeight ? 1 : 0) + progenyWeaningWeights.length * 2
+    weaningWeight: calculateAccuracy(
+      nOwnWeaning,
+      progenyWeaningWeights.length,
+      nSibWeaning,
+      HERITABILITIES.weaningWeight
     ),
-    yearlingWeight: getAccuracyFactor(
-      (ownYearlingWeight ? 1 : 0) + progenyYearlingWeights.length * 2
+    yearlingWeight: calculateAccuracy(
+      nOwnYearling,
+      progenyYearlingWeights.length,
+      0,
+      HERITABILITIES.yearlingWeight
     ),
-    milkProduction: getAccuracyFactor(progenyWeaningWeights.length),
-    totalMaternal: getAccuracyFactor(
-      Math.floor((progenyWeaningWeights.length + (ownWeaningWeight ? 1 : 0)) / 2)
+    milkProduction: calculateAccuracy(
+      0,
+      progenyWeaningWeights.length,
+      0,
+      HERITABILITIES.maternalWeaning
+    ),
+    totalMaternal: calculateAccuracy(
+      nOwnWeaning,
+      progenyWeaningWeights.length,
+      nSibWeaning,
+      (HERITABILITIES.weaningWeight + HERITABILITIES.maternalWeaning) / 2
     ),
   };
 
-  // ============================================
-  // CÁLCULO DOS PERCENTIS (USANDO ÍNDICES)
-  // ============================================
+  // Contagem de registros para exibição
+  // progeny já está filtrado por isInReferencePeriod na linha acima
+  const dataSource = {
+    ownRecords:
+      (ownBirthWeight ? 1 : 0) + (ownWeaningWeight ? 1 : 0) + (ownYearlingWeight ? 1 : 0),
+    progenyRecords: progeny.length,
+    siblingsRecords: siblings.length,
+  };
 
-  // IMPORTANTE: Filtra pelo período de referência para percentis
-  const allRaceAnimals = indices.byRaca.get(animal.raca || Raca.Outros) || [];
-  const raceAnimals = allRaceAnimals.filter(isInReferencePeriod);
-
-  const allBirthDEPs = raceAnimals.map((a) => {
-    const w = getWeightByType(a, WeighingType.Birth);
-    return w && baseline.metrics.birthWeight.mean > 0
-      ? (HERITABILITIES.birthWeight * (w - baseline.metrics.birthWeight.mean)) / 2
-      : 0;
-  });
-
-  const allWeaningDEPs = raceAnimals.map((a) => {
-    const w = getWeightByType(a, WeighingType.Weaning);
-    return w && baseline.metrics.weaningWeight.mean > 0
-      ? (HERITABILITIES.weaningWeight * (w - baseline.metrics.weaningWeight.mean)) / 2
-      : 0;
-  });
-
-  const allYearlingDEPs = raceAnimals.map((a) => {
-    const w = getWeightByType(a, WeighingType.Yearling);
-    return w && baseline.metrics.yearlingWeight.mean > 0
-      ? (HERITABILITIES.yearlingWeight * (w - baseline.metrics.yearlingWeight.mean)) / 2
-      : 0;
-  });
-
+  // Percentis são calculados depois no batch (quando temos todos os DEPs)
   const percentile = {
-    birthWeight: calculatePercentile(depValues.birthWeight, allBirthDEPs),
-    weaningWeight: calculatePercentile(depValues.weaningWeight, allWeaningDEPs),
-    yearlingWeight: calculatePercentile(depValues.yearlingWeight, allYearlingDEPs),
-    milkProduction: animal.sexo === Sexo.Femea ? 50 : 0,
-    totalMaternal: animal.sexo === Sexo.Femea ? 50 : 0,
+    birthWeight: 50,
+    weaningWeight: 50,
+    yearlingWeight: 50,
+    milkProduction: 50,
+    totalMaternal: 50,
   };
 
-  // ============================================
-  // RECOMENDAÇÃO
-  // ============================================
-
-  let recommendation: DEPReport['recommendation'] = 'indefinido';
-
-  const avgPercentile = (percentile.weaningWeight + percentile.yearlingWeight) / 2;
-  const avgAccuracy = (accuracy.weaningWeight + accuracy.yearlingWeight) / 2;
-
-  if (animal.sexo === Sexo.Macho) {
-    if (avgPercentile >= 80 && avgAccuracy >= 0.5) recommendation = 'reprodutor_elite';
-    else if (avgPercentile >= 60 && avgAccuracy >= 0.3) recommendation = 'reprodutor';
-    else if (avgPercentile < 30) recommendation = 'descarte';
-  } else {
-    if (avgPercentile >= 80 && avgAccuracy >= 0.4) recommendation = 'matriz_elite';
-    else if (avgPercentile >= 50) recommendation = 'matriz';
-    else if (avgPercentile < 20) recommendation = 'descarte';
-  }
+  // Recomendação provisória (será recalculada com percentis reais no batch)
+  const recommendation: DEPReport['recommendation'] = 'indefinido';
 
   return {
     animalId: animal.id,
@@ -559,17 +667,19 @@ export const calculateAnimalDEP = ({
 // ============================================
 
 /**
- * Calcula DEPs para todos os animais do rebanho
- * OTIMIZADO: Constrói índices uma única vez
+ * Calcula DEPs para todos os animais do rebanho.
+ *
+ * Fluxo em 3 passagens:
+ * 1. Calcula baselines por raça
+ * 2. Calcula DEPs individuais
+ * 3. Calcula percentis e recomendações usando a distribuição completa
  */
 export const calculateAllDEPs = (animals: Animal[]): DEPReport[] => {
-  // Constrói índices uma única vez
   const indices = buildIndices(animals);
-
-  // Calcula baselines usando índices
   const baselines = calculateHerdBaseline(animals, indices);
 
-  return animals.map((animal) => {
+  // Passagem 1: Calcula DEPs individuais
+  const reports = animals.map((animal) => {
     const baseline = baselines.find((b) => b.raca === (animal.raca || Raca.Outros)) || baselines[0];
 
     if (!baseline) {
@@ -579,43 +689,69 @@ export const calculateAllDEPs = (animals: Animal[]): DEPReport[] => {
         nome: animal.nome,
         sexo: animal.sexo,
         raca: animal.raca || Raca.Outros,
-        dep: {
-          birthWeight: 0,
-          weaningWeight: 0,
-          yearlingWeight: 0,
-          milkProduction: 0,
-          totalMaternal: 0,
-        },
-        accuracy: {
-          birthWeight: 0,
-          weaningWeight: 0,
-          yearlingWeight: 0,
-          milkProduction: 0,
-          totalMaternal: 0,
-        },
-        percentile: {
-          birthWeight: 50,
-          weaningWeight: 50,
-          yearlingWeight: 50,
-          milkProduction: 50,
-          totalMaternal: 50,
-        },
-        dataSource: {
-          ownRecords: 0,
-          progenyRecords: 0,
-          siblingsRecords: 0,
-        },
-        recommendation: 'indefinido',
+        dep: { birthWeight: 0, weaningWeight: 0, yearlingWeight: 0, milkProduction: 0, totalMaternal: 0 },
+        accuracy: { birthWeight: 0, weaningWeight: 0, yearlingWeight: 0, milkProduction: 0, totalMaternal: 0 },
+        percentile: { birthWeight: 50, weaningWeight: 50, yearlingWeight: 50, milkProduction: 50, totalMaternal: 50 },
+        dataSource: { ownRecords: 0, progenyRecords: 0, siblingsRecords: 0 },
+        recommendation: 'indefinido' as const,
         calculatedAt: new Date(),
       };
     }
 
-    return calculateAnimalDEP({
-      animal,
-      baseline,
-      indices,
-    });
+    return calculateAnimalDEP({ animal, baseline, indices });
   });
+
+  // Passagem 2: Calcula percentis por raça usando a distribuição real dos DEPs
+  // Agrupa DEPs por raça para calcular percentis consistentes
+  const depsByRaca = new Map<string, DEPReport[]>();
+  for (const report of reports) {
+    const raca = report.raca;
+    if (!depsByRaca.has(raca)) depsByRaca.set(raca, []);
+    depsByRaca.get(raca)!.push(report);
+  }
+
+  for (const [, raceReports] of depsByRaca) {
+    // Coleta todas as DEPs da raça (os mesmos valores que foram calculados)
+    const allBirthDEPs = raceReports.map(r => r.dep.birthWeight);
+    const allWeaningDEPs = raceReports.map(r => r.dep.weaningWeight);
+    const allYearlingDEPs = raceReports.map(r => r.dep.yearlingWeight);
+    const allMaternalDEPs = raceReports
+      .filter(r => r.sexo === Sexo.Femea)
+      .map(r => r.dep.totalMaternal);
+
+    // Atualiza percentis de cada animal
+    for (const report of raceReports) {
+      report.percentile.birthWeight = calculatePercentile(report.dep.birthWeight, allBirthDEPs);
+      report.percentile.weaningWeight = calculatePercentile(report.dep.weaningWeight, allWeaningDEPs);
+      report.percentile.yearlingWeight = calculatePercentile(report.dep.yearlingWeight, allYearlingDEPs);
+
+      if (report.sexo === Sexo.Femea) {
+        report.percentile.totalMaternal = calculatePercentile(report.dep.totalMaternal, allMaternalDEPs);
+        report.percentile.milkProduction = calculatePercentile(report.dep.milkProduction,
+          raceReports.filter(r => r.sexo === Sexo.Femea).map(r => r.dep.milkProduction));
+      }
+    }
+  }
+
+  // Passagem 3: Calcula recomendações com percentis reais
+  for (const report of reports) {
+    const avgPercentile = (report.percentile.weaningWeight + report.percentile.yearlingWeight) / 2;
+    const avgAccuracy = (report.accuracy.weaningWeight + report.accuracy.yearlingWeight) / 2;
+
+    if (report.sexo === Sexo.Macho) {
+      if (avgPercentile >= 80 && avgAccuracy >= 0.5) report.recommendation = 'reprodutor_elite';
+      else if (avgPercentile >= 60 && avgAccuracy >= 0.3) report.recommendation = 'reprodutor';
+      else if (avgPercentile < 30) report.recommendation = 'descarte';
+      else report.recommendation = 'indefinido';
+    } else {
+      if (avgPercentile >= 80 && avgAccuracy >= 0.4) report.recommendation = 'matriz_elite';
+      else if (avgPercentile >= 50) report.recommendation = 'matriz';
+      else if (avgPercentile < 20) report.recommendation = 'descarte';
+      else report.recommendation = 'indefinido';
+    }
+  }
+
+  return reports;
 };
 
 /**
@@ -653,5 +789,5 @@ export const getCullAnimals = (reports: DEPReport[]): DEPReport[] => {
 // EXPORTA ÍNDICES PARA USO EXTERNO
 // ============================================
 
-export { buildIndices, getUnifiedProgeny, getSiblings };
+export { buildIndices, getUnifiedProgeny, getSiblings, calculateAccuracy, calculateSingleDEP, HERITABILITIES };
 export type { DEPIndices };

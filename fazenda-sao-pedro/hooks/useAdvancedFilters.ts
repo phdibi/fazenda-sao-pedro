@@ -157,22 +157,27 @@ export const useAdvancedFilters = ({
     let result = animalsWithCachedGMD.filter(animal => {
       // Busca avançada com operadores booleanos
       if (debouncedSearch) {
-        const searchLower = debouncedSearch.toLowerCase().trim();
-        
-        const hasOr = searchLower.includes(' ou ');
-        const hasAnd = searchLower.includes(' e ');
-        
+        const searchLower = debouncedSearch.toLowerCase();
+        const trimmedSearch = searchLower.trim();
+
+        const hasOr = trimmedSearch.includes(' ou ');
+        const hasAnd = trimmedSearch.includes(' e ');
+
+        // Se termina com espaço E não tem operadores booleanos,
+        // busca exata no brinco (ex: "J15 " → só J15)
+        const exactBrincoMatch = searchLower.endsWith(' ') && !hasOr && !hasAnd;
+
         let searchTerms: string[];
         let matchMode: 'or' | 'and' | 'single';
-        
+
         if (hasOr) {
-          searchTerms = searchLower.split(' ou ').map(t => t.trim()).filter(Boolean);
+          searchTerms = trimmedSearch.split(' ou ').map(t => t.trim()).filter(Boolean);
           matchMode = 'or';
         } else if (hasAnd) {
-          searchTerms = searchLower.split(' e ').map(t => t.trim()).filter(Boolean);
+          searchTerms = trimmedSearch.split(' e ').map(t => t.trim()).filter(Boolean);
           matchMode = 'and';
         } else {
-          searchTerms = [searchLower];
+          searchTerms = [trimmedSearch];
           matchMode = 'single';
         }
 
@@ -180,7 +185,9 @@ export const useAdvancedFilters = ({
           return filters.searchFields.some(field => {
             switch (field) {
               case 'brinco':
-                return animal.brinco.toLowerCase().includes(term);
+                return exactBrincoMatch
+                  ? animal.brinco.toLowerCase() === term
+                  : animal.brinco.toLowerCase().includes(term);
               case 'nome':
                 return animal.nome?.toLowerCase().includes(term);
               case 'paiNome':
