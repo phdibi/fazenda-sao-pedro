@@ -7,6 +7,7 @@ import { PREGNANCY_TYPE_MAP, getCoverageSireName } from '../services/breedingSea
 import { QUERY_LIMITS, ARCHIVED_COLLECTION_NAME, AUTO_SYNC_INTERVAL_MS } from '../constants/app';
 import { convertTimestampsToDates, convertDatesToTimestamps } from '../utils/dateHelpers';
 import { removeUndefined } from '../utils/objectHelpers';
+import { migrateHealthHistory, needsMigration } from '../utils/medicationMigration';
 
 // ============================================
 // 🔧 CONSTANTES DE TIPO DE COBERTURA
@@ -526,10 +527,18 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
             finalFotos = ['https://storage.googleapis.com/aistudio-marketplace/gallery/cattle_management/cow_placeholder.png'];
         }
 
+        // 🔧 Migracao automatica de registros sanitarios
+        // Agrupa medicamentos do mesmo dia/motivo em um unico tratamento
+        let historicoSanitario = entity.historicoSanitario || [];
+        if (needsMigration(historicoSanitario)) {
+            historicoSanitario = migrateHealthHistory(historicoSanitario);
+            console.log(`🔄 [MIGRATION] Historico sanitario migrado para ${entity.brinco || entity.id}`);
+        }
+
         return {
             ...entity,
             fotos: finalFotos,
-            historicoSanitario: entity.historicoSanitario || [],
+            historicoSanitario,
             historicoPesagens: entity.historicoPesagens || [],
             historicoPrenhez: entity.historicoPrenhez || [],
             historicoAborto: entity.historicoAborto || [],
@@ -1992,12 +2001,18 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
 
                     const newMedRecord: MedicationAdministration = {
                         id: `batch_${batchId}_${animalId}`,
-                        medicamento: mergedBatch.medicationData.medicamento,
+                        medicamentos: [{
+                            medicamento: mergedBatch.medicationData.medicamento,
+                            dose: mergedBatch.medicationData.dose,
+                            unidade: mergedBatch.medicationData.unidade,
+                        }],
                         dataAplicacao: now,
-                        dose: mergedBatch.medicationData.dose,
-                        unidade: mergedBatch.medicationData.unidade,
                         motivo,
                         responsavel: mergedBatch.medicationData.responsavel,
+                        // Campos legados para compatibilidade
+                        medicamento: mergedBatch.medicationData.medicamento,
+                        dose: mergedBatch.medicationData.dose,
+                        unidade: mergedBatch.medicationData.unidade,
                     };
 
                     // 🔧 OTIMIZAÇÃO: arrayUnion envia apenas o novo registro ao Firestore

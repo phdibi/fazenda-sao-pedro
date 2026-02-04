@@ -409,19 +409,30 @@ function generateSanitaryReportLocally(medicatedAnimals: Animal[]) {
         .sort((a, b) => b.treatmentCount - a.treatmentCount)
         .slice(0, 20);
 
+    // Helper para extrair nomes de medicamentos (suporta formato novo e legado)
+    const extractMedicationNames = (med: any): string[] => {
+        if (med.medicamentos && Array.isArray(med.medicamentos)) {
+            return med.medicamentos.map((m: any) => m.medicamento).filter(Boolean);
+        }
+        return med.medicamento ? [med.medicamento] : [];
+    };
+
     // Uso de medicamentos
     const medicationData: Record<string, { total: number; months: Record<string, number> }> = {};
     medicatedAnimals.forEach(animal => {
         animal.historicoSanitario.forEach(med => {
             const d = new Date(med.dataAplicacao);
             const monthKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-            
-            if (!medicationData[med.medicamento]) {
-                medicationData[med.medicamento] = { total: 0, months: {} };
-            }
-            medicationData[med.medicamento].total += 1;
-            medicationData[med.medicamento].months[monthKey] = 
-                (medicationData[med.medicamento].months[monthKey] || 0) + 1;
+
+            const medNames = extractMedicationNames(med);
+            medNames.forEach(medName => {
+                if (!medicationData[medName]) {
+                    medicationData[medName] = { total: 0, months: {} };
+                }
+                medicationData[medName].total += 1;
+                medicationData[medName].months[monthKey] =
+                    (medicationData[medName].months[monthKey] || 0) + 1;
+            });
         });
     });
 
@@ -459,13 +470,17 @@ function generateSanitaryReportLocally(medicatedAnimals: Animal[]) {
         animal.historicoSanitario.forEach(med => {
             const d = new Date(med.dataAplicacao);
             const monthKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-            
+
             if (!monthData[monthKey]) {
                 monthData[monthKey] = { total: 0, meds: {} };
             }
             monthData[monthKey].total += 1;
-            monthData[monthKey].meds[med.medicamento] = 
-                (monthData[monthKey].meds[med.medicamento] || 0) + 1;
+
+            const medNames = extractMedicationNames(med);
+            medNames.forEach(medName => {
+                monthData[monthKey].meds[medName] =
+                    (monthData[monthKey].meds[medName] || 0) + 1;
+            });
         });
     });
 

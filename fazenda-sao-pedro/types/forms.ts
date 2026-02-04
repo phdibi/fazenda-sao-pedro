@@ -2,7 +2,7 @@
 // TIPOS PARA FORMULÁRIOS
 // ============================================
 
-import { Animal, MedicationAdministration, WeighingType } from './animal';
+import { Animal, MedicationAdministration, MedicationItem, WeighingType } from './animal';
 
 /**
  * Estado editável de Animal (pesoKg como string para inputs)
@@ -10,9 +10,66 @@ import { Animal, MedicationAdministration, WeighingType } from './animal';
 export type EditableAnimalState = Omit<Animal, 'pesoKg'> & { pesoKg: string };
 
 /**
- * Estado de formulário de medicação
+ * Item de medicação no formulário (dose como string para inputs)
  */
-export type MedicationFormState = Omit<MedicationAdministration, 'id' | 'dose'> & { dose: string };
+export interface MedicationItemFormState {
+  id: string; // ID único para key no React
+  medicamento: string;
+  dose: string;
+  unidade: 'ml' | 'mg' | 'dose';
+}
+
+/**
+ * Estado de formulário de medicação - suporta múltiplos medicamentos por tratamento
+ */
+export interface MedicationFormState {
+  medicamentos: MedicationItemFormState[];
+  dataAplicacao: Date;
+  motivo: string;
+  responsavel: string;
+}
+
+/**
+ * Helper para criar um item de medicação vazio
+ */
+export const createEmptyMedicationItem = (): MedicationItemFormState => ({
+  id: `item-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+  medicamento: '',
+  dose: '',
+  unidade: 'ml',
+});
+
+/**
+ * Helper para criar o estado inicial do formulário de medicação
+ */
+export const createInitialMedicationFormState = (): MedicationFormState => ({
+  medicamentos: [createEmptyMedicationItem()],
+  dataAplicacao: new Date(),
+  motivo: '',
+  responsavel: 'Equipe Campo',
+});
+
+/**
+ * Converte MedicationFormState para MedicationItem[] (para salvar)
+ */
+export const formStateToMedicationItems = (formState: MedicationFormState): MedicationItem[] => {
+  return formState.medicamentos
+    .filter(item => item.medicamento.trim() !== '')
+    .map(item => ({
+      medicamento: item.medicamento,
+      dose: parseFloat(item.dose) || 0,
+      unidade: item.unidade,
+    }));
+};
+
+/**
+ * @deprecated Use MedicationFormState com medicamentos[] em vez disso
+ * Mantido para compatibilidade com código legado
+ */
+export type LegacyMedicationFormState = Omit<MedicationAdministration, 'id' | 'dose' | 'medicamentos'> & {
+  dose: string;
+  medicamento: string;
+};
 
 /**
  * Estado de formulário de progênie

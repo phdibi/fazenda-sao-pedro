@@ -69,6 +69,9 @@ const AnimalDetailModal: React.FC<AnimalDetailModalProps> = ({
     handleUploadComplete,
     handleDataExtracted,
     handleMedicationFormChange,
+    handleMedicationItemChange,
+    handleAddMedicationItem,
+    handleRemoveMedicationItem,
     handleAddMedicationSubmit,
     handleDeleteMedication,
     handleMedicationDateChange,
@@ -154,6 +157,9 @@ const AnimalDetailModal: React.FC<AnimalDetailModalProps> = ({
               isEditing={isEditing}
               medicationForm={medicationForm}
               onMedicationFormChange={handleMedicationFormChange}
+              onMedicationItemChange={handleMedicationItemChange}
+              onAddMedicationItem={handleAddMedicationItem}
+              onRemoveMedicationItem={handleRemoveMedicationItem}
               onAddMedicationSubmit={handleAddMedicationSubmit}
               onDeleteMedication={handleDeleteMedication}
               onMedicationDateChange={handleMedicationDateChange}

@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { Animal, WeighingType, WeightEntry, MedicationAdministration } from '../types';
+import { Animal, WeighingType, WeightEntry, MedicationAdministration, MedicationItem } from '../types';
 import { useFarmData } from '../contexts/FarmContext';
 import { offlineQueue } from '../utils/offlineSync';
 
@@ -102,9 +102,23 @@ export const useAnimalActions = (userUid: string) => {
             const animal = getAnimal(animalId);
             if (!animal) return;
 
+            // Garante que medicamentos[] existe (suporte ao novo formato)
+            const medicamentos: MedicationItem[] = medication.medicamentos && medication.medicamentos.length > 0
+                ? medication.medicamentos
+                : medication.medicamento
+                    ? [{ medicamento: medication.medicamento, dose: medication.dose || 0, unidade: medication.unidade || 'ml' }]
+                    : [];
+
             const newMedication: MedicationAdministration = {
                 id: `med-${Date.now()}`,
-                ...medication,
+                medicamentos,
+                dataAplicacao: medication.dataAplicacao,
+                motivo: medication.motivo,
+                responsavel: medication.responsavel,
+                // Campos legados para compatibilidade
+                medicamento: medicamentos[0]?.medicamento,
+                dose: medicamentos[0]?.dose,
+                unidade: medicamentos[0]?.unidade,
             };
 
             const historicoSanitario = [...(animal.historicoSanitario || []), newMedication];
@@ -117,11 +131,11 @@ export const useAnimalActions = (userUid: string) => {
                     collection: 'animals',
                     data: { id: animalId, historicoSanitario }
                 });
-                alert('📱 Medicação salva localmente! Será sincronizada quando a internet voltar.');
+                alert('📱 Medicacao salva localmente! Sera sincronizada quando a internet voltar.');
             }
         } catch (error) {
-            console.error('Erro ao salvar medicação:', error);
-            alert('❌ Erro ao salvar medicação');
+            console.error('Erro ao salvar medicacao:', error);
+            alert('❌ Erro ao salvar medicacao');
         }
     };
 

@@ -82,8 +82,18 @@ export const useAnimalStats = (animals: Animal[]): FilteredStats => {
             if (treatments > 0) {
                 animalsWithTreatments++;
                 animal.historicoSanitario?.forEach(med => {
-                    medicationCounts[med.medicamento] = 
-                        (medicationCounts[med.medicamento] || 0) + 1;
+                    // Suporta novo formato (medicamentos[]) e legado (medicamento)
+                    if (med.medicamentos && Array.isArray(med.medicamentos)) {
+                        med.medicamentos.forEach(m => {
+                            if (m.medicamento) {
+                                medicationCounts[m.medicamento] =
+                                    (medicationCounts[m.medicamento] || 0) + 1;
+                            }
+                        });
+                    } else if (med.medicamento) {
+                        medicationCounts[med.medicamento] =
+                            (medicationCounts[med.medicamento] || 0) + 1;
+                    }
                 });
             }
         }

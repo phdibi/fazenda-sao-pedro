@@ -34,14 +34,34 @@ export enum PregnancyType {
   Monta = 'Monta Natural',
 }
 
-export interface MedicationAdministration {
-  id: string;
+/**
+ * Representa um único medicamento aplicado
+ */
+export interface MedicationItem {
   medicamento: string;
-  dataAplicacao: Date;
   dose: number;
   unidade: 'ml' | 'mg' | 'dose';
+}
+
+/**
+ * Representa um tratamento sanitário que pode conter múltiplos medicamentos
+ * aplicados no mesmo dia e pelo mesmo motivo
+ */
+export interface MedicationAdministration {
+  id: string;
+  /** Lista de medicamentos aplicados neste tratamento */
+  medicamentos: MedicationItem[];
+  dataAplicacao: Date;
   motivo: string;
   responsavel: string;
+
+  // Campos legados para compatibilidade retroativa (serão migrados)
+  /** @deprecated Use medicamentos[] em vez disso */
+  medicamento?: string;
+  /** @deprecated Use medicamentos[] em vez disso */
+  dose?: number;
+  /** @deprecated Use medicamentos[] em vez disso */
+  unidade?: 'ml' | 'mg' | 'dose';
 }
 
 export interface WeightEntry {

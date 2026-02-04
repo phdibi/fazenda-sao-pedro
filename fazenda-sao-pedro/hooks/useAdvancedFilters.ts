@@ -111,7 +111,16 @@ export const useAdvancedFilters = ({
   const allMedications = useMemo(() => {
     const meds = new Set<string>();
     animals.forEach(animal => {
-      animal.historicoSanitario.forEach(med => meds.add(med.medicamento));
+      animal.historicoSanitario.forEach(med => {
+        // Suporta novo formato (medicamentos[]) e legado (medicamento)
+        if (med.medicamentos && Array.isArray(med.medicamentos)) {
+          med.medicamentos.forEach(m => {
+            if (m.medicamento) meds.add(m.medicamento);
+          });
+        } else if (med.medicamento) {
+          meds.add(med.medicamento);
+        }
+      });
     });
     return Array.from(meds).sort();
   }, [animals]);
@@ -179,9 +188,15 @@ export const useAdvancedFilters = ({
               case 'maeNome':
                 return animal.maeNome?.toLowerCase().includes(term);
               case 'medicamento':
-                return animal.historicoSanitario.some(m => 
-                  m.medicamento.toLowerCase().includes(term)
-                );
+                return animal.historicoSanitario.some(m => {
+                  // Suporta novo formato (medicamentos[]) e legado (medicamento)
+                  if (m.medicamentos && Array.isArray(m.medicamentos)) {
+                    return m.medicamentos.some(med =>
+                      med.medicamento?.toLowerCase().includes(term)
+                    );
+                  }
+                  return m.medicamento?.toLowerCase().includes(term);
+                });
               case 'motivo':
                 return animal.historicoSanitario.some(m => 
                   m.motivo.toLowerCase().includes(term)
@@ -335,7 +350,16 @@ export const useAdvancedFilters = ({
         animalsWithTreatments++;
         totalTreatments += a.historicoSanitario.length;
         a.historicoSanitario.forEach(m => {
-          medicationCounts[m.medicamento] = (medicationCounts[m.medicamento] || 0) + 1;
+          // Suporta novo formato (medicamentos[]) e legado (medicamento)
+          if (m.medicamentos && Array.isArray(m.medicamentos)) {
+            m.medicamentos.forEach(med => {
+              if (med.medicamento) {
+                medicationCounts[med.medicamento] = (medicationCounts[med.medicamento] || 0) + 1;
+              }
+            });
+          } else if (m.medicamento) {
+            medicationCounts[m.medicamento] = (medicationCounts[m.medicamento] || 0) + 1;
+          }
         });
       }
     });

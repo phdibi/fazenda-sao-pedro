@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import {
   Animal,
   MedicationAdministration,
+  MedicationItem,
   WeightEntry,
   PregnancyRecord,
   PregnancyType,
@@ -10,8 +11,12 @@ import {
   WeighingType,
   EditableAnimalState,
   MedicationFormState,
+  MedicationItemFormState,
   OffspringFormState,
   Sexo,
+  createInitialMedicationFormState,
+  createEmptyMedicationItem,
+  formStateToMedicationItems,
 } from '../../../types';
 import { deletePhotoFromStorage, isValidFirebaseStorageUrl } from '../../../services/storageService';
 
@@ -51,9 +56,12 @@ export interface UseAnimalDetailFormReturn {
   handleAnimalFormChange: (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => void;
   handleUploadComplete: (newUrl: string, thumbnailUrl?: string) => void;
 
-  // Medicação
+  // Medicação - múltiplos medicamentos por tratamento
   handleDataExtracted: (data: Partial<MedicationAdministration>) => void;
-  handleMedicationFormChange: (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => void;
+  handleMedicationFormChange: (field: keyof MedicationFormState, value: any) => void;
+  handleMedicationItemChange: (itemId: string, field: keyof MedicationItemFormState, value: any) => void;
+  handleAddMedicationItem: () => void;
+  handleRemoveMedicationItem: (itemId: string) => void;
   handleAddMedicationSubmit: (e: React.FormEvent) => void;
   handleDeleteMedication: (medId: string) => void;
   handleMedicationDateChange: (medId: string, newDateString: string) => void;
@@ -92,14 +100,9 @@ export const useAnimalDetailForm = ({
   const [isDeletingPhoto, setIsDeletingPhoto] = useState(false);
 
   // Estados de formulário
-  const [medicationForm, setMedicationForm] = useState<MedicationFormState>({
-    medicamento: '',
-    dataAplicacao: new Date(),
-    dose: '',
-    unidade: 'ml',
-    motivo: '',
-    responsavel: 'Equipe Campo',
-  });
+  const [medicationForm, setMedicationForm] = useState<MedicationFormState>(
+    createInitialMedicationFormState()
+  );
 
   const [newWeightData, setNewWeightData] = useState({ weight: '', type: WeighingType.None });
 
@@ -357,33 +360,88 @@ export const useAnimalDetailForm = ({
     setIsEditing(true);
   }, [editableAnimal]);
 
-  // === HANDLERS DE MEDICAÇÃO ===
+  // === HANDLERS DE MEDICAÇÃO (múltiplos medicamentos por tratamento) ===
 
   const handleDataExtracted = useCallback((data: Partial<MedicationAdministration>) => {
+    setMedicationForm((prev) => {
+      // Se extraiu um medicamento, atualiza o primeiro item ou adiciona novo
+      if (data.medicamento || data.dose || data.unidade) {
+        const updatedMedicamentos = [...prev.medicamentos];
+        if (updatedMedicamentos.length > 0) {
+          updatedMedicamentos[0] = {
+            ...updatedMedicamentos[0],
+            medicamento: data.medicamento || updatedMedicamentos[0].medicamento,
+            dose: data.dose ? String(data.dose) : updatedMedicamentos[0].dose,
+            unidade: data.unidade || updatedMedicamentos[0].unidade,
+          };
+        }
+        return {
+          ...prev,
+          medicamentos: updatedMedicamentos,
+          motivo: data.motivo || prev.motivo,
+          dataAplicacao: new Date(),
+        };
+      }
+      return {
+        ...prev,
+        motivo: data.motivo || prev.motivo,
+        dataAplicacao: new Date(),
+      };
+    });
+  }, []);
+
+  const handleMedicationFormChange = useCallback((field: keyof MedicationFormState, value: any) => {
+    setMedicationForm((prev) => ({ ...prev, [field]: value }));
+  }, []);
+
+  const handleMedicationItemChange = useCallback((
+    itemId: string,
+    field: keyof MedicationItemFormState,
+    value: any
+  ) => {
     setMedicationForm((prev) => ({
       ...prev,
-      medicamento: data.medicamento || prev.medicamento,
-      dose: data.dose ? String(data.dose) : prev.dose,
-      unidade: data.unidade || prev.unidade,
-      motivo: data.motivo || prev.motivo,
-      dataAplicacao: new Date(),
+      medicamentos: prev.medicamentos.map((item) =>
+        item.id === itemId ? { ...item, [field]: value } : item
+      ),
     }));
   }, []);
 
-  const handleMedicationFormChange = useCallback((e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-    const { name, value } = e.target;
-    setMedicationForm((prev) => ({ ...prev, [name]: value }));
+  const handleAddMedicationItem = useCallback(() => {
+    setMedicationForm((prev) => ({
+      ...prev,
+      medicamentos: [...prev.medicamentos, createEmptyMedicationItem()],
+    }));
+  }, []);
+
+  const handleRemoveMedicationItem = useCallback((itemId: string) => {
+    setMedicationForm((prev) => {
+      // Não permite remover se só tem 1 item
+      if (prev.medicamentos.length <= 1) return prev;
+      return {
+        ...prev,
+        medicamentos: prev.medicamentos.filter((item) => item.id !== itemId),
+      };
+    });
   }, []);
 
   const handleAddMedicationSubmit = useCallback((e: React.FormEvent) => {
     e.preventDefault();
-    const doseValue = parseFloat(medicationForm.dose);
-    if (isNaN(doseValue) || doseValue <= 0) return;
+
+    // Converte e valida os medicamentos
+    const medicamentos = formStateToMedicationItems(medicationForm);
+    if (medicamentos.length === 0) return;
 
     const newMedication: MedicationAdministration = {
-      ...medicationForm,
-      dose: doseValue,
       id: `new-${Date.now()}`,
+      medicamentos,
+      dataAplicacao: medicationForm.dataAplicacao,
+      motivo: medicationForm.motivo,
+      responsavel: medicationForm.responsavel,
+      // Campos legados para compatibilidade (usa o primeiro medicamento)
+      medicamento: medicamentos[0]?.medicamento,
+      dose: medicamentos[0]?.dose,
+      unidade: medicamentos[0]?.unidade,
     };
 
     setEditableAnimal((prev) => {
@@ -394,14 +452,8 @@ export const useAnimalDetailForm = ({
       return { ...prev, historicoSanitario: newHistory };
     });
 
-    setMedicationForm({
-      medicamento: '',
-      dataAplicacao: new Date(),
-      dose: '',
-      unidade: 'ml',
-      motivo: '',
-      responsavel: 'Equipe Campo',
-    });
+    // Reset form
+    setMedicationForm(createInitialMedicationFormState());
   }, [medicationForm]);
 
   const handleDeleteMedication = useCallback((medId: string) => {
@@ -659,9 +711,12 @@ export const useAnimalDetailForm = ({
     handleAnimalFormChange,
     handleUploadComplete,
 
-    // Medicação
+    // Medicação - múltiplos medicamentos por tratamento
     handleDataExtracted,
     handleMedicationFormChange,
+    handleMedicationItemChange,
+    handleAddMedicationItem,
+    handleRemoveMedicationItem,
     handleAddMedicationSubmit,
     handleDeleteMedication,
     handleMedicationDateChange,
