@@ -45,15 +45,6 @@ const getAgeInMonths = (birthDate?: Date): number => {
 };
 
 /**
- * Calcula diferença em dias entre duas datas
- */
-const getDaysBetween = (date1: Date, date2: Date): number => {
-  const d1 = new Date(date1);
-  const d2 = new Date(date2);
-  return Math.abs(Math.floor((d2.getTime() - d1.getTime()) / (1000 * 60 * 60 * 24)));
-};
-
-/**
  * Obtém peso por tipo de pesagem (usa enum padronizado)
  */
 const getWeightByType = (animal: Animal, type: WeighingType): number | null => {
@@ -188,50 +179,6 @@ const aggregateAnimals = (animals: Animal[]): AnimalAggregation => {
   }
 
   return result;
-};
-
-// ============================================
-// VERIFICAÇÃO DE PRENHEZ INTEGRADA
-// ============================================
-
-interface PregnancyCheckResult {
-  isPregnant: boolean;
-  source: 'breeding_season' | 'manual' | 'none';
-}
-
-/**
- * Verifica se uma vaca está prenhe, integrando dados de:
- * 1. BreedingSeason (prioridade - mais confiável)
- * 2. historicoPrenhez (fallback)
- */
-const checkPregnancy = (
-  animal: Animal,
-  breedingSeasons: BreedingSeason[]
-): PregnancyCheckResult => {
-  // 1. Verifica breeding seasons (fonte mais confiável)
-  for (const season of breedingSeasons) {
-    if (season.status === 'active' || season.status === 'finished') {
-      const coverage = season.coverageRecords.find(
-        (c) => c.cowId === animal.id && c.pregnancyResult === 'positive'
-      );
-      if (coverage) {
-        return { isPregnant: true, source: 'breeding_season' };
-      }
-    }
-  }
-
-  // 2. Fallback para historicoPrenhez
-  if (animal.historicoPrenhez && animal.historicoPrenhez.length > 0) {
-    const lastPregnancy = animal.historicoPrenhez[animal.historicoPrenhez.length - 1];
-    const hasAbortionAfter = animal.historicoAborto?.some(
-      (ab) => new Date(ab.date) >= new Date(lastPregnancy.date)
-    );
-    if (!hasAbortionAfter) {
-      return { isPregnant: true, source: 'manual' };
-    }
-  }
-
-  return { isPregnant: false, source: 'none' };
 };
 
 // ============================================
@@ -375,9 +322,11 @@ export const calculateZootechnicalKPIs = (
   }
 
   // ============================================
-  // 3. TAXA DE PRENHEZ (BASEADA EM TODAS AS ESTAÇÕES DE MONTA)
-  // Sintetiza dados de TODAS as estações de monta cadastradas
-  // Taxa = Total de vacas prenhes / Total de vacas expostas × 100
+  // 3. TAXA DE PRENHEZ (SÍNTESE DE TODAS AS ESTAÇÕES DE MONTA)
+  // Calcula a taxa de cada estação individualmente (com deduplicação por cowId
+  // dentro de cada estação, mesma lógica do breedingSeasonService) e depois
+  // faz a síntese somando expostas e prenhes de todas as estações.
+  // Isso equivale a uma média ponderada pelo número de expostas.
   // ============================================
   let pregnantFromBreedingSeason = 0;
   let pregnantFromManualRecord = 0;
@@ -391,29 +340,39 @@ export const calculateZootechnicalKPIs = (
 
   if (activeSeasons.length > 0) {
     for (const season of activeSeasons) {
-      totalExposedInSeasons += season.exposedCowIds.length;
+      // Deduplicação DENTRO de cada estação (uma vaca conta 1x por estação)
+      const pregnantInSeason = new Set<string>();
 
       for (const record of season.coverageRecords) {
         if (record.pregnancyResult === 'positive') {
-          // Prenhe pela cobertura principal
-          totalPregnantInSeasons++;
-          pregnantFromBreedingSeason++;
-        } else if (record.repasse?.diagnosisResult === 'positive') {
-          // Prenhe pelo repasse (somente se cobertura principal não foi positiva)
-          totalPregnantInSeasons++;
-          pregnantFromBreedingSeason++;
+          pregnantInSeason.add(record.cowId);
+        } else if (record.repasse?.enabled) {
+          if (record.repasse.diagnosisResult === 'positive') {
+            pregnantInSeason.add(record.cowId);
+          }
         }
       }
+
+      // Soma os totais de cada estação para a síntese geral
+      totalExposedInSeasons += season.exposedCowIds.length;
+      totalPregnantInSeasons += pregnantInSeason.size;
     }
+
+    pregnantFromBreedingSeason = totalPregnantInSeasons;
   }
 
   // Fallback para dados manuais se não há estações de monta
   if (activeSeasons.length === 0) {
     const pregnantCowsManual = agg.breedingAgeFemales.filter((cow) => {
-      const result = checkPregnancy(cow, []);
-      if (result.isPregnant && result.source === 'manual') {
-        pregnantFromManualRecord++;
-        return true;
+      if (cow.historicoPrenhez && cow.historicoPrenhez.length > 0) {
+        const lastPregnancy = cow.historicoPrenhez[cow.historicoPrenhez.length - 1];
+        const hasAbortionAfter = cow.historicoAborto?.some(
+          (ab) => new Date(ab.date) >= new Date(lastPregnancy.date)
+        );
+        if (!hasAbortionAfter) {
+          pregnantFromManualRecord++;
+          return true;
+        }
       }
       return false;
     });
@@ -425,34 +384,38 @@ export const calculateZootechnicalKPIs = (
     ? (totalPregnantInSeasons / totalExposedInSeasons) * 100
     : 0;
 
-  // Total de vacas prenhes (para details)
   const pregnantCowsCount = totalPregnantInSeasons;
 
   // ============================================
   // 4. TAXA DE NATALIDADE (PRENHEZES × NASCIMENTOS)
-  // Compara nascimentos confirmados contra prenhezes registradas nas estações de monta
-  // Taxa = Nascimentos confirmados / Prenhezes totais × 100
+  // Compara nascimentos confirmados contra prenhezes nas estações de monta.
+  // Deduplicação por cowId DENTRO de cada estação para consistência.
+  // Taxa = Total de partos confirmados / Total de prenhezes × 100
   // ============================================
   let totalConfirmedBirths = 0;
   let totalPregnancies = 0;
 
   if (activeSeasons.length > 0) {
     for (const season of activeSeasons) {
+      const pregnantInSeason = new Set<string>();
+      const birthsInSeason = new Set<string>();
+
       for (const record of season.coverageRecords) {
         if (record.pregnancyResult === 'positive') {
-          // Prenhe pela cobertura principal
-          totalPregnancies++;
+          pregnantInSeason.add(record.cowId);
           if (record.calvingResult === 'realizado') {
-            totalConfirmedBirths++;
+            birthsInSeason.add(record.cowId);
           }
-        } else if (record.repasse?.diagnosisResult === 'positive') {
-          // Prenhe pelo repasse (somente se cobertura principal não foi positiva)
-          totalPregnancies++;
+        } else if (record.repasse?.enabled && record.repasse.diagnosisResult === 'positive') {
+          pregnantInSeason.add(record.cowId);
           if (record.repasse.calvingResult === 'realizado') {
-            totalConfirmedBirths++;
+            birthsInSeason.add(record.cowId);
           }
         }
       }
+
+      totalPregnancies += pregnantInSeason.size;
+      totalConfirmedBirths += birthsInSeason.size;
     }
   }
 
@@ -471,25 +434,72 @@ export const calculateZootechnicalKPIs = (
     : 0;
 
   // ============================================
-  // 6. INTERVALO ENTRE PARTOS (USANDO PROGÊNIE UNIFICADA)
+  // 5. INTERVALO ENTRE PARTOS
+  // Combina datas de parto de duas fontes:
+  //   a) Progênie unificada (animais cadastrados com dataNascimento)
+  //   b) Estações de monta (actualCalvingDate dos coverage records)
+  // Consolida por vaca (cowId), deduplicando datas próximas (±30 dias),
+  // e calcula intervalos entre partos consecutivos de cada vaca.
   // ============================================
   const calvingIntervals: number[] = [];
 
+  // Coleta datas de parto por vaca (cowId) de TODAS as fontes
+  const calvingDatesByCow = new Map<string, Set<number>>();
+
+  // Fonte A: Progênie unificada (datas de nascimento dos filhos)
   for (const cow of agg.activeFemales) {
     const progeny = getUnifiedProgeny(cow, agg, animals);
-
-    if (progeny.length >= 2) {
-      const birthDates = progeny
-        .map((o) => o.dataNascimento)
-        .filter((d): d is Date => d !== undefined)
-        .map((d) => new Date(d))
-        .sort((a, b) => a.getTime() - b.getTime());
-
-      for (let i = 1; i < birthDates.length; i++) {
-        const interval = getDaysBetween(birthDates[i - 1], birthDates[i]);
-        if (interval > 200 && interval < 730) {
-          calvingIntervals.push(interval);
+    if (progeny.length > 0) {
+      if (!calvingDatesByCow.has(cow.id)) {
+        calvingDatesByCow.set(cow.id, new Set());
+      }
+      const dates = calvingDatesByCow.get(cow.id)!;
+      for (const offspring of progeny) {
+        if (offspring.dataNascimento) {
+          dates.add(new Date(offspring.dataNascimento).getTime());
         }
+      }
+    }
+  }
+
+  // Fonte B: Estações de monta (actualCalvingDate dos coverage records)
+  for (const season of activeSeasons) {
+    for (const record of season.coverageRecords) {
+      // Parto da cobertura principal
+      if (record.calvingResult === 'realizado' && record.actualCalvingDate) {
+        if (!calvingDatesByCow.has(record.cowId)) {
+          calvingDatesByCow.set(record.cowId, new Set());
+        }
+        calvingDatesByCow.get(record.cowId)!.add(new Date(record.actualCalvingDate).getTime());
+      }
+      // Parto do repasse
+      if (record.repasse?.calvingResult === 'realizado' && record.repasse.actualCalvingDate) {
+        if (!calvingDatesByCow.has(record.cowId)) {
+          calvingDatesByCow.set(record.cowId, new Set());
+        }
+        calvingDatesByCow.get(record.cowId)!.add(new Date(record.repasse.actualCalvingDate).getTime());
+      }
+    }
+  }
+
+  // Calcula intervalos entre partos consecutivos para cada vaca
+  for (const [, dateTimestamps] of calvingDatesByCow) {
+    const sortedDates = Array.from(dateTimestamps).sort((a, b) => a - b);
+
+    // Deduplicação de datas próximas (±30 dias = mesma gestação)
+    const deduped: number[] = [sortedDates[0]];
+    for (let i = 1; i < sortedDates.length; i++) {
+      const daysDiff = (sortedDates[i] - deduped[deduped.length - 1]) / (1000 * 60 * 60 * 24);
+      if (daysDiff > 30) {
+        deduped.push(sortedDates[i]);
+      }
+    }
+
+    // Calcula intervalos entre partos consecutivos
+    for (let i = 1; i < deduped.length; i++) {
+      const interval = Math.floor((deduped[i] - deduped[i - 1]) / (1000 * 60 * 60 * 24));
+      if (interval > 200 && interval < 730) {
+        calvingIntervals.push(interval);
       }
     }
   }
