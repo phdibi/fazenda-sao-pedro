@@ -1045,47 +1045,95 @@ export class AnimalMetricsService {
     }
 
     // ============================================
-    // TAXA DE DESMAME
-    // Bezerros desmamados / Vacas em idade reprodutiva
-    // ============================================
-    const weaningRate = breedingAgeFemales.length > 0
-      ? (weanedCalves.length / breedingAgeFemales.length) * 100
-      : 0;
-
-    // ============================================
-    // TAXA DE PRENHEZ (USANDO DADOS PRÉ-CALCULADOS)
+    // TAXA DE PRENHEZ (BASEADA EM TODAS AS ESTAÇÕES DE MONTA)
+    // Sintetiza dados de TODAS as estações de monta cadastradas
+    // Taxa = Total de vacas prenhes / Total de vacas expostas × 100
     // ============================================
     let pregnantFromBreedingSeason = 0;
     let pregnantFromManualRecord = 0;
+    let totalExposedInSeasons = 0;
+    let totalPregnantInSeasons = 0;
 
-    const pregnantCows = activeFemales.filter(a => {
-      const derived = this.cache.get(a.id);
-      if (derived?.reproductiveData?.isPregnant) {
-        if (derived.reproductiveData.pregnancySource === 'breeding_season') {
-          pregnantFromBreedingSeason++;
-        } else if (derived.reproductiveData.pregnancySource === 'manual') {
-          pregnantFromManualRecord++;
+    const activeSeasons = this.breedingSeasons.filter(
+      s => s.status === 'active' || s.status === 'finished'
+    );
+
+    if (activeSeasons.length > 0) {
+      for (const season of activeSeasons) {
+        totalExposedInSeasons += season.exposedCowIds.length;
+
+        for (const record of season.coverageRecords) {
+          if (record.pregnancyResult === 'positive') {
+            // Prenhe pela cobertura principal
+            totalPregnantInSeasons++;
+            pregnantFromBreedingSeason++;
+          } else if (record.repasse?.diagnosisResult === 'positive') {
+            // Prenhe pelo repasse (somente se cobertura principal não foi positiva)
+            totalPregnantInSeasons++;
+            pregnantFromBreedingSeason++;
+          }
         }
-        return true;
       }
-      return false;
-    });
+    }
 
-    const pregnancyRate = breedingAgeFemales.length > 0
-      ? (pregnantCows.length / breedingAgeFemales.length) * 100
+    // Fallback para dados manuais se não há estações de monta
+    if (activeSeasons.length === 0) {
+      breedingAgeFemales.forEach(a => {
+        const derived = this.cache.get(a.id);
+        if (derived?.reproductiveData?.isPregnant && derived.reproductiveData.pregnancySource === 'manual') {
+          pregnantFromManualRecord++;
+          totalPregnantInSeasons++;
+        }
+      });
+      totalExposedInSeasons = breedingAgeFemales.length;
+    }
+
+    const pregnancyRate = totalExposedInSeasons > 0
+      ? (totalPregnantInSeasons / totalExposedInSeasons) * 100
       : 0;
 
+    const pregnantCowsCount = totalPregnantInSeasons;
+
     // ============================================
-    // TAXA DE NATALIDADE
-    // Nascimentos no último ano / Vacas em idade reprodutiva
+    // TAXA DE NATALIDADE (PRENHEZES × NASCIMENTOS)
+    // Compara nascimentos confirmados contra prenhezes nas estações de monta
+    // Taxa = Nascimentos confirmados / Prenhezes totais × 100
     // ============================================
-    const oneYearAgo = new Date();
-    oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
-    const birthsLastYear = this.animals.filter(a =>
-      a.dataNascimento && new Date(a.dataNascimento) >= oneYearAgo
-    );
-    const birthRate = breedingAgeFemales.length > 0
-      ? (birthsLastYear.length / breedingAgeFemales.length) * 100
+    let totalConfirmedBirths = 0;
+    let totalPregnancies = 0;
+
+    if (activeSeasons.length > 0) {
+      for (const season of activeSeasons) {
+        for (const record of season.coverageRecords) {
+          if (record.pregnancyResult === 'positive') {
+            // Prenhe pela cobertura principal
+            totalPregnancies++;
+            if (record.calvingResult === 'realizado') {
+              totalConfirmedBirths++;
+            }
+          } else if (record.repasse?.diagnosisResult === 'positive') {
+            // Prenhe pelo repasse (somente se cobertura principal não foi positiva)
+            totalPregnancies++;
+            if (record.repasse.calvingResult === 'realizado') {
+              totalConfirmedBirths++;
+            }
+          }
+        }
+      }
+    }
+
+    // Fallback: nascimentos últimos 12 meses
+    if (activeSeasons.length === 0) {
+      const oneYearAgo = new Date();
+      oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
+      totalConfirmedBirths = this.animals.filter(a =>
+        a.dataNascimento && new Date(a.dataNascimento) >= oneYearAgo
+      ).length;
+      totalPregnancies = breedingAgeFemales.length;
+    }
+
+    const birthRate = totalPregnancies > 0
+      ? (totalConfirmedBirths / totalPregnancies) * 100
       : 0;
 
     // ============================================
@@ -1119,23 +1167,11 @@ export class AnimalMetricsService {
 
     // ============================================
     // KG DE BEZERRO/VACA/ANO
+    // Usa taxa de natalidade × peso médio ao desmame
     // ============================================
-    const kgCalfPerCowYear = (avgWeaningWeight * weaningRate) / 100;
-
-    // ============================================
-    // IDADE MÉDIA AO PRIMEIRO PARTO
-    // ============================================
-    const firstCalvingAges: number[] = [];
-    allFemales.forEach(cow => {
-      const derived = this.cache.get(cow.id);
-      if (derived?.reproductiveData?.firstCalvingAgeMonths) {
-        firstCalvingAges.push(derived.reproductiveData.firstCalvingAgeMonths);
-      }
-    });
-    const avgFirstCalvingAge = mean(firstCalvingAges);
+    const kgCalfPerCowYear = (avgWeaningWeight * birthRate) / 100;
 
     const kpis: ZootechnicalKPIs = {
-      weaningRate: Math.round(weaningRate * 10) / 10,
       avgWeaningWeight: Math.round(avgWeaningWeight * 10) / 10,
       calvingInterval: Math.round(calvingInterval),
       pregnancyRate: Math.round(pregnancyRate * 10) / 10,
@@ -1143,7 +1179,6 @@ export class AnimalMetricsService {
       mortalityRate: Math.round(mortalityRate * 10) / 10,
       avgGMD: Math.round(avgGMD * 100) / 100,
       birthRate: Math.round(birthRate * 10) / 10,
-      avgFirstCalvingAge: Math.round(avgFirstCalvingAge),
       avgBirthWeight: Math.round(avgBirthWeight * 10) / 10,
       avgYearlingWeight: Math.round(avgYearlingWeight * 10) / 10,
     };
@@ -1158,9 +1193,9 @@ export class AnimalMetricsService {
         totalDeaths: deadAnimals.length,
         totalSold: soldAnimals.length,
         calvesWeaned: weanedCalves.length,
-        exposedCows: breedingAgeFemales.length,
-        pregnantCows: pregnantCows.length,
-        births: birthsLastYear.length,
+        exposedCows: totalExposedInSeasons > 0 ? totalExposedInSeasons : breedingAgeFemales.length,
+        pregnantCows: pregnantCowsCount,
+        births: totalConfirmedBirths,
         pregnantFromBreedingSeason,
         pregnantFromManualRecord,
         animalsInReferencePeriod: this.referencePeriodStats.inPeriod,

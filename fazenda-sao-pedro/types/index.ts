@@ -135,24 +135,20 @@ export interface WeatherCorrelation {
 // ============================================
 
 export interface ZootechnicalKPIs {
-  // Taxa de desmame: bezerros desmamados / vacas expostas × 100
-  weaningRate: number;
   // Peso médio ao desmame em kg
   avgWeaningWeight: number;
   // Intervalo entre partos em dias
   calvingInterval: number;
-  // Taxa de prenhez: vacas prenhes / vacas expostas × 100
+  // Taxa de prenhez: vacas prenhes (via estações de monta) / vacas expostas × 100
   pregnancyRate: number;
-  // Kg de bezerro/vaca/ano: (peso desmame × taxa desmame) / vacas expostas
+  // Kg de bezerro/vaca/ano
   kgCalfPerCowYear: number;
   // Taxa de mortalidade: óbitos / total × 100
   mortalityRate: number;
   // GMD médio do rebanho
   avgGMD: number;
-  // Taxa de natalidade: nascimentos / vacas expostas × 100
+  // Taxa de natalidade: nascimentos confirmados / prenhezes × 100
   birthRate: number;
-  // Idade média ao primeiro parto em meses
-  avgFirstCalvingAge: number;
   // Peso médio ao nascimento
   avgBirthWeight: number;
   // Peso médio ao sobreano
@@ -169,7 +165,6 @@ export interface KPITarget {
 }
 
 export const DEFAULT_KPI_TARGETS: KPITarget[] = [
-  { metric: 'weaningRate', target: 80, unit: '%', description: 'Taxa de Desmame', minAcceptable: 70, excellent: 90 },
   { metric: 'avgWeaningWeight', target: 180, unit: 'kg', description: 'Peso Médio Desmame', minAcceptable: 150, excellent: 200 },
   { metric: 'calvingInterval', target: 365, unit: 'dias', description: 'Intervalo Entre Partos', minAcceptable: 400, excellent: 330 },
   { metric: 'pregnancyRate', target: 85, unit: '%', description: 'Taxa de Prenhez', minAcceptable: 75, excellent: 92 },
@@ -177,7 +172,6 @@ export const DEFAULT_KPI_TARGETS: KPITarget[] = [
   { metric: 'mortalityRate', target: 3, unit: '%', description: 'Taxa de Mortalidade', minAcceptable: 5, excellent: 2 },
   { metric: 'avgGMD', target: 0.8, unit: 'kg/dia', description: 'GMD Médio', minAcceptable: 0.5, excellent: 1.0 },
   { metric: 'birthRate', target: 85, unit: '%', description: 'Taxa de Natalidade', minAcceptable: 75, excellent: 92 },
-  { metric: 'avgFirstCalvingAge', target: 24, unit: 'meses', description: 'Idade 1º Parto', minAcceptable: 30, excellent: 22 },
   { metric: 'avgBirthWeight', target: 32, unit: 'kg', description: 'Peso Médio Nascimento', minAcceptable: 28, excellent: 35 },
   { metric: 'avgYearlingWeight', target: 300, unit: 'kg', description: 'Peso Médio Sobreano', minAcceptable: 250, excellent: 350 },
 ];

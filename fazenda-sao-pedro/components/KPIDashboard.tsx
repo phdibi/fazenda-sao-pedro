@@ -54,7 +54,7 @@ const KPICard: React.FC<{ evaluation: KPIEvaluation }> = ({ evaluation }) => {
   const target = evaluation.target;
 
   // Calcula o progresso em relação ao target
-  const lowerIsBetter = ['mortalityRate', 'calvingInterval', 'avgFirstCalvingAge'].includes(evaluation.metric);
+  const lowerIsBetter = ['mortalityRate', 'calvingInterval'].includes(evaluation.metric);
   const progressValue = lowerIsBetter
     ? Math.max(0, Math.min(100, (target.target / evaluation.value) * 100))
     : Math.max(0, Math.min(100, (evaluation.value / target.excellent) * 100));
@@ -163,7 +163,7 @@ const HerdDetails: React.FC<{
 }> = ({ details }) => (
   <div className="bg-base-800 rounded-xl p-4 mb-6">
     <h3 className="text-lg font-semibold text-white mb-4">Composição do Rebanho</h3>
-    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
+    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
       <div className="text-center">
         <div className="text-xl font-bold text-white">{details.totalAnimals}</div>
         <div className="text-xs text-gray-400">Total</div>
@@ -179,14 +179,6 @@ const HerdDetails: React.FC<{
       <div className="text-center">
         <div className="text-xl font-bold text-emerald-400">{details.totalActive}</div>
         <div className="text-xs text-gray-400">Ativos</div>
-      </div>
-      <div className="text-center">
-        <div className="text-xl font-bold text-amber-400">{details.exposedCows}</div>
-        <div className="text-xs text-gray-400">Vacas Expostas</div>
-      </div>
-      <div className="text-center">
-        <div className="text-xl font-bold text-purple-400">{details.pregnantCows}</div>
-        <div className="text-xs text-gray-400">Cobertas</div>
       </div>
       <div className="text-center">
         <div className="text-xl font-bold text-cyan-400">{details.calvesWeaned}</div>
@@ -262,7 +254,7 @@ const KPIDashboard: React.FC<KPIDashboardProps> = ({ animals, preCalculatedKPIs,
 
   // Agrupa KPIs por categoria
   const categories = useMemo(() => {
-    const reproduction = ['weaningRate', 'pregnancyRate', 'birthRate', 'calvingInterval', 'avgFirstCalvingAge'];
+    const reproduction = ['pregnancyRate', 'birthRate', 'calvingInterval'];
     const weight = ['avgBirthWeight', 'avgWeaningWeight', 'avgYearlingWeight', 'avgGMD', 'kgCalfPerCowYear'];
     const general = ['mortalityRate'];
 

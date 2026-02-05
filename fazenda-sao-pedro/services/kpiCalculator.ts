@@ -4,7 +4,9 @@
  * ATUALIZADO: Agora integra com BreedingSeason e usa índices pré-computados
  *
  * Calcula métricas de desempenho do rebanho baseado em dados reais:
- * - Taxa de desmame, prenhez, natalidade, mortalidade
+ * - Taxa de prenhez (baseada em TODAS as estações de monta)
+ * - Taxa de natalidade (prenhezes × nascimentos confirmados)
+ * - Taxa de mortalidade
  * - Pesos médios (nascimento, desmame, sobreano)
  * - Intervalo entre partos
  * - Kg de bezerro/vaca/ano
@@ -373,45 +375,99 @@ export const calculateZootechnicalKPIs = (
   }
 
   // ============================================
-  // 3. TAXA DE DESMAME (período de referência)
-  // ============================================
-  const weaningRate = agg.breedingAgeFemales.length > 0
-    ? (aggPeriod.weanedCalves.length / agg.breedingAgeFemales.length) * 100
-    : 0;
-
-  // ============================================
-  // 4. TAXA DE PRENHEZ (INTEGRADA COM BREEDING SEASON)
+  // 3. TAXA DE PRENHEZ (BASEADA EM TODAS AS ESTAÇÕES DE MONTA)
+  // Sintetiza dados de TODAS as estações de monta cadastradas
+  // Taxa = Total de vacas prenhes / Total de vacas expostas × 100
   // ============================================
   let pregnantFromBreedingSeason = 0;
   let pregnantFromManualRecord = 0;
+  let totalExposedInSeasons = 0;
+  let totalPregnantInSeasons = 0;
 
-  const pregnantCows = agg.activeFemales.filter((cow) => {
-    const result = checkPregnancy(cow, breedingSeasons);
-    if (result.isPregnant) {
-      if (result.source === 'breeding_season') {
-        pregnantFromBreedingSeason++;
-      } else if (result.source === 'manual') {
-        pregnantFromManualRecord++;
+  // Itera sobre TODAS as estações de monta (active ou finished)
+  const activeSeasons = breedingSeasons.filter(
+    (s) => s.status === 'active' || s.status === 'finished'
+  );
+
+  if (activeSeasons.length > 0) {
+    for (const season of activeSeasons) {
+      totalExposedInSeasons += season.exposedCowIds.length;
+
+      for (const record of season.coverageRecords) {
+        if (record.pregnancyResult === 'positive') {
+          // Prenhe pela cobertura principal
+          totalPregnantInSeasons++;
+          pregnantFromBreedingSeason++;
+        } else if (record.repasse?.diagnosisResult === 'positive') {
+          // Prenhe pelo repasse (somente se cobertura principal não foi positiva)
+          totalPregnantInSeasons++;
+          pregnantFromBreedingSeason++;
+        }
       }
-      return true;
     }
-    return false;
-  });
+  }
 
-  const pregnancyRate = agg.breedingAgeFemales.length > 0
-    ? (pregnantCows.length / agg.breedingAgeFemales.length) * 100
+  // Fallback para dados manuais se não há estações de monta
+  if (activeSeasons.length === 0) {
+    const pregnantCowsManual = agg.breedingAgeFemales.filter((cow) => {
+      const result = checkPregnancy(cow, []);
+      if (result.isPregnant && result.source === 'manual') {
+        pregnantFromManualRecord++;
+        return true;
+      }
+      return false;
+    });
+    totalExposedInSeasons = agg.breedingAgeFemales.length;
+    totalPregnantInSeasons = pregnantCowsManual.length;
+  }
+
+  const pregnancyRate = totalExposedInSeasons > 0
+    ? (totalPregnantInSeasons / totalExposedInSeasons) * 100
     : 0;
 
+  // Total de vacas prenhes (para details)
+  const pregnantCowsCount = totalPregnantInSeasons;
+
   // ============================================
-  // 5. TAXA DE NATALIDADE
+  // 4. TAXA DE NATALIDADE (PRENHEZES × NASCIMENTOS)
+  // Compara nascimentos confirmados contra prenhezes registradas nas estações de monta
+  // Taxa = Nascimentos confirmados / Prenhezes totais × 100
   // ============================================
-  const oneYearAgo = new Date();
-  oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
-  const birthsLastYear = animals.filter(
-    (a) => a.dataNascimento && new Date(a.dataNascimento) >= oneYearAgo
-  );
-  const birthRate = agg.breedingAgeFemales.length > 0
-    ? (birthsLastYear.length / agg.breedingAgeFemales.length) * 100
+  let totalConfirmedBirths = 0;
+  let totalPregnancies = 0;
+
+  if (activeSeasons.length > 0) {
+    for (const season of activeSeasons) {
+      for (const record of season.coverageRecords) {
+        if (record.pregnancyResult === 'positive') {
+          // Prenhe pela cobertura principal
+          totalPregnancies++;
+          if (record.calvingResult === 'realizado') {
+            totalConfirmedBirths++;
+          }
+        } else if (record.repasse?.diagnosisResult === 'positive') {
+          // Prenhe pelo repasse (somente se cobertura principal não foi positiva)
+          totalPregnancies++;
+          if (record.repasse.calvingResult === 'realizado') {
+            totalConfirmedBirths++;
+          }
+        }
+      }
+    }
+  }
+
+  // Fallback: se não há estações, usa contagem de nascimentos últimos 12 meses
+  if (activeSeasons.length === 0) {
+    const oneYearAgo = new Date();
+    oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
+    totalConfirmedBirths = animals.filter(
+      (a) => a.dataNascimento && new Date(a.dataNascimento) >= oneYearAgo
+    ).length;
+    totalPregnancies = agg.breedingAgeFemales.length;
+  }
+
+  const birthRate = totalPregnancies > 0
+    ? (totalConfirmedBirths / totalPregnancies) * 100
     : 0;
 
   // ============================================
@@ -468,46 +524,15 @@ export const calculateZootechnicalKPIs = (
 
   // ============================================
   // 8. KG DE BEZERRO/VACA/ANO
+  // Usa taxa de natalidade (nascimentos / prenhezes) × peso médio ao desmame
   // ============================================
-  const kgCalfPerCowYear = (avgWeaningWeight * weaningRate) / 100;
-
-  // ============================================
-  // 9. IDADE MÉDIA AO PRIMEIRO PARTO (USANDO PROGÊNIE UNIFICADA)
-  // ============================================
-  const firstCalvingAges: number[] = [];
-
-  for (const cow of agg.females) {
-    if (!cow.dataNascimento) continue;
-
-    const progeny = getUnifiedProgeny(cow, agg, animals);
-    if (progeny.length === 0) continue;
-
-    // Ordena progênie por data de nascimento
-    const sortedProgeny = progeny
-      .filter((p) => p.dataNascimento)
-      .sort((a, b) => new Date(a.dataNascimento!).getTime() - new Date(b.dataNascimento!).getTime());
-
-    if (sortedProgeny.length > 0) {
-      const cowBirthDate = new Date(cow.dataNascimento);
-      const firstCalfBirthDate = new Date(sortedProgeny[0].dataNascimento!);
-      const ageAtFirstCalving =
-        (firstCalfBirthDate.getFullYear() - cowBirthDate.getFullYear()) * 12 +
-        (firstCalfBirthDate.getMonth() - cowBirthDate.getMonth());
-
-      if (ageAtFirstCalving >= 18 && ageAtFirstCalving <= 48) {
-        firstCalvingAges.push(ageAtFirstCalving);
-      }
-    }
-  }
-
-  const avgFirstCalvingAge = mean(firstCalvingAges);
+  const kgCalfPerCowYear = (avgWeaningWeight * birthRate) / 100;
 
   // ============================================
   // RESULTADO FINAL
   // ============================================
 
   const kpis: ZootechnicalKPIs = {
-    weaningRate: Math.round(weaningRate * 10) / 10,
     avgWeaningWeight: Math.round(avgWeaningWeight * 10) / 10,
     calvingInterval: Math.round(calvingInterval),
     pregnancyRate: Math.round(pregnancyRate * 10) / 10,
@@ -515,7 +540,6 @@ export const calculateZootechnicalKPIs = (
     mortalityRate: Math.round(mortalityRate * 10) / 10,
     avgGMD: Math.round(avgGMD * 100) / 100,
     birthRate: Math.round(birthRate * 10) / 10,
-    avgFirstCalvingAge: Math.round(avgFirstCalvingAge),
     avgBirthWeight: Math.round(avgBirthWeight * 10) / 10,
     avgYearlingWeight: Math.round(avgYearlingWeight * 10) / 10,
   };
@@ -530,9 +554,9 @@ export const calculateZootechnicalKPIs = (
       totalDeaths: agg.dead.length,
       totalSold: agg.sold.length,
       calvesWeaned: aggPeriod.weanedCalves.length,
-      exposedCows: agg.breedingAgeFemales.length,
-      pregnantCows: pregnantCows.length,
-      births: birthsLastYear.length,
+      exposedCows: totalExposedInSeasons > 0 ? totalExposedInSeasons : agg.breedingAgeFemales.length,
+      pregnantCows: pregnantCowsCount,
+      births: totalConfirmedBirths,
       pregnantFromBreedingSeason,
       pregnantFromManualRecord,
       // Estatísticas do período de referência
@@ -583,7 +607,7 @@ export const evaluateKPI = (metric: keyof ZootechnicalKPIs, value: number): KPIE
   }
 
   const deviation = target.target !== 0 ? ((value - target.target) / target.target) * 100 : 0;
-  const lowerIsBetter = ['mortalityRate', 'calvingInterval', 'avgFirstCalvingAge'].includes(metric);
+  const lowerIsBetter = ['mortalityRate', 'calvingInterval'].includes(metric);
 
   let status: KPIStatus;
 
