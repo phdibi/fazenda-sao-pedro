@@ -61,7 +61,16 @@ export interface ManagementBatch {
 
   // Dados de sincronização ao concluir o lote
 
-  // Para Vacinação/Vermifugação/Medicamentos: dados da medicação (iguais para todos animais)
+  // Para Vacinação/Vermifugação/Medicamentos: lista de medicações aplicadas (suporta múltiplos)
+  medicationDataList?: {
+    medicamento: string;
+    dose: number;
+    unidade: 'ml' | 'mg' | 'dose';
+    responsavel: string;
+    subType?: MedicationSubType;
+  }[];
+
+  /** @deprecated Use medicationDataList[] - mantido para backward compat com lotes já concluídos */
   medicationData?: {
     medicamento: string;
     dose: number;

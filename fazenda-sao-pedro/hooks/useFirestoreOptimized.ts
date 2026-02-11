@@ -1891,11 +1891,88 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
     const deleteBatch = useCallback(async (batchId: string) => {
         if (!userId || !db) return;
 
+        // Busca o lote antes de deletar para limpar dados sincronizados
+        const batch = stateRef.current.batches.find((b: ManagementBatch) => b.id === batchId);
+
         // Atualização otimista
         dispatch({ type: 'LOCAL_DELETE_BATCH', payload: { batchId } });
 
         try {
-            await db.collection('batches').doc(batchId).delete();
+            const now = new Date();
+
+            // Se o lote era de medicamentos e foi concluído, remove registros do historicoSanitario
+            const isMedBatch = batch && batch.status === 'completed' && (
+                batch.purpose === BatchPurpose.Medicamentos ||
+                batch.purpose === BatchPurpose.Vacinacao ||
+                batch.purpose === BatchPurpose.Vermifugacao
+            );
+
+            if (isMedBatch && batch) {
+                const batchPrefix = `batch_${batchId}_`;
+
+                // Lookup O(1) para animais
+                const animalsMap = new Map<string, Animal>();
+                for (const a of stateRef.current.animals) {
+                    animalsMap.set(a.id, a);
+                }
+
+                // WriteBatch com chunking (Firestore max 500 ops por batch)
+                const MAX_OPS = 499;
+                const writeBatches: ReturnType<typeof db.batch>[] = [db.batch()];
+                let batchIdx = 0;
+                let batchOps = 0;
+                let totalOps = 0;
+
+                const getWB = () => {
+                    if (batchOps >= MAX_OPS) {
+                        writeBatches.push(db.batch());
+                        batchIdx++;
+                        batchOps = 0;
+                    }
+                    batchOps++;
+                    totalOps++;
+                    return writeBatches[batchIdx];
+                };
+
+                for (const animalId of batch.animalIds) {
+                    const animal = animalsMap.get(animalId);
+                    if (!animal || !animal.historicoSanitario?.length) continue;
+
+                    const filteredHistorico = animal.historicoSanitario.filter(
+                        (record: MedicationAdministration) => !record.id?.startsWith(batchPrefix)
+                    );
+
+                    // Só atualiza se houve remoção
+                    if (filteredHistorico.length < animal.historicoSanitario.length) {
+                        const wb = getWB();
+                        const animalRef = db.collection('animals').doc(animalId);
+                        wb.update(animalRef, {
+                            historicoSanitario: convertDatesToTimestamps(filteredHistorico),
+                            updatedAt: now,
+                        });
+
+                        // Optimistic local update
+                        dispatch({
+                            type: 'LOCAL_UPDATE_ANIMAL',
+                            payload: { animalId, updatedData: { historicoSanitario: filteredHistorico } }
+                        });
+                    }
+                }
+
+                // Deleta o lote
+                const wb = getWB();
+                wb.delete(db.collection('batches').doc(batchId));
+
+                trackWrites(totalOps);
+                // Commit all batches
+                for (const wbChunk of writeBatches) {
+                    await wbChunk.commit();
+                }
+            } else {
+                // Lote sem dados sincronizados - só deleta o documento
+                await db.collection('batches').doc(batchId).delete();
+                trackWrites(1);
+            }
 
             // 🔧 OTIMIZAÇÃO: Usa stateRef para cache
             const updatedBatches = stateRef.current.batches.filter((b: ManagementBatch) => b.id !== batchId);
@@ -1914,7 +1991,8 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
         const batch = stateRef.current.batches.find((b: ManagementBatch) => b.id === batchId);
         if (!batch) return;
 
-        // 🔧 OTIMIZAÇÃO: Verifica quota antes de iniciar (1 lote + N animais)
+        // 🔧 OTIMIZAÇÃO: Verifica quota antes de iniciar
+        // 1 escrita para o lote + 1 escrita por animal (registro único com todos os medicamentos)
         const estimatedWrites = 1 + batch.animalIds.length;
         if (!canPerformOperation('write', estimatedWrites)) {
             throw new Error(`Quota insuficiente: esta operação requer ${estimatedWrites} escritas. Tente novamente amanhã.`);
@@ -1957,7 +2035,7 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
             status: 'completed' as const,
             completedAt: now,
         };
-        // Preserva weighingType, medicationSubType e medicationData no lote para referência
+        // Preserva weighingType, medicationSubType, medicationData e medicationDataList no lote
         if (completionData?.weighingType) {
             completedFields.weighingType = completionData.weighingType;
         }
@@ -1966,6 +2044,9 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
         }
         if (completionData?.medicationData) {
             completedFields.medicationData = completionData.medicationData;
+        }
+        if (completionData?.medicationDataList) {
+            completedFields.medicationDataList = completionData.medicationDataList;
         }
         const wb0 = getWriteBatch();
         wb0.update(batchRef, { ...convertDatesToTimestamps(completedFields), updatedAt: now });
@@ -1999,34 +2080,56 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
             case BatchPurpose.Medicamentos:
             case BatchPurpose.Vacinacao:
             case BatchPurpose.Vermifugacao: {
-                if (!mergedBatch.medicationData) break;
+                // Suporte a múltiplos medicamentos (medicationDataList) com fallback para legado (medicationData)
+                const medList = mergedBatch.medicationDataList;
+                const legacyMed = mergedBatch.medicationData;
+                if (!medList?.length && !legacyMed) break;
 
-                const motivo = mergedBatch.purpose === BatchPurpose.Medicamentos
+                const defaultMotivo = mergedBatch.purpose === BatchPurpose.Medicamentos
                     ? (mergedBatch.medicationSubType || 'Medicamento')
                     : mergedBatch.purpose === BatchPurpose.Vacinacao ? 'Vacinação' : 'Vermifugação';
+
+                // Resolve a lista de medicamentos
+                const medications = medList && medList.length > 0
+                    ? medList
+                    : [{ ...legacyMed!, subType: undefined as any, responsavel: legacyMed!.responsavel }];
+
+                // Monta array de MedicationItem[] para todos os medicamentos
+                const medItems = medications.map(med => ({
+                    medicamento: med.medicamento,
+                    dose: med.dose,
+                    unidade: med.unidade,
+                }));
+
+                // Motivo: concatena sub-tipos únicos ou usa o padrão
+                const subTypes = medications
+                    .map(m => m.subType)
+                    .filter((s): s is string => !!s);
+                const uniqueSubTypes = [...new Set(subTypes)];
+                const motivo = uniqueSubTypes.length > 0
+                    ? uniqueSubTypes.join(' / ')
+                    : defaultMotivo;
+
+                const responsavel = medications[0]?.responsavel || 'Equipe Campo';
 
                 for (const animalId of mergedBatch.animalIds) {
                     const animal = animalsMap.get(animalId);
                     if (!animal) continue;
 
+                    // Um único MedicationAdministration com todos os medicamentos
+                    // Evita múltiplos arrayUnion no mesmo campo do mesmo doc no WriteBatch
                     const newMedRecord: MedicationAdministration = {
                         id: `batch_${batchId}_${animalId}`,
-                        medicamentos: [{
-                            medicamento: mergedBatch.medicationData.medicamento,
-                            dose: mergedBatch.medicationData.dose,
-                            unidade: mergedBatch.medicationData.unidade,
-                        }],
+                        medicamentos: medItems,
                         dataAplicacao: now,
                         motivo,
-                        responsavel: mergedBatch.medicationData.responsavel,
-                        // Campos legados para compatibilidade
-                        medicamento: mergedBatch.medicationData.medicamento,
-                        dose: mergedBatch.medicationData.dose,
-                        unidade: mergedBatch.medicationData.unidade,
+                        responsavel,
+                        // Campos legados: primeiro medicamento para compatibilidade
+                        medicamento: medItems[0].medicamento,
+                        dose: medItems[0].dose,
+                        unidade: medItems[0].unidade,
                     };
 
-                    // 🔧 OTIMIZAÇÃO: arrayUnion envia apenas o novo registro ao Firestore
-                    // em vez de reescrever o array inteiro (economia de ~95% bandwidth)
                     const wb = getWriteBatch();
                     const animalRef = db.collection('animals').doc(animalId);
                     wb.update(animalRef, {
@@ -2034,7 +2137,7 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
                         updatedAt: now
                     });
 
-                    // Optimistic update local continua com array completo
+                    // Optimistic update local
                     const updatedHistorico = [...(animal.historicoSanitario || []), newMedRecord];
                     dispatch({
                         type: 'LOCAL_UPDATE_ANIMAL',

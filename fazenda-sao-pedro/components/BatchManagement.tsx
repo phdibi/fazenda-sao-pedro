@@ -17,6 +17,13 @@ const MEDICATION_SUB_TYPES: MedicationSubType[] = [
   'Outro',
 ];
 
+interface MedicationEntry {
+  medicamento: string;
+  dose: string;
+  unidade: 'ml' | 'mg' | 'dose';
+  subType: MedicationSubType;
+}
+
 interface BatchManagementProps {
   batches: ManagementBatch[];
   animals: Animal[];
@@ -53,12 +60,10 @@ const BatchManagement: React.FC<BatchManagementProps> = ({
 
   // Estado do modal de conclusão
   const [completionBatch, setCompletionBatch] = useState<ManagementBatch | null>(null);
-  const [medicationForm, setMedicationForm] = useState({
-    medicamento: '',
-    dose: '',
-    unidade: 'ml' as 'ml' | 'mg' | 'dose',
-    responsavel: 'Equipe Campo',
-  });
+
+  // Suporte a múltiplos medicamentos por lote
+  const [medicationEntries, setMedicationEntries] = useState<MedicationEntry[]>([]);
+  const [responsavel, setResponsavel] = useState('Equipe Campo');
   const [completionMedSubType, setCompletionMedSubType] = useState<MedicationSubType>('Vacinação');
   const [animalWeights, setAnimalWeights] = useState<Record<string, string>>({});
   const [weighingType, setWeighingType] = useState<WeighingType>(WeighingType.None);
@@ -160,13 +165,33 @@ const BatchManagement: React.FC<BatchManagementProps> = ({
     setIsEditingBatch(false);
   };
 
+  // Helpers para gerenciar múltiplos medicamentos
+  const addMedicationEntry = () => {
+    setMedicationEntries(prev => [
+      ...prev,
+      { medicamento: '', dose: '', unidade: 'ml', subType: completionMedSubType },
+    ]);
+  };
+
+  const removeMedicationEntry = (index: number) => {
+    setMedicationEntries(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const updateMedicationEntry = (index: number, field: keyof MedicationEntry, value: string) => {
+    setMedicationEntries(prev => prev.map((entry, i) =>
+      i === index ? { ...entry, [field]: value } : entry
+    ));
+  };
+
   // Abre o modal de conclusão
   const openCompletionModal = (batch: ManagementBatch) => {
     setCompletionBatch(batch);
-    setMedicationForm({ medicamento: '', dose: '', unidade: 'ml', responsavel: 'Equipe Campo' });
+    const defaultSubType = batch.medicationSubType || 'Vacinação';
+    setCompletionMedSubType(defaultSubType);
+    setMedicationEntries([{ medicamento: '', dose: '', unidade: 'ml', subType: defaultSubType }]);
+    setResponsavel('Equipe Campo');
     setAnimalWeights({});
     setWeighingType(WeighingType.None);
-    setCompletionMedSubType(batch.medicationSubType || 'Vacinação');
   };
 
   // Handler de conclusão do lote com sincronização
@@ -184,13 +209,27 @@ const BatchManagement: React.FC<BatchManagementProps> = ({
       completionBatch.purpose === BatchPurpose.Vermifugacao;
 
     if (isMedication) {
-      if (!medicationForm.medicamento.trim()) return;
+      const validEntries = medicationEntries.filter(e => e.medicamento.trim());
+      if (validEntries.length === 0) return;
+
+      const effectiveResponsavel = responsavel || 'Equipe Campo';
+
       completionData = {
+        medicationDataList: validEntries.map(entry => ({
+          medicamento: entry.medicamento,
+          dose: parseFloat(entry.dose) || 0,
+          unidade: entry.unidade,
+          responsavel: effectiveResponsavel,
+          subType: completionBatch.purpose === BatchPurpose.Medicamentos
+            ? entry.subType
+            : undefined,
+        })),
+        // Backward compat: primeiro medicamento como medicationData legado
         medicationData: {
-          medicamento: medicationForm.medicamento,
-          dose: parseFloat(medicationForm.dose) || 0,
-          unidade: medicationForm.unidade,
-          responsavel: medicationForm.responsavel || 'Equipe Campo',
+          medicamento: validEntries[0].medicamento,
+          dose: parseFloat(validEntries[0].dose) || 0,
+          unidade: validEntries[0].unidade,
+          responsavel: effectiveResponsavel,
         },
         medicationSubType: completionBatch.purpose === BatchPurpose.Medicamentos
           ? completionMedSubType
@@ -241,7 +280,7 @@ const BatchManagement: React.FC<BatchManagementProps> = ({
       completionBatch.purpose === BatchPurpose.Vacinacao ||
       completionBatch.purpose === BatchPurpose.Vermifugacao;
 
-    if (isMedication) return !!medicationForm.medicamento.trim();
+    if (isMedication) return medicationEntries.some(e => e.medicamento.trim());
     if (completionBatch.purpose === BatchPurpose.Pesagem || completionBatch.purpose === BatchPurpose.Desmame) {
       return Object.values(animalWeights).some(v => parseFloat(v) > 0);
     }
@@ -275,96 +314,125 @@ const BatchManagement: React.FC<BatchManagementProps> = ({
     [BatchPurpose.Outros]: 'bg-gray-600',
   };
 
-  // Formulário de medicação reutilizável
+  // Formulário de medicação reutilizável (suporta múltiplos medicamentos)
   const renderMedicationForm = (batchForForm: ManagementBatch, showSubType: boolean) => (
     <div className="space-y-4">
       <div className="bg-base-900 rounded-lg p-3">
         <p className="text-gray-300 text-sm">
-          O medicamento sera registrado no historico sanitario de cada animal.
+          Os medicamentos serao registrados no historico sanitario de cada animal.
         </p>
         <p className="text-gray-500 text-xs mt-1">{batchForForm.animalIds.length} animais no lote</p>
       </div>
 
-      {showSubType && (
-        <div>
-          <label className="block text-sm text-gray-400 mb-1">Tipo de Medicamento</label>
-          <div className="flex flex-wrap gap-2">
-            {MEDICATION_SUB_TYPES.map(st => (
+      {/* Lista de medicamentos */}
+      {medicationEntries.map((entry, idx) => (
+        <div key={idx} className="bg-base-700/50 rounded-lg p-3 space-y-3 relative">
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-medium text-gray-300">
+              Medicamento {medicationEntries.length > 1 ? `#${idx + 1}` : '*'}
+            </span>
+            {medicationEntries.length > 1 && (
               <button
-                key={st}
                 type="button"
-                onClick={() => setCompletionMedSubType(st)}
-                className={`px-3 py-1.5 text-xs rounded-lg ${
-                  completionMedSubType === st
-                    ? 'bg-teal-600 text-white'
-                    : 'bg-base-700 text-gray-300 hover:bg-base-600'
-                }`}
+                onClick={() => removeMedicationEntry(idx)}
+                className="text-red-400 hover:text-red-300 text-xs px-2 py-0.5 bg-red-500/10 rounded"
               >
-                {st}
+                Remover
               </button>
-            ))}
+            )}
+          </div>
+
+          {/* Sub-tipo por medicamento (quando é Medicamentos) */}
+          {showSubType && (
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">Tipo</label>
+              <div className="flex flex-wrap gap-1">
+                {MEDICATION_SUB_TYPES.map(st => (
+                  <button
+                    key={st}
+                    type="button"
+                    onClick={() => updateMedicationEntry(idx, 'subType', st)}
+                    className={`px-2 py-1 text-xs rounded ${
+                      entry.subType === st
+                        ? 'bg-teal-600 text-white'
+                        : 'bg-base-600 text-gray-300 hover:bg-base-500'
+                    }`}
+                  >
+                    {st}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div>
+            <input
+              type="text"
+              value={entry.medicamento}
+              onChange={(e) => updateMedicationEntry(idx, 'medicamento', e.target.value)}
+              placeholder="Nome do medicamento"
+              className="w-full px-3 py-2 bg-base-700 border border-base-600 rounded-lg text-white text-sm"
+            />
+            <div className="flex flex-wrap gap-1 mt-1">
+              {COMMON_MEDICATIONS.map(m => (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => updateMedicationEntry(idx, 'medicamento', m)}
+                  className={`px-2 py-0.5 text-xs rounded ${
+                    entry.medicamento === m
+                      ? 'bg-brand-primary text-white'
+                      : 'bg-base-600 text-gray-300'
+                  }`}
+                >
+                  {m}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="flex gap-2">
+            <div className="flex-1">
+              <label className="block text-xs text-gray-500 mb-1">Dose</label>
+              <input
+                type="number"
+                value={entry.dose}
+                onChange={(e) => updateMedicationEntry(idx, 'dose', e.target.value)}
+                placeholder="0"
+                className="w-full px-3 py-1.5 bg-base-700 border border-base-600 rounded-lg text-white text-sm"
+              />
+            </div>
+            <div className="w-20">
+              <label className="block text-xs text-gray-500 mb-1">Unidade</label>
+              <select
+                value={entry.unidade}
+                onChange={(e) => updateMedicationEntry(idx, 'unidade', e.target.value)}
+                className="w-full px-2 py-1.5 bg-base-700 border border-base-600 rounded-lg text-white text-sm"
+              >
+                <option value="ml">ml</option>
+                <option value="mg">mg</option>
+                <option value="dose">dose</option>
+              </select>
+            </div>
           </div>
         </div>
-      )}
+      ))}
 
-      <div>
-        <label className="block text-sm text-gray-400 mb-1">Medicamento *</label>
-        <input
-          type="text"
-          value={medicationForm.medicamento}
-          onChange={(e) => setMedicationForm(prev => ({ ...prev, medicamento: e.target.value }))}
-          placeholder="Nome do medicamento"
-          className="w-full px-3 py-2 bg-base-700 border border-base-600 rounded-lg text-white"
-        />
-        <div className="flex flex-wrap gap-1 mt-2">
-          {COMMON_MEDICATIONS.map(m => (
-            <button
-              key={m}
-              type="button"
-              onClick={() => setMedicationForm(prev => ({ ...prev, medicamento: m }))}
-              className={`px-2 py-1 text-xs rounded ${
-                medicationForm.medicamento === m
-                  ? 'bg-brand-primary text-white'
-                  : 'bg-base-600 text-gray-300'
-              }`}
-            >
-              {m}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div className="flex gap-2">
-        <div className="flex-1">
-          <label className="block text-sm text-gray-400 mb-1">Dose</label>
-          <input
-            type="number"
-            value={medicationForm.dose}
-            onChange={(e) => setMedicationForm(prev => ({ ...prev, dose: e.target.value }))}
-            placeholder="0"
-            className="w-full px-3 py-2 bg-base-700 border border-base-600 rounded-lg text-white"
-          />
-        </div>
-        <div className="w-24">
-          <label className="block text-sm text-gray-400 mb-1">Unidade</label>
-          <select
-            value={medicationForm.unidade}
-            onChange={(e) => setMedicationForm(prev => ({ ...prev, unidade: e.target.value as 'ml' | 'mg' | 'dose' }))}
-            className="w-full px-3 py-2 bg-base-700 border border-base-600 rounded-lg text-white"
-          >
-            <option value="ml">ml</option>
-            <option value="mg">mg</option>
-            <option value="dose">dose</option>
-          </select>
-        </div>
-      </div>
+      {/* Botão para adicionar mais medicamentos */}
+      <button
+        type="button"
+        onClick={addMedicationEntry}
+        className="w-full py-2 border border-dashed border-base-500 text-gray-400 rounded-lg hover:bg-base-700 hover:text-white text-sm transition-colors"
+      >
+        + Adicionar outro medicamento
+      </button>
 
       <div>
         <label className="block text-sm text-gray-400 mb-1">Responsavel</label>
         <input
           type="text"
-          value={medicationForm.responsavel}
-          onChange={(e) => setMedicationForm(prev => ({ ...prev, responsavel: e.target.value }))}
+          value={responsavel}
+          onChange={(e) => setResponsavel(e.target.value)}
           className="w-full px-3 py-2 bg-base-700 border border-base-600 rounded-lg text-white"
         />
       </div>
@@ -763,7 +831,23 @@ const BatchManagement: React.FC<BatchManagementProps> = ({
                     Concluido em: {new Date(selectedBatch.completedAt).toLocaleDateString('pt-BR')}
                   </p>
                 )}
-                {selectedBatch.medicationData && (
+                {/* Múltiplos medicamentos (novo formato) */}
+                {selectedBatch.medicationDataList && selectedBatch.medicationDataList.length > 0 ? (
+                  <div className="space-y-1">
+                    <span className="text-gray-400 text-xs">Medicamentos aplicados:</span>
+                    {selectedBatch.medicationDataList.map((med, i) => (
+                      <div key={i} className="text-sm text-gray-300 flex items-center gap-2">
+                        <span className="text-white">{med.medicamento}</span>
+                        <span className="text-gray-500">({med.dose} {med.unidade})</span>
+                        {med.subType && (
+                          <span className="px-1.5 py-0.5 bg-teal-500/20 text-teal-400 text-[10px] rounded">{med.subType}</span>
+                        )}
+                      </div>
+                    ))}
+                    <p className="text-gray-500 text-xs">Responsavel: {selectedBatch.medicationDataList[0]?.responsavel || '-'}</p>
+                  </div>
+                ) : selectedBatch.medicationData && (
+                  /* Backward compat: formato legado (único medicamento) */
                   <div className="text-sm text-gray-300">
                     <span className="text-gray-400">Medicamento: </span>
                     {selectedBatch.medicationData.medicamento} ({selectedBatch.medicationData.dose} {selectedBatch.medicationData.unidade})
