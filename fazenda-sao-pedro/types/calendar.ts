@@ -35,6 +35,7 @@ export interface ManagementArea {
 export enum BatchPurpose {
   Vacinacao = 'Vacinação',
   Vermifugacao = 'Vermifugação',
+  Medicamentos = 'Medicamentos',
   Pesagem = 'Pesagem',
   Venda = 'Venda',
   Desmame = 'Desmame',
@@ -43,6 +44,9 @@ export enum BatchPurpose {
   Apartacao = 'Apartação',
   Outros = 'Outros',
 }
+
+/** Sub-tipos para a finalidade "Medicamentos" */
+export type MedicationSubType = 'Vacinação' | 'Vermifugação' | 'Banho' | 'Protocolo Cio' | 'Outro';
 
 export interface ManagementBatch {
   id: string;
@@ -57,13 +61,16 @@ export interface ManagementBatch {
 
   // Dados de sincronização ao concluir o lote
 
-  // Para Vacinação/Vermifugação: dados da medicação (iguais para todos animais)
+  // Para Vacinação/Vermifugação/Medicamentos: dados da medicação (iguais para todos animais)
   medicationData?: {
     medicamento: string;
     dose: number;
     unidade: 'ml' | 'mg' | 'dose';
     responsavel: string;
   };
+
+  /** Sub-tipo de medicamento (para purpose === 'Medicamentos') */
+  medicationSubType?: MedicationSubType;
 
   // Para Pesagem/Desmame: pesos individuais por animal
   animalWeights?: Record<string, number>;

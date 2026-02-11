@@ -809,6 +809,66 @@ export const getUnverifiedCalvings = (
 };
 
 /**
+ * Retorna vacas classificadas como vazias (diagnóstico final negativo) na estação.
+ * Inclui:
+ * - Coberturas com pregnancyResult 'negative' sem repasse habilitado
+ * - Coberturas com repasse habilitado e repasse diagnosisResult 'negative'
+ */
+export const getEmptyCows = (
+  season: BreedingSeason,
+  animals: Animal[]
+): {
+  cowId: string;
+  cowBrinco: string;
+  cowNome?: string;
+  coverageId: string;
+  coverageType: CoverageType;
+  hadRepasse: boolean;
+  diagnosisDate?: Date;
+}[] => {
+  const results: {
+    cowId: string;
+    cowBrinco: string;
+    cowNome?: string;
+    coverageId: string;
+    coverageType: CoverageType;
+    hadRepasse: boolean;
+    diagnosisDate?: Date;
+  }[] = [];
+
+  (season.coverageRecords || []).forEach((c) => {
+    // Caso 1: DG principal negativo, sem repasse
+    if (c.pregnancyResult === 'negative' && !c.repasse?.enabled) {
+      const animal = animals.find((a) => a.id === c.cowId);
+      results.push({
+        cowId: c.cowId,
+        cowBrinco: c.cowBrinco,
+        cowNome: animal?.nome,
+        coverageId: c.id,
+        coverageType: c.type,
+        hadRepasse: false,
+        diagnosisDate: c.pregnancyCheckDate ? new Date(c.pregnancyCheckDate) : undefined,
+      });
+    }
+    // Caso 2: DG principal negativo, repasse habilitado mas repasse também negativo
+    if (c.pregnancyResult === 'negative' && c.repasse?.enabled && c.repasse.diagnosisResult === 'negative') {
+      const animal = animals.find((a) => a.id === c.cowId);
+      results.push({
+        cowId: c.cowId,
+        cowBrinco: c.cowBrinco,
+        cowNome: animal?.nome,
+        coverageId: c.id,
+        coverageType: c.type,
+        hadRepasse: true,
+        diagnosisDate: c.repasse.diagnosisDate ? new Date(c.repasse.diagnosisDate) : undefined,
+      });
+    }
+  });
+
+  return results.sort((a, b) => a.cowBrinco.localeCompare(b.cowBrinco, 'pt-BR', { numeric: true }));
+};
+
+/**
  * Retorna lista de abortos registrados na estação de monta.
  */
 export const getRegisteredAbortions = (
@@ -861,4 +921,68 @@ export const getRegisteredAbortions = (
   });
 
   return abortions.sort((a, b) => a.expectedDate.getTime() - b.expectedDate.getTime());
+};
+
+/**
+ * Detecta vacas IATF/FIV prenhes cujos bezerros nasceram com mais de 30 dias
+ * após a data prevista de parto. Isso indica que a vaca pode ter perdido a
+ * prenhez original e engravidado na estação de monta (monta natural),
+ * portanto o pai registrado pode estar incorreto.
+ *
+ * @param season - Estação de monta
+ * @param animals - Lista de animais do plantel
+ * @param lateDaysThreshold - Dias de atraso para considerar alerta (default: 30)
+ */
+export interface LateBirthAlert {
+  coverageId: string;
+  cowId: string;
+  cowBrinco: string;
+  calfId: string;
+  calfBrinco: string;
+  coverageType: CoverageType;
+  expectedDate: Date;
+  actualDate: Date;
+  daysLate: number;
+  registeredSire: string;
+}
+
+export const detectLateBirthAlerts = (
+  season: BreedingSeason,
+  animals: Animal[],
+  lateDaysThreshold: number = 30
+): LateBirthAlert[] => {
+  const alerts: LateBirthAlert[] = [];
+
+  (season.coverageRecords || []).forEach((c) => {
+    // Apenas coberturas IATF/FIV/IA com DG positivo e parto realizado
+    if (
+      (c.type === 'iatf' || c.type === 'fiv' || c.type === 'ia') &&
+      c.pregnancyResult === 'positive' &&
+      c.calvingResult === 'realizado' &&
+      c.expectedCalvingDate &&
+      c.actualCalvingDate &&
+      c.calfId
+    ) {
+      const expected = new Date(c.expectedCalvingDate);
+      const actual = new Date(c.actualCalvingDate);
+      const diffDays = Math.floor((actual.getTime() - expected.getTime()) / (1000 * 60 * 60 * 24));
+
+      if (diffDays > lateDaysThreshold) {
+        alerts.push({
+          coverageId: c.id,
+          cowId: c.cowId,
+          cowBrinco: c.cowBrinco,
+          calfId: c.calfId,
+          calfBrinco: c.calfBrinco || 'Desconhecido',
+          coverageType: c.type,
+          expectedDate: expected,
+          actualDate: actual,
+          daysLate: diffDays,
+          registeredSire: c.semenCode || c.bullBrinco || 'Desconhecido',
+        });
+      }
+    }
+  });
+
+  return alerts.sort((a, b) => b.daysLate - a.daysLate);
 };

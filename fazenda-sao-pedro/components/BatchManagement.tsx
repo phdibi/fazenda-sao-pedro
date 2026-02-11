@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { ManagementBatch, BatchPurpose, Animal, WeighingType } from '../types';
+import { ManagementBatch, BatchPurpose, Animal, WeighingType, MedicationSubType } from '../types';
 import Modal from './common/Modal';
 
 const COMMON_MEDICATIONS = [
@@ -7,6 +7,14 @@ const COMMON_MEDICATIONS = [
   'Doramectina',
   'Vacina Aftosa',
   'Vacina Carbunculo',
+];
+
+const MEDICATION_SUB_TYPES: MedicationSubType[] = [
+  'Vacinação',
+  'Vermifugação',
+  'Banho',
+  'Protocolo Cio',
+  'Outro',
 ];
 
 interface BatchManagementProps {
@@ -33,8 +41,15 @@ const BatchManagement: React.FC<BatchManagementProps> = ({
     description: '',
     purpose: BatchPurpose.Pesagem,
     animalIds: [] as string[],
+    medicationSubType: 'Vacinação' as MedicationSubType,
   });
   const [searchTerm, setSearchTerm] = useState('');
+
+  // Estado de edição do lote ativo
+  const [isEditingBatch, setIsEditingBatch] = useState(false);
+  const [editAnimalIds, setEditAnimalIds] = useState<string[]>([]);
+  const [editSearchTerm, setEditSearchTerm] = useState('');
+  const [editDescription, setEditDescription] = useState('');
 
   // Estado do modal de conclusão
   const [completionBatch, setCompletionBatch] = useState<ManagementBatch | null>(null);
@@ -44,6 +59,7 @@ const BatchManagement: React.FC<BatchManagementProps> = ({
     unidade: 'ml' as 'ml' | 'mg' | 'dose',
     responsavel: 'Equipe Campo',
   });
+  const [completionMedSubType, setCompletionMedSubType] = useState<MedicationSubType>('Vacinação');
   const [animalWeights, setAnimalWeights] = useState<Record<string, string>>({});
   const [weighingType, setWeighingType] = useState<WeighingType>(WeighingType.None);
 
@@ -53,7 +69,11 @@ const BatchManagement: React.FC<BatchManagementProps> = ({
   );
 
   const completedBatches = useMemo(() =>
-    batches.filter(b => b.status === 'completed').slice(0, 5),
+    batches.filter(b => b.status === 'completed').sort((a, b) => {
+      const dateA = a.completedAt ? new Date(a.completedAt).getTime() : 0;
+      const dateB = b.completedAt ? new Date(b.completedAt).getTime() : 0;
+      return dateB - dateA;
+    }).slice(0, 10),
     [batches]
   );
 
@@ -66,6 +86,15 @@ const BatchManagement: React.FC<BatchManagementProps> = ({
     ).slice(0, 50);
   }, [animals, searchTerm]);
 
+  const editFilteredAnimals = useMemo(() => {
+    if (!editSearchTerm) return animals.slice(0, 50);
+    const term = editSearchTerm.toLowerCase();
+    return animals.filter(a =>
+      a.brinco.toLowerCase().includes(term) ||
+      a.nome?.toLowerCase().includes(term)
+    ).slice(0, 50);
+  }, [animals, editSearchTerm]);
+
   const handleCreateBatch = () => {
     if (!newBatch.name.trim()) return;
 
@@ -76,9 +105,10 @@ const BatchManagement: React.FC<BatchManagementProps> = ({
       animalIds: newBatch.animalIds,
       createdAt: new Date(),
       status: 'active',
+      ...(newBatch.purpose === BatchPurpose.Medicamentos ? { medicationSubType: newBatch.medicationSubType } : {}),
     });
 
-    setNewBatch({ name: '', description: '', purpose: BatchPurpose.Pesagem, animalIds: [] });
+    setNewBatch({ name: '', description: '', purpose: BatchPurpose.Pesagem, animalIds: [], medicationSubType: 'Vacinação' });
     setIsCreateModalOpen(false);
   };
 
@@ -91,7 +121,44 @@ const BatchManagement: React.FC<BatchManagementProps> = ({
     }));
   };
 
+  const toggleAnimalInEdit = (animalId: string) => {
+    setEditAnimalIds(prev =>
+      prev.includes(animalId)
+        ? prev.filter(id => id !== animalId)
+        : [...prev, animalId]
+    );
+  };
+
   const getAnimalById = (id: string) => animals.find(a => a.id === id);
+
+  // Abre o modal de detalhes (para edição ou visualização)
+  const openBatchDetail = (batch: ManagementBatch) => {
+    setSelectedBatch(batch);
+    setIsEditingBatch(false);
+    setEditAnimalIds(batch.animalIds);
+    setEditDescription(batch.description || '');
+    setEditSearchTerm('');
+  };
+
+  // Inicia modo edição do lote selecionado
+  const startEditingBatch = () => {
+    if (!selectedBatch) return;
+    setEditAnimalIds([...selectedBatch.animalIds]);
+    setEditDescription(selectedBatch.description || '');
+    setIsEditingBatch(true);
+    setEditSearchTerm('');
+  };
+
+  // Salva edição do lote
+  const saveEditBatch = () => {
+    if (!selectedBatch) return;
+    onUpdateBatch(selectedBatch.id, {
+      animalIds: editAnimalIds,
+      description: editDescription,
+    });
+    setSelectedBatch({ ...selectedBatch, animalIds: editAnimalIds, description: editDescription });
+    setIsEditingBatch(false);
+  };
 
   // Abre o modal de conclusão
   const openCompletionModal = (batch: ManagementBatch) => {
@@ -99,6 +166,7 @@ const BatchManagement: React.FC<BatchManagementProps> = ({
     setMedicationForm({ medicamento: '', dose: '', unidade: 'ml', responsavel: 'Equipe Campo' });
     setAnimalWeights({});
     setWeighingType(WeighingType.None);
+    setCompletionMedSubType(batch.medicationSubType || 'Vacinação');
   };
 
   // Handler de conclusão do lote com sincronização
@@ -109,40 +177,48 @@ const BatchManagement: React.FC<BatchManagementProps> = ({
 
     let completionData: Partial<ManagementBatch> = {};
 
-    switch (completionBatch.purpose) {
-      case BatchPurpose.Vacinacao:
-      case BatchPurpose.Vermifugacao: {
-        if (!medicationForm.medicamento.trim()) return;
-        completionData = {
-          medicationData: {
-            medicamento: medicationForm.medicamento,
-            dose: parseFloat(medicationForm.dose) || 0,
-            unidade: medicationForm.unidade,
-            responsavel: medicationForm.responsavel || 'Equipe Campo',
-          }
-        };
-        break;
+    // Determina se é um lote de medicamentos (novo ou legado)
+    const isMedication =
+      completionBatch.purpose === BatchPurpose.Medicamentos ||
+      completionBatch.purpose === BatchPurpose.Vacinacao ||
+      completionBatch.purpose === BatchPurpose.Vermifugacao;
+
+    if (isMedication) {
+      if (!medicationForm.medicamento.trim()) return;
+      completionData = {
+        medicationData: {
+          medicamento: medicationForm.medicamento,
+          dose: parseFloat(medicationForm.dose) || 0,
+          unidade: medicationForm.unidade,
+          responsavel: medicationForm.responsavel || 'Equipe Campo',
+        },
+        medicationSubType: completionBatch.purpose === BatchPurpose.Medicamentos
+          ? completionMedSubType
+          : (completionBatch.purpose === BatchPurpose.Vacinacao ? 'Vacinação' : 'Vermifugação'),
+      };
+    } else {
+      switch (completionBatch.purpose) {
+        case BatchPurpose.Pesagem: {
+          const weights: Record<string, number> = {};
+          Object.entries(animalWeights).forEach(([id, val]) => {
+            const num = parseFloat(val);
+            if (num > 0) weights[id] = num;
+          });
+          completionData = { animalWeights: weights, weighingType };
+          break;
+        }
+        case BatchPurpose.Desmame: {
+          const weights: Record<string, number> = {};
+          Object.entries(animalWeights).forEach(([id, val]) => {
+            const num = parseFloat(val);
+            if (num > 0) weights[id] = num;
+          });
+          completionData = { animalWeights: weights };
+          break;
+        }
+        default:
+          break;
       }
-      case BatchPurpose.Pesagem: {
-        const weights: Record<string, number> = {};
-        Object.entries(animalWeights).forEach(([id, val]) => {
-          const num = parseFloat(val);
-          if (num > 0) weights[id] = num;
-        });
-        completionData = { animalWeights: weights, weighingType };
-        break;
-      }
-      case BatchPurpose.Desmame: {
-        const weights: Record<string, number> = {};
-        Object.entries(animalWeights).forEach(([id, val]) => {
-          const num = parseFloat(val);
-          if (num > 0) weights[id] = num;
-        });
-        completionData = { animalWeights: weights };
-        break;
-      }
-      default:
-        break;
     }
 
     setIsCompleting(true);
@@ -160,16 +236,16 @@ const BatchManagement: React.FC<BatchManagementProps> = ({
   // Verifica se o formulário de conclusão é válido
   const isCompletionValid = (): boolean => {
     if (!completionBatch) return false;
-    switch (completionBatch.purpose) {
-      case BatchPurpose.Vacinacao:
-      case BatchPurpose.Vermifugacao:
-        return !!medicationForm.medicamento.trim();
-      case BatchPurpose.Pesagem:
-      case BatchPurpose.Desmame:
-        return Object.values(animalWeights).some(v => parseFloat(v) > 0);
-      default:
-        return true;
+    const isMedication =
+      completionBatch.purpose === BatchPurpose.Medicamentos ||
+      completionBatch.purpose === BatchPurpose.Vacinacao ||
+      completionBatch.purpose === BatchPurpose.Vermifugacao;
+
+    if (isMedication) return !!medicationForm.medicamento.trim();
+    if (completionBatch.purpose === BatchPurpose.Pesagem || completionBatch.purpose === BatchPurpose.Desmame) {
+      return Object.values(animalWeights).some(v => parseFloat(v) > 0);
     }
+    return true;
   };
 
   // Título do modal de conclusão baseado no propósito
@@ -179,6 +255,7 @@ const BatchManagement: React.FC<BatchManagementProps> = ({
       case BatchPurpose.Venda: return 'Confirmar Venda';
       case BatchPurpose.Vacinacao: return 'Dados da Vacinacao';
       case BatchPurpose.Vermifugacao: return 'Dados da Vermifugacao';
+      case BatchPurpose.Medicamentos: return 'Dados do Medicamento';
       case BatchPurpose.Pesagem: return 'Registrar Pesagem';
       case BatchPurpose.Desmame: return 'Registrar Desmame';
       default: return 'Concluir Lote';
@@ -188,6 +265,7 @@ const BatchManagement: React.FC<BatchManagementProps> = ({
   const purposeColors: Record<BatchPurpose, string> = {
     [BatchPurpose.Vacinacao]: 'bg-red-600',
     [BatchPurpose.Vermifugacao]: 'bg-orange-600',
+    [BatchPurpose.Medicamentos]: 'bg-teal-600',
     [BatchPurpose.Pesagem]: 'bg-blue-600',
     [BatchPurpose.Venda]: 'bg-green-600',
     [BatchPurpose.Desmame]: 'bg-purple-600',
@@ -197,9 +275,115 @@ const BatchManagement: React.FC<BatchManagementProps> = ({
     [BatchPurpose.Outros]: 'bg-gray-600',
   };
 
+  // Formulário de medicação reutilizável
+  const renderMedicationForm = (batchForForm: ManagementBatch, showSubType: boolean) => (
+    <div className="space-y-4">
+      <div className="bg-base-900 rounded-lg p-3">
+        <p className="text-gray-300 text-sm">
+          O medicamento sera registrado no historico sanitario de cada animal.
+        </p>
+        <p className="text-gray-500 text-xs mt-1">{batchForForm.animalIds.length} animais no lote</p>
+      </div>
+
+      {showSubType && (
+        <div>
+          <label className="block text-sm text-gray-400 mb-1">Tipo de Medicamento</label>
+          <div className="flex flex-wrap gap-2">
+            {MEDICATION_SUB_TYPES.map(st => (
+              <button
+                key={st}
+                type="button"
+                onClick={() => setCompletionMedSubType(st)}
+                className={`px-3 py-1.5 text-xs rounded-lg ${
+                  completionMedSubType === st
+                    ? 'bg-teal-600 text-white'
+                    : 'bg-base-700 text-gray-300 hover:bg-base-600'
+                }`}
+              >
+                {st}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div>
+        <label className="block text-sm text-gray-400 mb-1">Medicamento *</label>
+        <input
+          type="text"
+          value={medicationForm.medicamento}
+          onChange={(e) => setMedicationForm(prev => ({ ...prev, medicamento: e.target.value }))}
+          placeholder="Nome do medicamento"
+          className="w-full px-3 py-2 bg-base-700 border border-base-600 rounded-lg text-white"
+        />
+        <div className="flex flex-wrap gap-1 mt-2">
+          {COMMON_MEDICATIONS.map(m => (
+            <button
+              key={m}
+              type="button"
+              onClick={() => setMedicationForm(prev => ({ ...prev, medicamento: m }))}
+              className={`px-2 py-1 text-xs rounded ${
+                medicationForm.medicamento === m
+                  ? 'bg-brand-primary text-white'
+                  : 'bg-base-600 text-gray-300'
+              }`}
+            >
+              {m}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="flex gap-2">
+        <div className="flex-1">
+          <label className="block text-sm text-gray-400 mb-1">Dose</label>
+          <input
+            type="number"
+            value={medicationForm.dose}
+            onChange={(e) => setMedicationForm(prev => ({ ...prev, dose: e.target.value }))}
+            placeholder="0"
+            className="w-full px-3 py-2 bg-base-700 border border-base-600 rounded-lg text-white"
+          />
+        </div>
+        <div className="w-24">
+          <label className="block text-sm text-gray-400 mb-1">Unidade</label>
+          <select
+            value={medicationForm.unidade}
+            onChange={(e) => setMedicationForm(prev => ({ ...prev, unidade: e.target.value as 'ml' | 'mg' | 'dose' }))}
+            className="w-full px-3 py-2 bg-base-700 border border-base-600 rounded-lg text-white"
+          >
+            <option value="ml">ml</option>
+            <option value="mg">mg</option>
+            <option value="dose">dose</option>
+          </select>
+        </div>
+      </div>
+
+      <div>
+        <label className="block text-sm text-gray-400 mb-1">Responsavel</label>
+        <input
+          type="text"
+          value={medicationForm.responsavel}
+          onChange={(e) => setMedicationForm(prev => ({ ...prev, responsavel: e.target.value }))}
+          className="w-full px-3 py-2 bg-base-700 border border-base-600 rounded-lg text-white"
+        />
+      </div>
+    </div>
+  );
+
   // Renderiza o conteúdo do modal de conclusão baseado no propósito
   const renderCompletionContent = () => {
     if (!completionBatch) return null;
+
+    // Medicamentos (novo unificado) e legados (Vacinação/Vermifugação)
+    const isMedication =
+      completionBatch.purpose === BatchPurpose.Medicamentos ||
+      completionBatch.purpose === BatchPurpose.Vacinacao ||
+      completionBatch.purpose === BatchPurpose.Vermifugacao;
+
+    if (isMedication) {
+      return renderMedicationForm(completionBatch, completionBatch.purpose === BatchPurpose.Medicamentos);
+    }
 
     switch (completionBatch.purpose) {
       case BatchPurpose.Venda:
@@ -222,83 +406,6 @@ const BatchManagement: React.FC<BatchManagementProps> = ({
                   </div>
                 );
               })}
-            </div>
-          </div>
-        );
-
-      case BatchPurpose.Vacinacao:
-      case BatchPurpose.Vermifugacao:
-        return (
-          <div className="space-y-4">
-            <div className="bg-base-900 rounded-lg p-3">
-              <p className="text-gray-300 text-sm">
-                {completionBatch.purpose === BatchPurpose.Vacinacao
-                  ? 'A vacina sera registrada no historico sanitario de cada animal.'
-                  : 'O vermifugo sera registrado no historico sanitario de cada animal.'}
-              </p>
-              <p className="text-gray-500 text-xs mt-1">{completionBatch.animalIds.length} animais no lote</p>
-            </div>
-
-            <div>
-              <label className="block text-sm text-gray-400 mb-1">Medicamento *</label>
-              <input
-                type="text"
-                value={medicationForm.medicamento}
-                onChange={(e) => setMedicationForm(prev => ({ ...prev, medicamento: e.target.value }))}
-                placeholder="Nome do medicamento"
-                className="w-full px-3 py-2 bg-base-700 border border-base-600 rounded-lg text-white"
-              />
-              <div className="flex flex-wrap gap-1 mt-2">
-                {COMMON_MEDICATIONS.map(m => (
-                  <button
-                    key={m}
-                    type="button"
-                    onClick={() => setMedicationForm(prev => ({ ...prev, medicamento: m }))}
-                    className={`px-2 py-1 text-xs rounded ${
-                      medicationForm.medicamento === m
-                        ? 'bg-brand-primary text-white'
-                        : 'bg-base-600 text-gray-300'
-                    }`}
-                  >
-                    {m}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="flex gap-2">
-              <div className="flex-1">
-                <label className="block text-sm text-gray-400 mb-1">Dose</label>
-                <input
-                  type="number"
-                  value={medicationForm.dose}
-                  onChange={(e) => setMedicationForm(prev => ({ ...prev, dose: e.target.value }))}
-                  placeholder="0"
-                  className="w-full px-3 py-2 bg-base-700 border border-base-600 rounded-lg text-white"
-                />
-              </div>
-              <div className="w-24">
-                <label className="block text-sm text-gray-400 mb-1">Unidade</label>
-                <select
-                  value={medicationForm.unidade}
-                  onChange={(e) => setMedicationForm(prev => ({ ...prev, unidade: e.target.value as 'ml' | 'mg' | 'dose' }))}
-                  className="w-full px-3 py-2 bg-base-700 border border-base-600 rounded-lg text-white"
-                >
-                  <option value="ml">ml</option>
-                  <option value="mg">mg</option>
-                  <option value="dose">dose</option>
-                </select>
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-sm text-gray-400 mb-1">Responsavel</label>
-              <input
-                type="text"
-                value={medicationForm.responsavel}
-                onChange={(e) => setMedicationForm(prev => ({ ...prev, responsavel: e.target.value }))}
-                className="w-full px-3 py-2 bg-base-700 border border-base-600 rounded-lg text-white"
-              />
             </div>
           </div>
         );
@@ -409,6 +516,14 @@ const BatchManagement: React.FC<BatchManagementProps> = ({
     }
   };
 
+  // Label de propósito incluindo sub-tipo para Medicamentos
+  const getPurposeLabel = (batch: ManagementBatch): string => {
+    if (batch.purpose === BatchPurpose.Medicamentos && batch.medicationSubType) {
+      return `${batch.purpose} - ${batch.medicationSubType}`;
+    }
+    return batch.purpose;
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -433,13 +548,13 @@ const BatchManagement: React.FC<BatchManagementProps> = ({
               <div
                 key={batch.id}
                 className="bg-base-800 rounded-lg p-4 border border-base-700 hover:border-brand-primary transition-colors cursor-pointer"
-                onClick={() => setSelectedBatch(batch)}
+                onClick={() => openBatchDetail(batch)}
               >
                 <div className="flex items-start justify-between">
                   <div>
                     <h4 className="font-bold text-white">{batch.name}</h4>
                     <span className={`inline-block mt-1 px-2 py-0.5 text-xs rounded-full text-white ${purposeColors[batch.purpose]}`}>
-                      {batch.purpose}
+                      {getPurposeLabel(batch)}
                     </span>
                   </div>
                   <span className="text-2xl font-bold text-brand-primary">
@@ -479,11 +594,17 @@ const BatchManagement: React.FC<BatchManagementProps> = ({
             {completedBatches.map(batch => (
               <div
                 key={batch.id}
-                className="bg-base-800/50 rounded-lg px-4 py-2 flex justify-between items-center"
+                className="bg-base-800/50 rounded-lg px-4 py-2 flex justify-between items-center cursor-pointer hover:bg-base-800/70 transition-colors"
+                onClick={() => openBatchDetail(batch)}
               >
-                <div>
+                <div className="flex items-center gap-2">
                   <span className="text-white">{batch.name}</span>
-                  <span className="text-gray-500 text-sm ml-2">({batch.animalIds.length} animais)</span>
+                  <span className="text-gray-500 text-sm">({batch.animalIds.length} animais)</span>
+                  <span className={`px-1.5 py-0.5 text-[10px] rounded-full text-white ${purposeColors[batch.purpose]}`}>
+                    {batch.purpose === BatchPurpose.Medicamentos && batch.medicationSubType
+                      ? batch.medicationSubType
+                      : batch.purpose}
+                  </span>
                 </div>
                 <span className="text-xs text-gray-500">
                   {batch.completedAt && new Date(batch.completedAt).toLocaleDateString('pt-BR')}
@@ -524,6 +645,29 @@ const BatchManagement: React.FC<BatchManagementProps> = ({
               ))}
             </select>
           </div>
+
+          {/* Sub-tipo de Medicamentos */}
+          {newBatch.purpose === BatchPurpose.Medicamentos && (
+            <div>
+              <label className="block text-sm text-gray-400 mb-1">Tipo de Medicamento</label>
+              <div className="flex flex-wrap gap-2">
+                {MEDICATION_SUB_TYPES.map(st => (
+                  <button
+                    key={st}
+                    type="button"
+                    onClick={() => setNewBatch(prev => ({ ...prev, medicationSubType: st }))}
+                    className={`px-3 py-1.5 text-xs rounded-lg ${
+                      newBatch.medicationSubType === st
+                        ? 'bg-teal-600 text-white'
+                        : 'bg-base-700 text-gray-300 hover:bg-base-600'
+                    }`}
+                  >
+                    {st}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
           <div>
             <label className="block text-sm text-gray-400 mb-1">Descricao</label>
@@ -589,62 +733,170 @@ const BatchManagement: React.FC<BatchManagementProps> = ({
         </div>
       </Modal>
 
-      {/* Modal de Detalhes do Lote */}
+      {/* Modal de Detalhes do Lote (ativo ou concluido) */}
       <Modal
         isOpen={!!selectedBatch}
-        onClose={() => setSelectedBatch(null)}
+        onClose={() => { setSelectedBatch(null); setIsEditingBatch(false); }}
         title={selectedBatch?.name || 'Detalhes do Lote'}
       >
         {selectedBatch && (
           <div className="space-y-4">
             <div className="flex items-center gap-2">
               <span className={`px-2 py-1 text-xs rounded-full text-white ${purposeColors[selectedBatch.purpose]}`}>
-                {selectedBatch.purpose}
+                {getPurposeLabel(selectedBatch)}
               </span>
               <span className="text-gray-400 text-sm">
-                {selectedBatch.animalIds.length} animais
+                {isEditingBatch ? editAnimalIds.length : selectedBatch.animalIds.length} animais
               </span>
+              {selectedBatch.status === 'completed' && (
+                <span className="px-2 py-0.5 text-xs rounded-full bg-emerald-500/20 text-emerald-400">
+                  Concluido
+                </span>
+              )}
             </div>
 
-            {selectedBatch.description && (
-              <p className="text-gray-300">{selectedBatch.description}</p>
+            {/* Info de conclusão para lotes concluídos */}
+            {selectedBatch.status === 'completed' && (
+              <div className="bg-base-900 rounded-lg p-3 space-y-1">
+                {selectedBatch.completedAt && (
+                  <p className="text-xs text-gray-400">
+                    Concluido em: {new Date(selectedBatch.completedAt).toLocaleDateString('pt-BR')}
+                  </p>
+                )}
+                {selectedBatch.medicationData && (
+                  <div className="text-sm text-gray-300">
+                    <span className="text-gray-400">Medicamento: </span>
+                    {selectedBatch.medicationData.medicamento} ({selectedBatch.medicationData.dose} {selectedBatch.medicationData.unidade})
+                    <span className="text-gray-500 ml-2">- {selectedBatch.medicationData.responsavel}</span>
+                  </div>
+                )}
+                {selectedBatch.weighingType && (
+                  <p className="text-sm text-gray-300">
+                    <span className="text-gray-400">Tipo pesagem: </span>{selectedBatch.weighingType}
+                  </p>
+                )}
+              </div>
             )}
 
+            {/* Descrição - editável se em modo edição */}
+            {isEditingBatch ? (
+              <div>
+                <label className="block text-sm text-gray-400 mb-1">Descricao</label>
+                <textarea
+                  value={editDescription}
+                  onChange={(e) => setEditDescription(e.target.value)}
+                  placeholder="Observacoes opcionais..."
+                  className="w-full px-3 py-2 bg-base-700 border border-base-600 rounded-lg text-white resize-none"
+                  rows={2}
+                />
+              </div>
+            ) : (
+              selectedBatch.description && (
+                <p className="text-gray-300">{selectedBatch.description}</p>
+              )
+            )}
+
+            {/* Lista de animais - com edição se em modo edição */}
             <div>
               <h4 className="text-sm font-semibold text-gray-400 mb-2">Animais no Lote</h4>
-              <div className="max-h-64 overflow-y-auto space-y-1">
-                {selectedBatch.animalIds.map(id => {
-                  const animal = getAnimalById(id);
-                  if (!animal) return null;
-                  return (
-                    <div key={id} className="flex justify-between items-center p-2 bg-base-700 rounded">
-                      <span className="text-white">{animal.brinco}</span>
-                      <span className="text-gray-400 text-sm">{animal.pesoKg}kg</span>
-                    </div>
-                  );
-                })}
-              </div>
+
+              {isEditingBatch && (
+                <>
+                  <input
+                    type="text"
+                    value={editSearchTerm}
+                    onChange={(e) => setEditSearchTerm(e.target.value)}
+                    placeholder="Buscar por brinco ou nome..."
+                    className="w-full px-3 py-2 bg-base-700 border border-base-600 rounded-lg text-white mb-2 text-sm"
+                  />
+                  <div className="max-h-48 overflow-y-auto space-y-1 bg-base-900 rounded-lg p-2">
+                    {editFilteredAnimals.map(animal => (
+                      <label
+                        key={animal.id}
+                        className={`flex items-center gap-2 p-2 rounded cursor-pointer transition-colors ${
+                          editAnimalIds.includes(animal.id)
+                            ? 'bg-brand-primary/20 border border-brand-primary'
+                            : 'hover:bg-base-700'
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={editAnimalIds.includes(animal.id)}
+                          onChange={() => toggleAnimalInEdit(animal.id)}
+                          className="rounded"
+                        />
+                        <span className="text-white text-sm">{animal.brinco}</span>
+                        {animal.nome && <span className="text-gray-400 text-xs">({animal.nome})</span>}
+                        <span className="text-gray-500 text-xs ml-auto">{animal.pesoKg}kg</span>
+                      </label>
+                    ))}
+                  </div>
+                </>
+              )}
+
+              {!isEditingBatch && (
+                <div className="max-h-64 overflow-y-auto space-y-1">
+                  {selectedBatch.animalIds.map(id => {
+                    const animal = getAnimalById(id);
+                    if (!animal) return null;
+                    return (
+                      <div key={id} className="flex justify-between items-center p-2 bg-base-700 rounded">
+                        <span className="text-white">{animal.brinco}</span>
+                        <span className="text-gray-400 text-sm">{animal.pesoKg}kg</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
 
+            {/* Botões de ação */}
             <div className="flex gap-2 pt-4">
-              <button
-                onClick={() => {
-                  onDeleteBatch(selectedBatch.id);
-                  setSelectedBatch(null);
-                }}
-                className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
-              >
-                Excluir
-              </button>
-              {selectedBatch.status === 'active' && (
-                <button
-                  onClick={() => {
-                    openCompletionModal(selectedBatch);
-                  }}
-                  className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
-                >
-                  Marcar como Concluido
-                </button>
+              {isEditingBatch ? (
+                <>
+                  <button
+                    onClick={() => setIsEditingBatch(false)}
+                    className="flex-1 px-4 py-2 bg-base-700 text-white rounded-lg hover:bg-base-600"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={saveEditBatch}
+                    className="flex-1 px-4 py-2 bg-brand-primary text-white rounded-lg hover:bg-brand-primary-dark"
+                  >
+                    Salvar Alteracoes
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    onClick={() => {
+                      if (confirm('Tem certeza que deseja excluir este lote?')) {
+                        onDeleteBatch(selectedBatch.id);
+                        setSelectedBatch(null);
+                      }
+                    }}
+                    className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
+                  >
+                    Excluir
+                  </button>
+                  {selectedBatch.status === 'active' && (
+                    <>
+                      <button
+                        onClick={startEditingBatch}
+                        className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                      >
+                        Editar
+                      </button>
+                      <button
+                        onClick={() => openCompletionModal(selectedBatch)}
+                        className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
+                      >
+                        Marcar como Concluido
+                      </button>
+                    </>
+                  )}
+                </>
               )}
             </div>
           </div>

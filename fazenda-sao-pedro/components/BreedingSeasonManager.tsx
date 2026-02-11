@@ -27,6 +27,8 @@ import {
   getRegisteredAbortions,
   verifyCalvings,
   CalvingVerificationResult,
+  getEmptyCows,
+  detectLateBirthAlerts,
 } from '../services/breedingSeasonService';
 import {
   exportBreedingSeasonToCSV,
@@ -1570,7 +1572,7 @@ const BreedingSeasonManager: React.FC<BreedingSeasonManagerProps> = ({
   const [showEditSeason, setShowEditSeason] = useState(false);
   const [showExposedManager, setShowExposedManager] = useState(false);
   const [editingCoverage, setEditingCoverage] = useState<CoverageRecord | null>(null);
-  const [activeTab, setActiveTab] = useState<'overview' | 'coverages' | 'diagnostics' | 'calvings' | 'uncovered'>(
+  const [activeTab, setActiveTab] = useState<'overview' | 'coverages' | 'diagnostics' | 'calvings' | 'uncovered' | 'vazias'>(
     'overview'
   );
   const [tabSearch, setTabSearch] = useState('');
@@ -1622,6 +1624,18 @@ const BreedingSeasonManager: React.FC<BreedingSeasonManagerProps> = ({
   // Verificação de partos (com e sem terneiros cadastrados)
   const calvingVerifications = useMemo(
     () => (currentSeason ? verifyCalvings(currentSeason, animals, 30) : []),
+    [currentSeason, animals]
+  );
+
+  // Vacas vazias (diagnóstico final negativo)
+  const emptyCows = useMemo(
+    () => (currentSeason ? getEmptyCows(currentSeason, animals) : []),
+    [currentSeason, animals]
+  );
+
+  // Alertas de nascimento tardio (IATF/FIV com parto 30+ dias após previsto)
+  const lateBirthAlerts = useMemo(
+    () => (currentSeason ? detectLateBirthAlerts(currentSeason, animals) : []),
     [currentSeason, animals]
   );
 
@@ -1868,6 +1882,15 @@ Deseja continuar?`;
       if (result.paternityConfirmed > 0) messages.push(`🧬 ${result.paternityConfirmed} paternidade(s) confirmada(s)`);
       if (result.pending > 0) messages.push(`⏳ ${result.pending} pendente(s)`);
 
+      // Recalcula alertas de nascimento tardio após vinculação
+      const updatedSeason = seasons.find((s) => s.id === currentSeason.id);
+      if (updatedSeason) {
+        const newAlerts = detectLateBirthAlerts(updatedSeason, animals);
+        if (newAlerts.length > 0) {
+          messages.push(`\n⚠️ ${newAlerts.length} bezerro(s) de IATF/FIV/IA nasceram com atraso - verifique a paternidade abaixo`);
+        }
+      }
+
       if (messages.length > 0) {
         alert(`Verificação concluída!\n\n${messages.join('\n')}`);
       } else {
@@ -1879,7 +1902,7 @@ Deseja continuar?`;
     } finally {
       setIsVerifyingCalvings(false);
     }
-  }, [currentSeason, onVerifyAndRegisterAbortions]);
+  }, [currentSeason, onVerifyAndRegisterAbortions, seasons, animals]);
 
   // Handler para atualizar configuração individual
   const handleUpdatePaternityConfig = useCallback((key: string, update: { switchDate?: string; selectedBullIndex?: 0 | 1 }) => {
@@ -2408,14 +2431,12 @@ Deseja continuar?`;
             icon="📊"
             color="border-purple-500"
           />
-          {metrics.repasseCount > 0 && (
-            <MetricCard
-              label="Repasse"
-              value={`${metrics.repassePregnant}/${metrics.repasseCount}`}
-              icon="🔄"
-              color="border-amber-500"
-            />
-          )}
+          <MetricCard
+            label="Monta"
+            value={`${metrics.totalPregnant}/${metrics.totalCovered}`}
+            icon="🐂"
+            color="border-amber-500"
+          />
         </div>
       )}
 
@@ -2427,6 +2448,7 @@ Deseja continuar?`;
           { key: 'uncovered' as const, label: `Sem Monta (${uncoveredCows.length})` },
           { key: 'diagnostics' as const, label: `Diagnosticos (${metrics?.pregnancyChecksDue.length || 0})` },
           { key: 'calvings' as const, label: `Partos (${expectedCalvings.length})` },
+          { key: 'vazias' as const, label: `Vazias (${emptyCows.length})` },
         ]).map((tab) => (
           <button
             key={tab.key}
@@ -2804,6 +2826,45 @@ Deseja continuar?`;
             </div>
           )}
 
+          {/* Alerta de Nascimento Tardio - IATF/FIV */}
+          {lateBirthAlerts.length > 0 && (
+            <div className="bg-orange-900/20 border border-orange-700 rounded-xl p-4">
+              <h3 className="text-lg font-semibold text-orange-400 mb-3">
+                Verificar Paternidade ({lateBirthAlerts.length})
+              </h3>
+              <p className="text-sm text-orange-300/80 mb-3">
+                Bezerros de vacas IATF/FIV/IA que nasceram com mais de 30 dias de atraso. A vaca pode ter perdido a prenhez original e engravidado durante a estacao de monta - verifique o pai.
+              </p>
+              <div className="space-y-2">
+                {lateBirthAlerts.map((alert) => (
+                  <div
+                    key={alert.coverageId}
+                    className="flex items-center justify-between p-3 bg-base-800 rounded-lg"
+                  >
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium text-white">{alert.cowBrinco}</span>
+                        <span className="px-2 py-0.5 bg-orange-500/20 text-orange-400 text-xs rounded">
+                          {typeLabels[alert.coverageType]}
+                        </span>
+                        <span className="px-2 py-0.5 bg-red-500/20 text-red-400 text-xs font-semibold rounded">
+                          +{alert.daysLate} dias
+                        </span>
+                      </div>
+                      <div className="text-sm text-gray-400 mt-1">
+                        Bezerro: {alert.calfBrinco} | Pai registrado: {alert.registeredSire}
+                      </div>
+                    </div>
+                    <div className="text-right text-sm">
+                      <div className="text-gray-400">Previsto: {formatDate(alert.expectedDate)}</div>
+                      <div className="text-orange-400">Nasceu: {formatDate(alert.actualDate)}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Seção de Abortos */}
           {registeredAbortions.length > 0 && (
             <div className="bg-red-900/20 border border-red-700 rounded-xl p-4">
@@ -2955,6 +3016,74 @@ Deseja continuar?`;
         </div>
         </div>
       )}
+
+      {/* TAB: Vazias - Vacas com diagnóstico final negativo */}
+      {activeTab === 'vazias' && (() => {
+        const searchLower = tabSearch.toLowerCase();
+        const filteredEmpty = searchLower
+          ? emptyCows.filter((cow) => cow.cowBrinco.toLowerCase().includes(searchLower) || cow.cowNome?.toLowerCase().includes(searchLower))
+          : emptyCows;
+
+        return (
+          <div className="space-y-4">
+            <div className="bg-base-800 rounded-xl p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-white">
+                  Vacas Vazias ({emptyCows.length})
+                </h3>
+                {emptyCows.length > 0 && (
+                  <input
+                    type="text"
+                    placeholder="Buscar por brinco ou nome..."
+                    value={tabSearch}
+                    onChange={(e) => setTabSearch(e.target.value)}
+                    className="bg-base-700 border border-base-600 rounded-lg px-3 py-1.5 text-white text-sm w-48"
+                  />
+                )}
+              </div>
+
+              {emptyCows.length === 0 ? (
+                <p className="text-gray-400 text-center py-8">
+                  Nenhuma vaca classificada como vazia nesta estacao
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  {filteredEmpty.map((cow) => (
+                    <div
+                      key={cow.coverageId}
+                      className="flex items-center justify-between p-3 bg-base-700 rounded-lg"
+                    >
+                      <div className="flex items-center gap-3">
+                        <span className="font-medium text-white">{cow.cowBrinco}</span>
+                        {cow.cowNome && (
+                          <span className="text-sm text-gray-400">{cow.cowNome}</span>
+                        )}
+                        <span className={`px-2 py-0.5 rounded text-xs ${
+                          cow.hadRepasse
+                            ? 'bg-amber-500/20 text-amber-400'
+                            : 'bg-red-500/20 text-red-400'
+                        }`}>
+                          {cow.hadRepasse ? 'Vazia (pos-repasse)' : 'Vazia'}
+                        </span>
+                        <span className="px-2 py-0.5 bg-base-600 text-gray-300 text-xs rounded">
+                          {typeLabels[cow.coverageType]}
+                        </span>
+                      </div>
+                      <div className="text-right">
+                        {cow.diagnosisDate && (
+                          <div className="text-sm text-gray-400">
+                            DG: {formatDate(cow.diagnosisDate)}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 };

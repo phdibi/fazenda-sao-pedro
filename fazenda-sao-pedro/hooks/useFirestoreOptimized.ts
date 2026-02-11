@@ -1949,16 +1949,23 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
         };
 
         // 1. Atualiza o status do lote para 'completed'
-        // 🔧 OTIMIZAÇÃO: Não persiste animalWeights/medicationData no Firestore
-        // pois já são propagados para os animais (economia de storage)
+        // Persiste medicationData e weighingType/medicationSubType no lote para
+        // que a visualização de lotes concluídos funcione após recarregar a página.
+        // animalWeights NÃO é persistido (grande demais, já propagado nos animais).
         const batchRef = db.collection('batches').doc(batchId);
         const completedFields: Record<string, any> = {
             status: 'completed' as const,
             completedAt: now,
         };
-        // Preserva apenas weighingType (leve) no lote para referência
+        // Preserva weighingType, medicationSubType e medicationData no lote para referência
         if (completionData?.weighingType) {
             completedFields.weighingType = completionData.weighingType;
+        }
+        if (completionData?.medicationSubType) {
+            completedFields.medicationSubType = completionData.medicationSubType;
+        }
+        if (completionData?.medicationData) {
+            completedFields.medicationData = completionData.medicationData;
         }
         const wb0 = getWriteBatch();
         wb0.update(batchRef, { ...convertDatesToTimestamps(completedFields), updatedAt: now });
@@ -1989,11 +1996,14 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
                 break;
             }
 
+            case BatchPurpose.Medicamentos:
             case BatchPurpose.Vacinacao:
             case BatchPurpose.Vermifugacao: {
                 if (!mergedBatch.medicationData) break;
 
-                const motivo = mergedBatch.purpose === BatchPurpose.Vacinacao ? 'Vacinação' : 'Vermifugação';
+                const motivo = mergedBatch.purpose === BatchPurpose.Medicamentos
+                    ? (mergedBatch.medicationSubType || 'Medicamento')
+                    : mergedBatch.purpose === BatchPurpose.Vacinacao ? 'Vacinação' : 'Vermifugação';
 
                 for (const animalId of mergedBatch.animalIds) {
                     const animal = animalsMap.get(animalId);
