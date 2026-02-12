@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useReducer, useRef } from 'react';
 import { firebaseServices } from '../services/firebase';
 import { localCache } from '../services/localCache';
 import { trackReads, trackWrites, trackDeletes, isQuotaCritical, canPerformOperation } from '../services/quotaMonitor';
-import { Animal, FirestoreCollectionName, ManagementBatch, BatchPurpose, UserRole, WeighingType, AnimalStatus, Sexo, CalendarEvent, AppUser, ManagementArea, MedicationAdministration, PregnancyRecord, PregnancyType, AbortionRecord, Task, LoadingKey, LocalStateCollectionName, BreedingSeason, CoverageRecord, CoverageType, BullSwitchConfig } from '../types';
+import { Animal, FirestoreCollectionName, ManagementBatch, BatchPurpose, UserRole, WeighingType, AnimalStatus, Sexo, CalendarEvent, AppUser, ManagementArea, MedicationAdministration, WeightEntry, PregnancyRecord, PregnancyType, AbortionRecord, Task, LoadingKey, LocalStateCollectionName, BreedingSeason, CoverageRecord, CoverageType, BullSwitchConfig } from '../types';
 import { PREGNANCY_TYPE_MAP, getCoverageSireName } from '../services/breedingSeasonService';
 import { QUERY_LIMITS, ARCHIVED_COLLECTION_NAME, AUTO_SYNC_INTERVAL_MS } from '../constants/app';
 import { convertTimestampsToDates, convertDatesToTimestamps } from '../utils/dateHelpers';
@@ -1900,14 +1900,22 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
         try {
             const now = new Date();
 
-            // Se o lote era de medicamentos e foi concluído, remove registros do historicoSanitario
-            const isMedBatch = batch && batch.status === 'completed' && (
+            // Verifica se o lote concluído tem dados sincronizados que precisam ser revertidos
+            const isCompleted = batch && batch.status === 'completed';
+            const isMedBatch = isCompleted && (
                 batch.purpose === BatchPurpose.Medicamentos ||
                 batch.purpose === BatchPurpose.Vacinacao ||
                 batch.purpose === BatchPurpose.Vermifugacao
             );
+            const isPesagemBatch = isCompleted && (
+                batch.purpose === BatchPurpose.Pesagem ||
+                batch.purpose === BatchPurpose.Desmame
+            );
+            const isVendaBatch = isCompleted && batch.purpose === BatchPurpose.Venda;
 
-            if (isMedBatch && batch) {
+            const needsReversal = (isMedBatch || isPesagemBatch || isVendaBatch) && batch;
+
+            if (needsReversal) {
                 const batchPrefix = `batch_${batchId}_`;
 
                 // Lookup O(1) para animais
@@ -1936,25 +1944,64 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
 
                 for (const animalId of batch.animalIds) {
                     const animal = animalsMap.get(animalId);
-                    if (!animal || !animal.historicoSanitario?.length) continue;
+                    if (!animal) continue;
+                    const animalRef = db.collection('animals').doc(animalId);
 
-                    const filteredHistorico = animal.historicoSanitario.filter(
-                        (record: MedicationAdministration) => !record.id?.startsWith(batchPrefix)
-                    );
+                    // ── REVERSÃO: Medicamentos → remove do historicoSanitario ──
+                    if (isMedBatch && animal.historicoSanitario?.length) {
+                        const filteredHistorico = animal.historicoSanitario.filter(
+                            (record: MedicationAdministration) => !record.id?.startsWith(batchPrefix)
+                        );
 
-                    // Só atualiza se houve remoção
-                    if (filteredHistorico.length < animal.historicoSanitario.length) {
+                        if (filteredHistorico.length < animal.historicoSanitario.length) {
+                            const wb = getWB();
+                            wb.update(animalRef, {
+                                historicoSanitario: convertDatesToTimestamps(filteredHistorico),
+                                updatedAt: now,
+                            });
+                            dispatch({
+                                type: 'LOCAL_UPDATE_ANIMAL',
+                                payload: { animalId, updatedData: { historicoSanitario: filteredHistorico } }
+                            });
+                        }
+                    }
+
+                    // ── REVERSÃO: Pesagem/Desmame → remove do historicoPesagens + recalcula pesoKg ──
+                    if (isPesagemBatch && animal.historicoPesagens?.length) {
+                        const filteredPesagens = animal.historicoPesagens.filter(
+                            (entry: WeightEntry) => !entry.id?.startsWith(batchPrefix)
+                        );
+
+                        if (filteredPesagens.length < animal.historicoPesagens.length) {
+                            // Recalcula pesoKg: último peso restante no histórico, ou 0 se vazio
+                            const sortedRemaining = [...filteredPesagens].sort(
+                                (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
+                            );
+                            const latestWeight = sortedRemaining.length > 0 ? sortedRemaining[0].weightKg : 0;
+
+                            const wb = getWB();
+                            wb.update(animalRef, {
+                                historicoPesagens: convertDatesToTimestamps(filteredPesagens),
+                                pesoKg: latestWeight,
+                                updatedAt: now,
+                            });
+                            dispatch({
+                                type: 'LOCAL_UPDATE_ANIMAL',
+                                payload: { animalId, updatedData: { historicoPesagens: filteredPesagens, pesoKg: latestWeight } }
+                            });
+                        }
+                    }
+
+                    // ── REVERSÃO: Venda → volta status para Ativo ──
+                    if (isVendaBatch) {
                         const wb = getWB();
-                        const animalRef = db.collection('animals').doc(animalId);
                         wb.update(animalRef, {
-                            historicoSanitario: convertDatesToTimestamps(filteredHistorico),
+                            status: AnimalStatus.Ativo,
                             updatedAt: now,
                         });
-
-                        // Optimistic local update
                         dispatch({
                             type: 'LOCAL_UPDATE_ANIMAL',
-                            payload: { animalId, updatedData: { historicoSanitario: filteredHistorico } }
+                            payload: { animalId, updatedData: { status: AnimalStatus.Ativo } }
                         });
                     }
                 }
@@ -1964,7 +2011,6 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
                 wb.delete(db.collection('batches').doc(batchId));
 
                 trackWrites(totalOps);
-                // Commit all batches
                 for (const wbChunk of writeBatches) {
                     await wbChunk.commit();
                 }
