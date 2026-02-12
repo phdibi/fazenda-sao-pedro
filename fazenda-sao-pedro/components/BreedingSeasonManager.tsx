@@ -2433,7 +2433,7 @@ Deseja continuar?`;
           />
           <MetricCard
             label="Monta"
-            value={`${metrics.totalPregnant}/${metrics.totalCovered}`}
+            value={`${metrics.montaNaturalPregnant}/${metrics.montaNaturalTotal}`}
             icon="🐂"
             color="border-amber-500"
           />

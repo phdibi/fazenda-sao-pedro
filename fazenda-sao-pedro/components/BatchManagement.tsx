@@ -708,7 +708,7 @@ const BatchManagement: React.FC<BatchManagementProps> = ({
               onChange={(e) => setNewBatch(prev => ({ ...prev, purpose: e.target.value as BatchPurpose }))}
               className="w-full px-3 py-2 bg-base-700 border border-base-600 rounded-lg text-white"
             >
-              {Object.values(BatchPurpose).map(purpose => (
+              {[BatchPurpose.Medicamentos, BatchPurpose.Pesagem, BatchPurpose.Venda].map(purpose => (
                 <option key={purpose} value={purpose}>{purpose}</option>
               ))}
             </select>

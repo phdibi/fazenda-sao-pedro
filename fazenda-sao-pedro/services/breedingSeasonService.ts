@@ -178,6 +178,9 @@ export interface BreedingSeasonMetrics {
   repasseCount: number;
   repassePregnant: number;
   overallPregnancyRate: number;
+  // Monta Natural específico (exclui IATF/FIV/IA)
+  montaNaturalPregnant: number;
+  montaNaturalTotal: number;
 }
 
 /**
@@ -204,20 +207,36 @@ export const calculateBreedingMetrics = (
   let repasseCount = 0;
   let repassePregnant = 0;
 
+  // Monta Natural: rastreia vacas que passaram por monta natural (direta ou repasse)
+  const montaNaturalCowIds = new Set<string>();
+  const montaNaturalPregnantCowIds = new Set<string>();
+
   coverages.forEach((c) => {
+    // Rastreia coberturas de monta natural direta
+    if (c.type === 'natural') {
+      montaNaturalCowIds.add(c.cowId);
+    }
+
     // Resultado da cobertura principal
     if (c.pregnancyResult === 'positive') {
       pregnantCowIds.add(c.cowId);
       firstServicePregnant.add(c.cowId);
+      // Se prenhe e cobertura foi monta natural, conta como prenhe de monta
+      if (c.type === 'natural') {
+        montaNaturalPregnantCowIds.add(c.cowId);
+      }
       return; // Se prenhe na primeira cobertura, não precisa de repasse
     }
 
     // Se tem repasse habilitado (DG principal foi negativo)
+    // Repasse é SEMPRE monta natural, independente do tipo da cobertura original
     if (c.repasse?.enabled) {
       repasseCount++;
+      montaNaturalCowIds.add(c.cowId); // repasse = monta natural
       if (c.repasse.diagnosisResult === 'positive') {
         repassePregnant++;
         pregnantCowIds.add(c.cowId);
+        montaNaturalPregnantCowIds.add(c.cowId); // prenhe no repasse = prenhe de monta
       } else if (c.repasse.diagnosisResult === 'negative') {
         emptyCowIds.add(c.cowId);
       } else {
@@ -400,6 +419,8 @@ export const calculateBreedingMetrics = (
     repasseCount,
     repassePregnant,
     overallPregnancyRate: Math.round(overallPregnancyRate * 10) / 10,
+    montaNaturalPregnant: montaNaturalPregnantCowIds.size,
+    montaNaturalTotal: montaNaturalCowIds.size,
   };
 };
 
