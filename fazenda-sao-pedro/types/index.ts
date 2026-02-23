@@ -401,7 +401,7 @@ export interface OfflineOperation {
   type: OfflineOperationType;
   collection: string;
   documentId?: string;
-  data: any;
+  data: Record<string, unknown>;
   timestamp: number;
   retryCount: number;
   lastError?: string;

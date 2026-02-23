@@ -207,21 +207,6 @@ export const keyById = <T extends { id: string }>(array: T[]): Record<string, T>
 };
 
 /**
- * Debounce de uma função
- */
-export const debounce = <T extends (...args: any[]) => any>(
-    fn: T, 
-    delay: number
-): ((...args: Parameters<T>) => void) => {
-    let timeoutId: ReturnType<typeof setTimeout>;
-    
-    return (...args: Parameters<T>) => {
-        clearTimeout(timeoutId);
-        timeoutId = setTimeout(() => fn(...args), delay);
-    };
-};
-
-/**
  * Throttle de uma função
  */
 export const throttle = <T extends (...args: any[]) => any>(

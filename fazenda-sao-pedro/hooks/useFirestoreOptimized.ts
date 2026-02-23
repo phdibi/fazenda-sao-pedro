@@ -8,6 +8,8 @@ import { QUERY_LIMITS, ARCHIVED_COLLECTION_NAME, AUTO_SYNC_INTERVAL_MS } from '.
 import { convertTimestampsToDates, convertDatesToTimestamps } from '../utils/dateHelpers';
 import { removeUndefined } from '../utils/objectHelpers';
 import { migrateHealthHistory, needsMigration } from '../utils/medicationMigration';
+import { log } from '../utils/logger';
+import { AnimalIndex, buildAnimalIndex } from '../utils/animalIndex';
 
 // ============================================
 // 🔧 CONSTANTES DE TIPO DE COBERTURA
@@ -344,7 +346,7 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
         const fetchFromFirestore = async (): Promise<{ data: T[]; lastDoc: any | null; hasMore: boolean }> => {
             // 🔧 OTIMIZAÇÃO: Verificar quota antes de buscar
             if (isQuotaCritical()) {
-                console.warn('⛔ [QUOTA] Quota crítica! Tentando usar cache local...');
+                log.warn('⛔ [QUOTA] Quota crítica! Tentando usar cache local...');
                 const cachedData = await localCache.get<T>(cacheKey);
                 if (cachedData) {
                     return { data: cachedData.data, lastDoc: null, hasMore: false };
@@ -352,7 +354,7 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
                 throw new Error('Quota crítica e sem cache disponível. Tente novamente amanhã.');
             }
 
-            console.log(`🔥 [FIRESTORE] Buscando ${collectionName}...`);
+            log.debug(`🔥 [FIRESTORE] Buscando ${collectionName}...`);
             let query: any = db.collection(firestorePath)
                 .where("userId", "==", userId);
 
@@ -391,7 +393,7 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
 
         if (cached) {
             // STALE-WHILE-REVALIDATE: Retorna cache imediatamente
-            console.log(`📦 [CACHE ${localCache.isFresh(cached.timestamp) ? 'HIT' : 'STALE'}] ${collectionName}`);
+            log.debug(`📦 [CACHE ${localCache.isFresh(cached.timestamp) ? 'HIT' : 'STALE'}] ${collectionName}`);
             dispatch({ type: 'SET_DATA', payload: { collection: collectionName as any, data: cached.data } });
             dispatch({ type: 'SET_LOADING_STATUS', payload: { collection: loadingKey, status: false } });
 
@@ -407,8 +409,8 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
                         dispatch({ type: 'SET_PAGINATION', payload: { collection: 'animals', hasMore, lastDoc } });
                     }
 
-                    console.log(`🔄 [REVALIDATED] ${collectionName}`);
-                }).catch(err => console.error(`Erro ao revalidar ${collectionName}:`, err));
+                    log.info(`🔄 [REVALIDATED] ${collectionName}`);
+                }).catch(err => log.error(`Erro ao revalidar ${collectionName}:`, err));
             }
             return cached.data;
         }
@@ -425,12 +427,12 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
             if (collectionName === 'animals') {
                 lastDocRef.current = lastDoc;
                 dispatch({ type: 'SET_PAGINATION', payload: { collection: 'animals', hasMore, lastDoc } });
-                console.log(`📄 [PAGINATION] Animals: hasMore=${hasMore}, loaded=${data.length}`);
+                log.debug(`📄 [PAGINATION] Animals: hasMore=${hasMore}, loaded=${data.length}`);
             }
 
             return data;
         } catch (error) {
-            console.error(`Erro ao buscar ${collectionName}:`, error);
+            log.error(`Erro ao buscar ${collectionName}:`, error);
             dispatch({ type: 'SET_ERROR', payload: `Falha ao buscar ${collectionName}` });
             dispatch({ type: 'SET_LOADING_STATUS', payload: { collection: loadingKey, status: false } });
             return [];
@@ -438,14 +440,49 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
     }, [userId]);
 
     // ============================================
-    // FUNÇÃO: Atualizar cache local
+    // FUNÇÃO: Atualizar cache local (com debounce)
     // ============================================
     // IMPORTANTE: Esta função deve estar definida ANTES de loadMoreAnimals
     // para evitar erro "Cannot access 'updateLocalCache' before initialization"
+    // Debounce de 300ms para evitar escritas excessivas no IndexedDB durante operações rápidas
+    const pendingCacheUpdates = useRef(new Map<string, any[]>());
+    const flushCacheTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    const flushCache = useCallback(async () => {
+        if (!userId) return;
+        const updates = new Map(pendingCacheUpdates.current);
+        pendingCacheUpdates.current.clear();
+        for (const [collectionName, data] of updates) {
+            const cacheKey = `${userId}_${collectionName}`;
+            await localCache.set(cacheKey, data);
+        }
+    }, [userId]);
+
     const updateLocalCache = useCallback(async (collectionName: string, data: any[]) => {
         if (!userId) return;
-        const cacheKey = `${userId}_${collectionName}`;
-        await localCache.set(cacheKey, data);
+        pendingCacheUpdates.current.set(collectionName, data);
+        if (flushCacheTimeout.current) clearTimeout(flushCacheTimeout.current);
+        flushCacheTimeout.current = setTimeout(() => {
+            flushCache();
+        }, 300);
+    }, [userId, flushCache]);
+
+    // Flush pendente ao desmontar
+    useEffect(() => {
+        return () => {
+            if (flushCacheTimeout.current) {
+                clearTimeout(flushCacheTimeout.current);
+                // Flush síncrono no unmount
+                if (userId && pendingCacheUpdates.current.size > 0) {
+                    const updates = new Map(pendingCacheUpdates.current);
+                    pendingCacheUpdates.current.clear();
+                    for (const [collectionName, data] of updates) {
+                        const cacheKey = `${userId}_${collectionName}`;
+                        localCache.set(cacheKey, data);
+                    }
+                }
+            }
+        };
     }, [userId]);
 
     // ============================================
@@ -458,14 +495,14 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
         const lastDoc = lastDocRef.current;
 
         if (!hasMore || isLoadingMore || !lastDoc) {
-            console.log('📄 [PAGINATION] Não há mais animais para carregar ou já está carregando');
+            log.debug('📄 [PAGINATION] Não há mais animais para carregar ou já está carregando');
             return;
         }
 
         dispatch({ type: 'SET_LOADING_MORE', payload: { collection: 'animals', isLoading: true } });
 
         try {
-            console.log(`📄 [PAGINATION] Carregando mais animais...`);
+            log.debug(`📄 [PAGINATION] Carregando mais animais...`);
 
             const query = db.collection('animals')
                 .where("userId", "==", userId)
@@ -498,10 +535,10 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
             const allAnimals = [...stateRef.current.animals, ...newAnimals];
             await updateLocalCache('animals', allAnimals);
 
-            console.log(`✅ [PAGINATION] Carregados ${newAnimals.length} animais. Total: ${allAnimals.length}. Tem mais: ${hasMorePages}`);
+            log.info(`✅ [PAGINATION] Carregados ${newAnimals.length} animais. Total: ${allAnimals.length}. Tem mais: ${hasMorePages}`);
 
         } catch (error) {
-            console.error('❌ [PAGINATION] Erro ao carregar mais animais:', error);
+            log.error('❌ [PAGINATION] Erro ao carregar mais animais:', error);
             dispatch({ type: 'SET_ERROR', payload: 'Erro ao carregar mais animais' });
         } finally {
             dispatch({ type: 'SET_LOADING_MORE', payload: { collection: 'animals', isLoading: false } });
@@ -532,7 +569,7 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
         let historicoSanitario = entity.historicoSanitario || [];
         if (needsMigration(historicoSanitario)) {
             historicoSanitario = migrateHealthHistory(historicoSanitario);
-            console.log(`🔄 [MIGRATION] Historico sanitario migrado para ${entity.brinco || entity.id}`);
+            log.info(`🔄 [MIGRATION] Historico sanitario migrado para ${entity.brinco || entity.id}`);
         }
 
         return {
@@ -555,7 +592,7 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
     const setupRealtimeListeners = useCallback(() => {
         if (!userId || !db || !REALTIME_CONFIG.enabled) return;
 
-        console.log('🔴 [REALTIME] Configurando listeners em tempo real...');
+        log.info('🔴 [REALTIME] Configurando listeners em tempo real...');
 
         // Listener para Animals
         const animalsUnsubscribe = db.collection('animals')
@@ -573,16 +610,16 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
                             // Verifica se já existe (evita duplicação)
                             const exists = stateRef.current.animals.some(a => a.id === animal.id);
                             if (!exists) {
-                                console.log(`🟢 [REALTIME] Animal adicionado: ${animal.brinco}`);
+                                log.info(`🟢 [REALTIME] Animal adicionado: ${animal.brinco}`);
                                 dispatch({ type: 'LOCAL_ADD_ANIMAL', payload: animal });
                             }
                         }
                         if (change.type === 'modified') {
-                            console.log(`🟡 [REALTIME] Animal modificado: ${animal.brinco}`);
+                            log.info(`🟡 [REALTIME] Animal modificado: ${animal.brinco}`);
                             dispatch({ type: 'LOCAL_UPDATE_ANIMAL', payload: { animalId: animal.id, updatedData: animal } });
                         }
                         if (change.type === 'removed') {
-                            console.log(`🔴 [REALTIME] Animal removido: ${animal.brinco}`);
+                            log.info(`🔴 [REALTIME] Animal removido: ${animal.brinco}`);
                             dispatch({ type: 'LOCAL_DELETE_ANIMAL', payload: { animalId: animal.id } });
                         }
                     });
@@ -591,7 +628,7 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
                     updateLocalCache('animals', stateRef.current.animals);
                 },
                 (error: any) => {
-                    console.error('❌ [REALTIME] Erro no listener de animals:', error);
+                    log.error('❌ [REALTIME] Erro no listener de animals:', error);
                 }
             );
         listenersRef.current.animals = animalsUnsubscribe;
@@ -610,16 +647,16 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
                         if (change.type === 'added') {
                             const exists = stateRef.current.calendarEvents.some(e => e.id === event.id);
                             if (!exists) {
-                                console.log(`🟢 [REALTIME] Evento adicionado: ${event.title}`);
+                                log.info(`🟢 [REALTIME] Evento adicionado: ${event.title}`);
                                 dispatch({ type: 'LOCAL_ADD_CALENDAR_EVENT', payload: event });
                             }
                         }
                         if (change.type === 'modified') {
-                            console.log(`🟡 [REALTIME] Evento modificado: ${event.title}`);
+                            log.info(`🟡 [REALTIME] Evento modificado: ${event.title}`);
                             dispatch({ type: 'LOCAL_UPDATE_CALENDAR_EVENT', payload: event });
                         }
                         if (change.type === 'removed') {
-                            console.log(`🔴 [REALTIME] Evento removido: ${event.id}`);
+                            log.info(`🔴 [REALTIME] Evento removido: ${event.id}`);
                             dispatch({ type: 'LOCAL_DELETE_CALENDAR_EVENT', payload: { eventId: event.id } });
                         }
                     });
@@ -627,7 +664,7 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
                     updateLocalCache('calendarEvents', stateRef.current.calendarEvents);
                 },
                 (error: any) => {
-                    console.error('❌ [REALTIME] Erro no listener de calendar:', error);
+                    log.error('❌ [REALTIME] Erro no listener de calendar:', error);
                 }
             );
         listenersRef.current.calendar = calendarUnsubscribe;
@@ -646,16 +683,16 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
                         if (change.type === 'added') {
                             const exists = stateRef.current.tasks.some(t => t.id === task.id);
                             if (!exists) {
-                                console.log(`🟢 [REALTIME] Tarefa adicionada: ${task.description}`);
+                                log.info(`🟢 [REALTIME] Tarefa adicionada: ${task.description}`);
                                 dispatch({ type: 'LOCAL_ADD_TASK', payload: task });
                             }
                         }
                         if (change.type === 'modified') {
-                            console.log(`🟡 [REALTIME] Tarefa modificada: ${task.description}`);
+                            log.info(`🟡 [REALTIME] Tarefa modificada: ${task.description}`);
                             dispatch({ type: 'LOCAL_UPDATE_TASK', payload: { taskId: task.id, updatedData: task } });
                         }
                         if (change.type === 'removed') {
-                            console.log(`🔴 [REALTIME] Tarefa removida: ${task.id}`);
+                            log.info(`🔴 [REALTIME] Tarefa removida: ${task.id}`);
                             dispatch({ type: 'LOCAL_DELETE_TASK', payload: { taskId: task.id } });
                         }
                     });
@@ -663,13 +700,13 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
                     updateLocalCache('tasks', stateRef.current.tasks);
                 },
                 (error: any) => {
-                    console.error('❌ [REALTIME] Erro no listener de tasks:', error);
+                    log.error('❌ [REALTIME] Erro no listener de tasks:', error);
                 }
             );
         listenersRef.current.tasks = tasksUnsubscribe;
 
         dispatch({ type: 'SET_LISTENERS_ACTIVE', payload: true });
-        console.log('✅ [REALTIME] Listeners configurados com sucesso');
+        log.info('✅ [REALTIME] Listeners configurados com sucesso');
     }, [userId, updateLocalCache]);
 
     // ============================================
@@ -680,7 +717,7 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
     const syncDelta = useCallback(async () => {
         // Se já está sincronizando, não faz nada
         if (syncInProgressRef.current) {
-            console.log('⏳ [DELTA] Sync já em progresso, ignorando...');
+            log.debug('⏳ [DELTA] Sync já em progresso, ignorando...');
             return true; // Retorna true para evitar fallback
         }
 
@@ -689,11 +726,11 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
         const lastSync = stateRef.current.lastSync;
         if (!lastSync) {
             // Se não tem lastSync, retorna false para indicar que precisa de sync completo
-            console.log('⚠️ [DELTA] Sem lastSync, necessário sync completo...');
+            log.debug('⚠️ [DELTA] Sem lastSync, necessário sync completo...');
             return false;
         }
 
-        console.log(`🔄 [DELTA] Buscando mudanças desde ${new Date(lastSync).toLocaleString()}...`);
+        log.info(`🔄 [DELTA] Buscando mudanças desde ${new Date(lastSync).toLocaleString()}...`);
         syncInProgressRef.current = true;
 
         try {
@@ -720,11 +757,11 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
                         }
                         changesFound++;
                     });
-                    console.log(`📦 [DELTA] ${animalsSnapshot.size} animais atualizados`);
+                    log.info(`📦 [DELTA] ${animalsSnapshot.size} animais atualizados`);
                 }
             } catch (e) {
                 // Campo updatedAt pode não existir - ignora silenciosamente
-                console.log('ℹ️ [DELTA] Campo updatedAt não configurado para animals');
+                log.debug('ℹ️ [DELTA] Campo updatedAt não configurado para animals');
             }
 
             // Sync delta para Calendar
@@ -747,10 +784,10 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
                         }
                         changesFound++;
                     });
-                    console.log(`📦 [DELTA] ${calendarSnapshot.size} eventos atualizados`);
+                    log.info(`📦 [DELTA] ${calendarSnapshot.size} eventos atualizados`);
                 }
             } catch (e) {
-                console.log('ℹ️ [DELTA] Campo updatedAt não configurado para calendar');
+                log.debug('ℹ️ [DELTA] Campo updatedAt não configurado para calendar');
             }
 
             // Sync delta para Tasks
@@ -773,10 +810,10 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
                         }
                         changesFound++;
                     });
-                    console.log(`📦 [DELTA] ${tasksSnapshot.size} tarefas atualizadas`);
+                    log.info(`📦 [DELTA] ${tasksSnapshot.size} tarefas atualizadas`);
                 }
             } catch (e) {
-                console.log('ℹ️ [DELTA] Campo updatedAt não configurado para tasks');
+                log.debug('ℹ️ [DELTA] Campo updatedAt não configurado para tasks');
             }
 
             dispatch({ type: 'SET_LAST_SYNC', payload: Date.now() });
@@ -788,13 +825,13 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
                     updateLocalCache('calendarEvents', stateRef.current.calendarEvents),
                     updateLocalCache('tasks', stateRef.current.tasks),
                 ]);
-                console.log(`✅ [DELTA] Sync concluído: ${changesFound} mudanças aplicadas`);
+                log.info(`✅ [DELTA] Sync concluído: ${changesFound} mudanças aplicadas`);
             } else {
-                console.log('✅ [DELTA] Nenhuma mudança encontrada');
+                log.debug('✅ [DELTA] Nenhuma mudança encontrada');
             }
 
         } catch (error) {
-            console.error('❌ [DELTA] Erro no sync delta:', error);
+            log.error('❌ [DELTA] Erro no sync delta:', error);
         } finally {
             syncInProgressRef.current = false;
         }
@@ -808,10 +845,10 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
             try {
                 const deletedCount = await localCache.cleanOldEntries(3 * 24 * 60 * 60 * 1000); // 3 dias
                 if (deletedCount > 0) {
-                    console.log(`🧹 [CACHE] Limpeza automática: ${deletedCount} entradas antigas removidas`);
+                    log.info(`🧹 [CACHE] Limpeza automática: ${deletedCount} entradas antigas removidas`);
                 }
             } catch (error) {
-                console.warn('⚠️ [CACHE] Erro na limpeza automática:', error);
+                log.warn('⚠️ [CACHE] Erro na limpeza automática:', error);
             }
         };
 
@@ -861,7 +898,7 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
 
         // 🔧 CLEANUP: Remove listeners ao desmontar ou trocar usuário
         return () => {
-            console.log('🔄 [REALTIME] Removendo listeners...');
+            log.info('🔄 [REALTIME] Removendo listeners...');
             Object.values(listenersRef.current).forEach(unsubscribe => {
                 if (typeof unsubscribe === 'function') {
                     unsubscribe();
@@ -883,7 +920,7 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
 
             if (document.hidden) {
                 // Pausa listeners quando aba não está visível
-                console.log('👁️ [VISIBILITY] Aba oculta - pausando listeners...');
+                log.debug('👁️ [VISIBILITY] Aba oculta - pausando listeners...');
                 Object.values(listenersRef.current).forEach(unsubscribe => {
                     if (typeof unsubscribe === 'function') {
                         unsubscribe();
@@ -893,7 +930,7 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
                 dispatch({ type: 'SET_LISTENERS_ACTIVE', payload: false });
             } else {
                 // Reativa quando aba volta a ficar visível
-                console.log('👁️ [VISIBILITY] Aba visível - reativando...');
+                log.debug('👁️ [VISIBILITY] Aba visível - reativando...');
                 syncDelta().then(() => {
                     if (REALTIME_CONFIG.enabled && !stateRef.current.listenersActive) {
                         setupRealtimeListeners();
@@ -913,7 +950,7 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
         const now = Date.now();
         // 5s throttle para evitar chamadas excessivas
         if (!userId || syncInProgressRef.current || (now - lastSyncTimeRef.current < 5000)) {
-            if (now - lastSyncTimeRef.current < 5000) console.log("⏳ Sync ignorado (throttled)");
+            if (now - lastSyncTimeRef.current < 5000) log.debug("⏳ Sync ignorado (throttled)");
             return;
         }
 
@@ -1084,7 +1121,7 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
             await updateLocalCache('animals', [...stateRef.current.animals, newAnimal]);
 
         } catch (error) {
-            console.error("Erro ao adicionar animal:", error);
+            log.error("Erro ao adicionar animal:", error);
             // Em caso de erro, força sync para reverter
             await forceSync();
             throw error;
@@ -1292,17 +1329,17 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
                     await updateLocalCache('animals', updatedAnimals);
                 }
 
-                console.log(`✅ [SYNC_PATERNITY] Paternidade sincronizada: Bezerro ${calfId} → Pai ${confirmedSireBrinco} na estação ${season.name}`);
+                log.info(`✅ [SYNC_PATERNITY] Paternidade sincronizada: Bezerro ${calfId} → Pai ${confirmedSireBrinco} na estação ${season.name}`);
 
                 // Encontrou e atualizou, pode parar
                 return;
             } catch (error) {
-                console.error('❌ [SYNC_PATERNITY] Erro ao sincronizar paternidade:', error);
+                log.error('❌ [SYNC_PATERNITY] Erro ao sincronizar paternidade:', error);
                 // Não propaga erro para não bloquear a atualização do animal
             }
         }
 
-        console.log(`ℹ️ [SYNC_PATERNITY] Nenhuma cobertura encontrada para sincronizar (Mãe: ${motherId}, Nascimento: ${calfBirthDate})`);
+        log.debug(`ℹ️ [SYNC_PATERNITY] Nenhuma cobertura encontrada para sincronizar (Mãe: ${motherId}, Nascimento: ${calfBirthDate})`);
     }, [userId, db, updateLocalCache]);
 
     const updateAnimal = useCallback(async (animalId: string, updatedData: Partial<Omit<Animal, 'id'>>) => {
@@ -1328,7 +1365,7 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
 
             // Se o dado sanitizado não tem dataNascimento válida mas o animal original tem, preserva
             if (!isValidDate(sanitizedData.dataNascimento) && isValidDate(currentAnimal.dataNascimento)) {
-                console.warn('⚠️ [UPDATE_ANIMAL] Preservando dataNascimento original - nova data é inválida');
+                log.warn('⚠️ [UPDATE_ANIMAL] Preservando dataNascimento original - nova data é inválida');
                 delete sanitizedData.dataNascimento; // Remove para não sobrescrever
             }
         }
@@ -1522,11 +1559,11 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
                     isFIVCalf,
                     resolvedDonorId
                 ).catch(err => {
-                    console.warn('⚠️ [UPDATE_ANIMAL] Falha na sincronização de paternidade:', err);
+                    log.warn('⚠️ [UPDATE_ANIMAL] Falha na sincronização de paternidade:', err);
                 });
             }
         } catch (error) {
-            console.error("Erro ao atualizar animal:", error);
+            log.error("Erro ao atualizar animal:", error);
             await forceSync();
             throw error;
         }
@@ -1553,7 +1590,7 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
             const updatedAnimals = stateRef.current.animals.filter((a: Animal) => a.id !== animalId);
             await updateLocalCache('animals', updatedAnimals);
         } catch (error) {
-            console.error("Erro ao deletar animal:", error);
+            log.error("Erro ao deletar animal:", error);
             await forceSync();
             throw error;
         }
@@ -1601,7 +1638,7 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
                 await updateLocalCache('calendarEvents', [...stateRef.current.calendarEvents, newEvent]);
             }
         } catch (error) {
-            console.error("Erro ao salvar evento:", error);
+            log.error("Erro ao salvar evento:", error);
             await forceSync();
             throw error;
         }
@@ -1620,7 +1657,7 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
             const updatedEvents = stateRef.current.calendarEvents.filter((e: CalendarEvent) => e.id !== eventId);
             await updateLocalCache('calendarEvents', updatedEvents);
         } catch (error) {
-            console.error("Erro ao deletar evento:", error);
+            log.error("Erro ao deletar evento:", error);
             await forceSync();
             throw error;
         }
@@ -1651,7 +1688,7 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
             // 🔧 OTIMIZAÇÃO: Usa stateRef para cache
             await updateLocalCache('tasks', [...stateRef.current.tasks, newTask]);
         } catch (error) {
-            console.error("Erro ao adicionar tarefa:", error);
+            log.error("Erro ao adicionar tarefa:", error);
             await forceSync();
             throw error;
         }
@@ -1678,7 +1715,7 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
             );
             await updateLocalCache('tasks', updatedTasks);
         } catch (error) {
-            console.error("Erro ao atualizar tarefa:", error);
+            log.error("Erro ao atualizar tarefa:", error);
             await forceSync();
             throw error;
         }
@@ -1697,7 +1734,7 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
             const updatedTasks = stateRef.current.tasks.filter((t: Task) => t.id !== taskId);
             await updateLocalCache('tasks', updatedTasks);
         } catch (error) {
-            console.error("Erro ao deletar tarefa:", error);
+            log.error("Erro ao deletar tarefa:", error);
             await forceSync();
             throw error;
         }
@@ -1742,7 +1779,7 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
                 await updateLocalCache('managementAreas', [...stateRef.current.managementAreas, newArea]);
             }
         } catch (error) {
-            console.error("Erro ao salvar área:", error);
+            log.error("Erro ao salvar área:", error);
             await forceSync();
             throw error;
         }
@@ -1791,7 +1828,7 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
             );
             await updateLocalCache('animals', updatedAnimals);
         } catch (error) {
-            console.error("Erro ao deletar área:", error);
+            log.error("Erro ao deletar área:", error);
             await forceSync();
             throw error;
         }
@@ -1825,7 +1862,7 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
             );
             await updateLocalCache('animals', updatedAnimals);
         } catch (error) {
-            console.error("Erro ao atribuir animais à área:", error);
+            log.error("Erro ao atribuir animais à área:", error);
             await forceSync();
             throw error;
         }
@@ -1856,7 +1893,7 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
 
             return newBatch;
         } catch (error) {
-            console.error("Erro ao criar lote:", error);
+            log.error("Erro ao criar lote:", error);
             await forceSync();
             throw error;
         }
@@ -1882,7 +1919,7 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
             );
             await updateLocalCache('batches', updatedBatches);
         } catch (error) {
-            console.error("Erro ao atualizar lote:", error);
+            log.error("Erro ao atualizar lote:", error);
             await forceSync();
             throw error;
         }
@@ -2024,7 +2061,7 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
             const updatedBatches = stateRef.current.batches.filter((b: ManagementBatch) => b.id !== batchId);
             await updateLocalCache('batches', updatedBatches);
         } catch (error) {
-            console.error("Erro ao deletar lote:", error);
+            log.error("Erro ao deletar lote:", error);
             await forceSync();
             throw error;
         }
@@ -2287,7 +2324,7 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
             await updateLocalCache('batches', stateRef.current.batches);
             await updateLocalCache('animals', stateRef.current.animals);
         } catch (error) {
-            console.error("Erro ao completar lote com sincronização:", error);
+            log.error("Erro ao completar lote com sincronização:", error);
             await forceSync();
             throw error;
         }
@@ -2316,7 +2353,7 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
 
             return newSeason;
         } catch (error) {
-            console.error("Erro ao criar estação de monta:", error);
+            log.error("Erro ao criar estação de monta:", error);
             await forceSync();
             throw error;
         }
@@ -2340,7 +2377,7 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
             );
             await updateLocalCache('breedingSeasons', updatedSeasons);
         } catch (error) {
-            console.error("Erro ao atualizar estação de monta:", error);
+            log.error("Erro ao atualizar estação de monta:", error);
             await forceSync();
             throw error;
         }
@@ -2358,7 +2395,7 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
             const updatedSeasons = stateRef.current.breedingSeasons.filter((s: BreedingSeason) => s.id !== seasonId);
             await updateLocalCache('breedingSeasons', updatedSeasons);
         } catch (error) {
-            console.error("Erro ao deletar estação de monta:", error);
+            log.error("Erro ao deletar estação de monta:", error);
             await forceSync();
             throw error;
         }
@@ -2976,7 +3013,7 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
             }
         }
 
-        console.log(`✅ [ABORTION] Aborto registrado: Vaca ${coverage.cowBrinco}, Cobertura ${coverageId}${isRepasse ? ' (repasse)' : ''}`);
+        log.info(`✅ [ABORTION] Aborto registrado: Vaca ${coverage.cowBrinco}, Cobertura ${coverageId}${isRepasse ? ' (repasse)' : ''}`);
     }, [userId, db, updateBreedingSeason, updateLocalCache]);
 
     /**
@@ -3028,7 +3065,7 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
 
         await updateBreedingSeason(seasonId, { coverageRecords: updatedCoverageRecords });
 
-        console.log(`✅ [CALVING] Parto registrado: Vaca ${coverage.cowBrinco}, Terneiro ${calfBrinco}`);
+        log.info(`✅ [CALVING] Parto registrado: Vaca ${coverage.cowBrinco}, Terneiro ${calfBrinco}`);
     }, [userId, db, updateBreedingSeason]);
 
     /**
@@ -3079,6 +3116,9 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
             }
         }
 
+        // 🔧 OTIMIZAÇÃO: Constrói índice de animais uma vez, O(n), para lookups O(1) no loop
+        const index = buildAnimalIndex(animals);
+
         // Rastreia terneiros já vinculados para evitar duplicatas
         const alreadyLinkedCalfIds = new Set<string>();
 
@@ -3102,7 +3142,7 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
                 // Busca terneiro (excluindo os já vinculados)
                 // 🔧 FIV: Passa o tipo de cobertura e ID da doadora para diferenciar filhos diretos de embriões
                 const calf = findCalfForCoverageInternal(
-                    animals,
+                    index,
                     coverage.cowId,
                     expectedDate,
                     toleranceDays,
@@ -3129,7 +3169,7 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
                         // Se tem índice de touro selecionado diretamente, usa ele
                         if (switchConfig.selectedBullIndex !== undefined) {
                             selectedBull = coverage.bulls[switchConfig.selectedBullIndex];
-                            console.log(`🧬 [PATERNITY] Paternidade confirmada por seleção direta: Vaca ${coverage.cowBrinco} → Pai ${selectedBull.bullBrinco} (touro ${switchConfig.selectedBullIndex + 1})`);
+                            log.info(`🧬 [PATERNITY] Paternidade confirmada por seleção direta: Vaca ${coverage.cowBrinco} → Pai ${selectedBull.bullBrinco} (touro ${switchConfig.selectedBullIndex + 1})`);
                         } else if (switchConfig.switchDate) {
                             // Calcula baseado na data de troca
                             const bullSwitchTime = new Date(switchConfig.switchDate).getTime();
@@ -3142,7 +3182,7 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
                                 ? coverage.bulls[0]
                                 : coverage.bulls[1];
 
-                            console.log(`🧬 [PATERNITY] Paternidade confirmada por data de troca: Vaca ${coverage.cowBrinco} → Pai ${selectedBull.bullBrinco} (cobertura ${estimatedCoverageTime < bullSwitchTime ? 'antes' : 'depois'} da troca)`);
+                            log.info(`🧬 [PATERNITY] Paternidade confirmada por data de troca: Vaca ${coverage.cowBrinco} → Pai ${selectedBull.bullBrinco} (cobertura ${estimatedCoverageTime < bullSwitchTime ? 'antes' : 'depois'} da troca)`);
                         }
 
                         if (selectedBull) {
@@ -3208,7 +3248,7 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
                 // Busca terneiro (excluindo os já vinculados)
                 // 🔧 Repasse é sempre monta natural - busca filho direto (não FIV)
                 const calf = findCalfForCoverageInternal(
-                    animals,
+                    index,
                     coverage.cowId,
                     expectedDate,
                     toleranceDays,
@@ -3235,7 +3275,7 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
                         // Se tem índice de touro selecionado diretamente, usa ele
                         if (repasseSwitchConfig.selectedBullIndex !== undefined) {
                             selectedBull = repasseBulls[repasseSwitchConfig.selectedBullIndex];
-                            console.log(`🧬 [PATERNITY] Paternidade do repasse confirmada por seleção direta: Vaca ${coverage.cowBrinco} → Pai ${selectedBull.bullBrinco} (touro ${repasseSwitchConfig.selectedBullIndex + 1})`);
+                            log.info(`🧬 [PATERNITY] Paternidade do repasse confirmada por seleção direta: Vaca ${coverage.cowBrinco} → Pai ${selectedBull.bullBrinco} (touro ${repasseSwitchConfig.selectedBullIndex + 1})`);
                         } else if (repasseSwitchConfig.switchDate) {
                             // Calcula baseado na data de troca
                             const bullSwitchTime = new Date(repasseSwitchConfig.switchDate).getTime();
@@ -3248,7 +3288,7 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
                                 ? repasseBulls[0]
                                 : repasseBulls[1];
 
-                            console.log(`🧬 [PATERNITY] Paternidade do repasse confirmada por data de troca: Vaca ${coverage.cowBrinco} → Pai ${selectedBull.bullBrinco}`);
+                            log.info(`🧬 [PATERNITY] Paternidade do repasse confirmada por data de troca: Vaca ${coverage.cowBrinco} → Pai ${selectedBull.bullBrinco}`);
                         }
 
                         if (selectedBull) {
@@ -3333,7 +3373,7 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
 
                 // Busca terneiro (excluindo os já vinculados)
                 const calf = findCalfForCoverageInternal(
-                    animals,
+                    index,
                     coverage.cowId,
                     expectedDate,
                     toleranceDays,
@@ -3445,7 +3485,7 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
                                 ...(confirmedSireId ? { confirmedSireId, confirmedSireBrinco } : {}),
                             },
                         };
-                        console.log(`🔍 [DISCOVER] Prenhez descoberta em repasse com DG negativo: ${coverage.cowBrinco} → Bezerro ${calf.brinco}`);
+                        log.info(`🔍 [DISCOVER] Prenhez descoberta em repasse com DG negativo: ${coverage.cowBrinco} → Bezerro ${calf.brinco}`);
                     } else {
                         // Atualiza a COBERTURA PRINCIPAL: corrige DG para positivo e vincula bezerro
                         updatedCoverageRecords[i] = {
@@ -3459,7 +3499,7 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
                             calvingNotes: 'Prenhez descoberta retroativamente - DG original era negativo',
                             ...(confirmedSireId ? { confirmedSireId, confirmedSireBrinco } : {}),
                         };
-                        console.log(`🔍 [DISCOVER] Prenhez descoberta em vaca com DG negativo: ${coverage.cowBrinco} → Bezerro ${calf.brinco}`);
+                        log.info(`🔍 [DISCOVER] Prenhez descoberta em vaca com DG negativo: ${coverage.cowBrinco} → Bezerro ${calf.brinco}`);
                     }
 
                     alreadyLinkedCalfIds.add(calf.id);
@@ -3581,7 +3621,7 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
                 alreadyLinkedCalfIds.add(calf.id);
                 discoveredCount++;
 
-                console.log(`🔍 [DISCOVER] Parto descoberto: Vaca ${cow.brinco} → Bezerro ${calf.brinco} (sem cobertura prévia)`);
+                log.info(`🔍 [DISCOVER] Parto descoberto: Vaca ${cow.brinco} → Bezerro ${calf.brinco} (sem cobertura prévia)`);
             }
         }
 
@@ -3639,7 +3679,7 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
                     }
                 });
 
-                console.log(`🧬 [CALF_PATERNITY] Bezerro ${calfId} atualizado: Pai ${paternityData.paiNome}`);
+                log.info(`🧬 [CALF_PATERNITY] Bezerro ${calfId} atualizado: Pai ${paternityData.paiNome}`);
             }
 
             await paternityBatch.commit();
@@ -3658,7 +3698,7 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
             });
             await updateLocalCache('animals', animalsWithPaternity);
 
-            console.log(`🧬 [CALF_PATERNITY] ${calfPaternityUpdates.size} bezerro(s) atualizado(s) com paternidade confirmada`);
+            log.info(`🧬 [CALF_PATERNITY] ${calfPaternityUpdates.size} bezerro(s) atualizado(s) com paternidade confirmada`);
         }
 
         // ============================================
@@ -3694,10 +3734,10 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
             // Atualiza métricas na estação
             await updateBreedingSeason(seasonId, { metrics });
 
-            console.log(`📊 [METRICS] Métricas atualizadas: ${totalCovered} cobertas, ${totalPregnant} prenhes, ${totalCalvings} partos`);
+            log.info(`📊 [METRICS] Métricas atualizadas: ${totalCovered} cobertas, ${totalPregnant} prenhes, ${totalCalvings} partos`);
         }
 
-        console.log(`✅ [VERIFY_CALVINGS] Verificação concluída: ${linkedCount} partos vinculados, ${registeredCount} abortos registrados, ${pendingCount} pendentes, ${discoveredCount} descobertos, ${paternityConfirmedCount} paternidades confirmadas`);
+        log.info(`✅ [VERIFY_CALVINGS] Verificação concluída: ${linkedCount} partos vinculados, ${registeredCount} abortos registrados, ${pendingCount} pendentes, ${discoveredCount} descobertos, ${paternityConfirmedCount} paternidades confirmadas`);
 
         return { registered: registeredCount, linked: linkedCount, pending: pendingCount, discovered: discoveredCount, paternityConfirmed: paternityConfirmedCount };
     }, [userId, db, updateBreedingSeason, updateLocalCache]);
@@ -3706,7 +3746,7 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
     // Verifica também se o terneiro já não está vinculado a outra cobertura
     // 🔧 FIV: Considera a distinção entre filhos diretos e filhos de FIV (receptora vs doadora)
     const findCalfForCoverageInternal = (
-        animals: Animal[],
+        index: AnimalIndex,
         motherId: string,
         expectedCalvingDate: Date,
         toleranceDays: number,
@@ -3719,7 +3759,7 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
         const maxDate = new Date(expectedCalvingDate);
         maxDate.setDate(maxDate.getDate() + toleranceDays);
 
-        const mother = animals.find((a: Animal) => a.id === motherId);
+        const mother = index.byId.get(motherId);
         if (!mother) return undefined;
 
         const motherBrinco = mother.brinco.toLowerCase().trim();
@@ -3728,26 +3768,61 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
         // Para FIV, também precisamos do brinco da doadora se houver
         let donorBrinco: string | undefined;
         if (isFIVCoverage && donorCowId) {
-            const donor = animals.find((a: Animal) => a.id === donorCowId);
+            const donor = index.byId.get(donorCowId);
             donorBrinco = donor?.brinco.toLowerCase().trim();
+        }
+
+        // 🔧 OTIMIZAÇÃO: Usa índices pré-computados para obter candidatos em O(1)
+        // Em vez de iterar todos os animais com animals.filter(), busca apenas
+        // os candidatos relevantes via Map lookup e depois aplica os mesmos filtros.
+        let candidates: Animal[];
+
+        if (isFIVCoverage) {
+            // FIV: candidatos são filhos da receptora (por ID ou brinco)
+            const byId = index.byReceptoraId.get(motherId) || [];
+            const byBrinco = index.byReceptoraBrinco.get(motherBrinco) || [];
+            // Merge sem duplicatas
+            const seen = new Set<string>();
+            candidates = [];
+            for (const animal of byId) {
+                seen.add(animal.id);
+                candidates.push(animal);
+            }
+            for (const animal of byBrinco) {
+                if (!seen.has(animal.id)) {
+                    candidates.push(animal);
+                }
+            }
+        } else {
+            // Não-FIV: candidatos são filhos diretos da mãe (por ID ou brinco)
+            const byId = index.byMotherId.get(motherId) || [];
+            const byBrinco = index.byMotherBrinco.get(motherBrinco) || [];
+            // Merge sem duplicatas
+            const seen = new Set<string>();
+            candidates = [];
+            for (const animal of byId) {
+                seen.add(animal.id);
+                candidates.push(animal);
+            }
+            for (const animal of byBrinco) {
+                if (!seen.has(animal.id)) {
+                    candidates.push(animal);
+                }
+            }
         }
 
         // Busca terneiros que:
         // 1. São filhos desta mãe (considerando FIV vs não-FIV)
         // 2. Nasceram dentro da janela de tempo
         // 3. Ainda não foram vinculados a outra cobertura nesta verificação
-        const potentialCalves = animals.filter((animal: Animal) => {
+        const potentialCalves = candidates.filter((animal: Animal) => {
             // Verifica se já foi vinculado nesta mesma execução
             if (alreadyLinkedCalfIds && alreadyLinkedCalfIds.has(animal.id)) return false;
-
-            let isChildOfThisCow = false;
 
             if (isFIVCoverage) {
                 // 🔧 FIV: A vaca da cobertura (motherId) é a RECEPTORA
                 // O bezerro terá maeReceptoraId = motherId (quem gestou)
                 // E opcionalmente maeBiologicaId = donorCowId (doadora genética)
-                const isReceptoraById = animal.maeReceptoraId === motherId;
-                const isReceptoraByBrinco = animal.maeReceptoraNome?.toLowerCase().trim() === motherBrinco;
 
                 // Verifica se a doadora bate (se especificada na cobertura E no bezerro)
                 let donorMatches = true;
@@ -3760,20 +3835,16 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
                 // Bezerro é de FIV se: tem isFIV=true OU tem maeReceptoraId preenchido
                 const isFIVCalf = animal.isFIV === true || !!animal.maeReceptoraId || !!animal.maeReceptoraNome;
 
-                isChildOfThisCow = (isReceptoraById || isReceptoraByBrinco) && donorMatches && isFIVCalf;
+                if (!donorMatches || !isFIVCalf) return false;
             } else {
                 // 🔧 Não-FIV (IATF, Monta Natural): A vaca é a mãe direta
                 // O bezerro terá maeId = motherId
                 // E NÃO deve ser um bezerro de FIV (para evitar confusão)
-                const isMaeById = animal.maeId === motherId;
-                const isMaeByBrinco = animal.maeNome?.toLowerCase().trim() === motherBrinco;
                 // Bezerro NÃO é de FIV se: não tem isFIV=true E não tem maeReceptoraId
                 const isNotFIVCalf = animal.isFIV !== true && !animal.maeReceptoraId && !animal.maeReceptoraNome;
 
-                isChildOfThisCow = (isMaeById || isMaeByBrinco) && isNotFIVCalf;
+                if (!isNotFIVCalf) return false;
             }
-
-            if (!isChildOfThisCow) return false;
 
             if (!animal.dataNascimento) return false;
             const birthDate = new Date(animal.dataNascimento);

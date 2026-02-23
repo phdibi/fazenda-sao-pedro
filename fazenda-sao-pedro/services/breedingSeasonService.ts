@@ -19,6 +19,7 @@ import {
   AnimalStatus,
   PregnancyType,
 } from '../types';
+import { AnimalIndex, buildAnimalIndex } from '../utils/animalIndex';
 
 // ============================================
 // HELPERS
@@ -670,6 +671,7 @@ export const verifyCalvings = (
 ): CalvingVerificationResult[] => {
   const results: CalvingVerificationResult[] = [];
   const today = new Date();
+  const index = buildAnimalIndex(animals);
 
   (season.coverageRecords || []).forEach((coverage) => {
     // Verifica cobertura principal com DG positivo
@@ -693,7 +695,7 @@ export const verifyCalvings = (
       }
 
       // Busca terneiros nascidos da mãe dentro da janela de tempo
-      const calf = findCalfForCoverage(animals, coverage.cowId, expectedDate, toleranceDays);
+      const calf = findCalfForCoverage(index, coverage.cowId, expectedDate, toleranceDays);
 
       if (calf) {
         results.push({
@@ -746,7 +748,7 @@ export const verifyCalvings = (
       }
 
       // Busca terneiros nascidos da mãe dentro da janela de tempo
-      const calf = findCalfForCoverage(animals, coverage.cowId, expectedDate, toleranceDays);
+      const calf = findCalfForCoverage(index, coverage.cowId, expectedDate, toleranceDays);
 
       if (calf) {
         results.push({
@@ -782,9 +784,10 @@ export const verifyCalvings = (
 /**
  * Busca um terneiro que nasceu de uma mãe específica dentro de uma janela de tempo.
  * Considera a data prevista de parto ± tolerância.
+ * Usa AnimalIndex para lookups O(1) ao invés de varrer o array inteiro.
  */
 const findCalfForCoverage = (
-  animals: Animal[],
+  index: AnimalIndex,
   motherId: string,
   expectedCalvingDate: Date,
   toleranceDays: number
@@ -794,22 +797,28 @@ const findCalfForCoverage = (
   const maxDate = new Date(expectedCalvingDate);
   maxDate.setDate(maxDate.getDate() + toleranceDays);
 
-  // Busca a mãe pelo ID para pegar o brinco
-  const mother = animals.find(a => a.id === motherId);
+  // Busca a mãe pelo ID - O(1)
+  const mother = index.byId.get(motherId);
   if (!mother) return undefined;
 
   const motherBrinco = mother.brinco.toLowerCase().trim();
 
-  // Busca terneiros que:
-  // 1. Tem a mãe pelo ID ou brinco
-  // 2. Nasceram dentro da janela de tempo
-  return animals.find((animal) => {
-    // Verifica se é filho desta mãe
-    const isMaeById = animal.maeId === motherId;
-    const isMaeByBrinco = animal.maeNome?.toLowerCase().trim() === motherBrinco;
-    if (!isMaeById && !isMaeByBrinco) return false;
+  // Busca candidatos por ID e por brinco, merge sem duplicatas
+  const candidatesById = index.byMotherId.get(motherId) || [];
+  const candidatesByBrinco = index.byMotherBrinco.get(motherBrinco) || [];
 
-    // Verifica se nasceu dentro da janela de tempo
+  const seen = new Set<string>();
+  const candidates: Animal[] = [];
+  for (const c of candidatesById) {
+    seen.add(c.id);
+    candidates.push(c);
+  }
+  for (const c of candidatesByBrinco) {
+    if (!seen.has(c.id)) candidates.push(c);
+  }
+
+  // Filtra por janela de tempo
+  return candidates.find((animal) => {
     if (!animal.dataNascimento) return false;
     const birthDate = new Date(animal.dataNascimento);
     return birthDate >= minDate && birthDate <= maxDate;
@@ -857,10 +866,13 @@ export const getEmptyCows = (
     diagnosisDate?: Date;
   }[] = [];
 
+  // Índice O(1) ao invés de animals.find() O(n) por cobertura
+  const index = buildAnimalIndex(animals);
+
   (season.coverageRecords || []).forEach((c) => {
     // Caso 1: DG principal negativo, sem repasse
     if (c.pregnancyResult === 'negative' && !c.repasse?.enabled) {
-      const animal = animals.find((a) => a.id === c.cowId);
+      const animal = index.byId.get(c.cowId);
       results.push({
         cowId: c.cowId,
         cowBrinco: c.cowBrinco,
@@ -873,7 +885,7 @@ export const getEmptyCows = (
     }
     // Caso 2: DG principal negativo, repasse habilitado mas repasse também negativo
     if (c.pregnancyResult === 'negative' && c.repasse?.enabled && c.repasse.diagnosisResult === 'negative') {
-      const animal = animals.find((a) => a.id === c.cowId);
+      const animal = index.byId.get(c.cowId);
       results.push({
         cowId: c.cowId,
         cowBrinco: c.cowBrinco,
