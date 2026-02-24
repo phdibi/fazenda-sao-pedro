@@ -139,6 +139,75 @@ export const rankearPorGMD = (animals: Animal[]): Array<Animal & { gmd: GainMetr
 };
 
 /**
+ * Auto-classifica os tipos de pesagem Desmame e Sobreano com base na data de nascimento.
+ *
+ * Regras:
+ * - Desmame: pesagem com idade mais próxima de 7 meses (aceita entre 5 e 9 meses)
+ * - Sobreano: pesagem com idade mais próxima de 18 meses (aceita entre 12 e 23 meses)
+ * - Sempre sobrescreve classificações manuais de Desmame/Sobreano
+ * - Preserva tipos Nascimento e Peso de Virada
+ * - Retorna cópia do array sem mutação
+ */
+export const autoClassifyWeightTypes = (
+  pesagens: WeightEntry[],
+  dataNascimento: Date | undefined
+): WeightEntry[] => {
+  if (!dataNascimento || pesagens.length === 0) return pesagens;
+
+  const nascMs = new Date(dataNascimento).getTime();
+  const MS_PER_MONTH = 30.44 * 24 * 60 * 60 * 1000;
+
+  // Limpar tipos Desmame/Sobreano existentes, preservar Birth e Turn
+  const cleaned = pesagens.map(p => {
+    if (p.type === WeighingType.Weaning || p.type === WeighingType.Yearling) {
+      return { ...p, type: WeighingType.None };
+    }
+    return { ...p };
+  });
+
+  // Calcular idade em meses para cada pesagem
+  const withAge = cleaned.map(p => {
+    const ageMonths = (new Date(p.date).getTime() - nascMs) / MS_PER_MONTH;
+    return { entry: p, ageMonths };
+  });
+
+  // Desmame: mais próximo de 7 meses, entre 5 e 9 meses
+  const desmameCandidates = withAge.filter(
+    ({ ageMonths, entry }) =>
+      ageMonths >= 5 && ageMonths <= 9 &&
+      entry.type !== WeighingType.Birth && entry.type !== WeighingType.Turn
+  );
+  let bestDesmame: typeof desmameCandidates[0] | null = null;
+  for (const c of desmameCandidates) {
+    if (!bestDesmame || Math.abs(c.ageMonths - 7) < Math.abs(bestDesmame.ageMonths - 7)) {
+      bestDesmame = c;
+    }
+  }
+  if (bestDesmame) {
+    bestDesmame.entry.type = WeighingType.Weaning;
+  }
+
+  // Sobreano: mais próximo de 18 meses, entre 12 e 23 meses
+  const sobreanoCandidates = withAge.filter(
+    ({ ageMonths, entry }) =>
+      ageMonths >= 12 && ageMonths <= 23 &&
+      entry.type !== WeighingType.Birth && entry.type !== WeighingType.Turn &&
+      entry.type !== WeighingType.Weaning // Não reutilizar o que já foi marcado como Desmame
+  );
+  let bestSobreano: typeof sobreanoCandidates[0] | null = null;
+  for (const c of sobreanoCandidates) {
+    if (!bestSobreano || Math.abs(c.ageMonths - 18) < Math.abs(bestSobreano.ageMonths - 18)) {
+      bestSobreano = c;
+    }
+  }
+  if (bestSobreano) {
+    bestSobreano.entry.type = WeighingType.Yearling;
+  }
+
+  return cleaned;
+};
+
+/**
  * Calcula idade em meses
  */
 export const calcularIdadeMeses = (dataNascimento?: Date): number => {

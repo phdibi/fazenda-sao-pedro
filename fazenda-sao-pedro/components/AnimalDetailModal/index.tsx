@@ -78,6 +78,7 @@ const AnimalDetailModal: React.FC<AnimalDetailModalProps> = ({
     handleAddWeight,
     handleDeleteWeight,
     handleWeightDateChange,
+    handleAutoClassifyWeights,
     handleAddPregnancySubmit,
     handleDeletePregnancyRecord,
     handleAddAbortionSubmit,
@@ -176,6 +177,7 @@ const AnimalDetailModal: React.FC<AnimalDetailModalProps> = ({
               onAddWeight={handleAddWeight}
               onDeleteWeight={handleDeleteWeight}
               onWeightDateChange={handleWeightDateChange}
+              onAutoClassifyWeights={handleAutoClassifyWeights}
             />
           )}
 

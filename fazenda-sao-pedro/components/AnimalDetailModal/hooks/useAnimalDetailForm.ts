@@ -18,6 +18,7 @@ import {
   createEmptyMedicationItem,
   formStateToMedicationItems,
 } from '../../../types';
+import { autoClassifyWeightTypes } from '../../../utils/gmdCalculations';
 import { deletePhotoFromStorage, isValidFirebaseStorageUrl } from '../../../services/storageService';
 
 export interface UseAnimalDetailFormProps {
@@ -70,6 +71,7 @@ export interface UseAnimalDetailFormReturn {
   handleAddWeight: (e: React.FormEvent) => void;
   handleDeleteWeight: (weightId: string) => void;
   handleWeightDateChange: (weightId: string, newDateString: string) => void;
+  handleAutoClassifyWeights: () => void;
 
   // Reprodução
   handleAddPregnancySubmit: (e: React.FormEvent) => void;
@@ -503,11 +505,12 @@ export const useAnimalDetailForm = ({
 
       setEditableAnimal((prev) => {
         if (!prev) return null;
-        const newHistory = [...prev.historicoPesagens, newEntry].sort(
+        const sorted = [...prev.historicoPesagens, newEntry].sort(
           (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
         );
-        const latestWeight = newHistory.length > 0 ? newHistory[newHistory.length - 1].weightKg : 0;
-        return { ...prev, historicoPesagens: newHistory, pesoKg: String(latestWeight) };
+        const classified = autoClassifyWeightTypes(sorted, prev.dataNascimento);
+        const latestWeight = classified.length > 0 ? classified[classified.length - 1].weightKg : 0;
+        return { ...prev, historicoPesagens: classified, pesoKg: String(latestWeight) };
       });
 
       setNewWeightData({ weight: '', type: WeighingType.None });
@@ -517,9 +520,10 @@ export const useAnimalDetailForm = ({
   const handleDeleteWeight = useCallback((weightId: string) => {
     setEditableAnimal((prev) => {
       if (!prev) return null;
-      const updatedHistory = prev.historicoPesagens.filter((entry) => entry.id !== weightId);
-      const latestWeight = updatedHistory.length > 0 ? updatedHistory[updatedHistory.length - 1].weightKg : 0;
-      return { ...prev, historicoPesagens: updatedHistory, pesoKg: String(latestWeight) };
+      const filtered = prev.historicoPesagens.filter((entry) => entry.id !== weightId);
+      const classified = autoClassifyWeightTypes(filtered, prev.dataNascimento);
+      const latestWeight = classified.length > 0 ? classified[classified.length - 1].weightKg : 0;
+      return { ...prev, historicoPesagens: classified, pesoKg: String(latestWeight) };
     });
   }, []);
 
@@ -537,8 +541,17 @@ export const useAnimalDetailForm = ({
         entry.id === weightId ? { ...entry, date: parsedDate } : entry
       );
       updatedHistory.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-      const latestWeight = updatedHistory.length > 0 ? updatedHistory[updatedHistory.length - 1].weightKg : 0;
-      return { ...prev, historicoPesagens: updatedHistory, pesoKg: String(latestWeight) };
+      const classified = autoClassifyWeightTypes(updatedHistory, prev.dataNascimento);
+      const latestWeight = classified.length > 0 ? classified[classified.length - 1].weightKg : 0;
+      return { ...prev, historicoPesagens: classified, pesoKg: String(latestWeight) };
+    });
+  }, []);
+
+  const handleAutoClassifyWeights = useCallback(() => {
+    setEditableAnimal((prev) => {
+      if (!prev || !prev.dataNascimento) return prev;
+      const classified = autoClassifyWeightTypes(prev.historicoPesagens, prev.dataNascimento);
+      return { ...prev, historicoPesagens: classified };
     });
   }, []);
 
@@ -725,6 +738,7 @@ export const useAnimalDetailForm = ({
     handleAddWeight,
     handleDeleteWeight,
     handleWeightDateChange,
+    handleAutoClassifyWeights,
 
     // Reprodução
     handleAddPregnancySubmit,

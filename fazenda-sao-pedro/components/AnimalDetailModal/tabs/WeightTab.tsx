@@ -11,6 +11,7 @@ interface WeightTabProps {
   onAddWeight: (e: React.FormEvent) => void;
   onDeleteWeight: (weightId: string) => void;
   onWeightDateChange: (weightId: string, newDateString: string) => void;
+  onAutoClassifyWeights: () => void;
 }
 
 const WeightTab: React.FC<WeightTabProps> = ({
@@ -21,10 +22,26 @@ const WeightTab: React.FC<WeightTabProps> = ({
   onAddWeight,
   onDeleteWeight,
   onWeightDateChange,
+  onAutoClassifyWeights,
 }) => {
+  const hasDateNascimento = !!editableAnimal.dataNascimento;
+  const hasWeights = editableAnimal.historicoPesagens.length > 0;
+
   return (
     <div className="mt-6">
-      <h3 className="text-lg font-semibold text-white mb-4">Histórico de Pesagens</h3>
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-lg font-semibold text-white">Histórico de Pesagens</h3>
+        {isEditing && (
+          <button
+            onClick={onAutoClassifyWeights}
+            disabled={!hasDateNascimento || !hasWeights}
+            className="text-xs bg-brand-accent-dark hover:bg-brand-accent text-white px-3 py-1.5 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            title={!hasDateNascimento ? 'Animal sem data de nascimento' : !hasWeights ? 'Nenhum peso registrado' : 'Classifica automaticamente os pesos como Desmame (~7m) e Sobreano (~18m)'}
+          >
+            Auto-classificar Desmame/Sobreano
+          </button>
+        )}
+      </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <div className="max-h-60 overflow-y-auto bg-base-900 p-2 rounded-lg">
           {editableAnimal.historicoPesagens.length === 0 ? (
