@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { CheckIcon } from './common/Icons';
 
 interface ImageCropEditorProps {
@@ -264,10 +265,10 @@ const ImageCropEditor: React.FC<ImageCropEditorProps> = ({
         );
     }, [imageDimensions, scale, position, containerSize, cropSize, onCropComplete]);
 
-    return (
-        <div className="fixed inset-0 bg-black z-50 flex flex-col">
+    return createPortal(
+        <div className="fixed inset-0 bg-black z-[100] flex flex-col" style={{ paddingTop: 'env(safe-area-inset-top)', paddingBottom: 'env(safe-area-inset-bottom)' }}>
             {/* Header */}
-            <div className="flex items-center justify-between p-4 bg-base-900">
+            <div className="flex items-center justify-between p-4 bg-base-900 shrink-0">
                 <button
                     onClick={onCancel}
                     className="text-white px-4 py-2 rounded hover:bg-base-700 transition-colors"
@@ -287,7 +288,7 @@ const ImageCropEditor: React.FC<ImageCropEditorProps> = ({
             {/* Crop Area */}
             <div
                 ref={containerRef}
-                className="flex-1 relative overflow-hidden touch-none select-none"
+                className="flex-1 relative overflow-hidden touch-none select-none min-h-0"
                 onPointerDown={handlePointerDown}
                 onPointerMove={handlePointerMove}
                 onPointerUp={handlePointerUp}
@@ -346,7 +347,7 @@ const ImageCropEditor: React.FC<ImageCropEditorProps> = ({
             </div>
 
             {/* Zoom controls */}
-            <div className="p-4 bg-base-900 flex items-center justify-center gap-6">
+            <div className="p-4 bg-base-900 flex items-center justify-center gap-6 shrink-0">
                 <button
                     onClick={handleZoomOut}
                     className="w-12 h-12 rounded-full bg-base-700 text-white text-2xl flex items-center justify-center hover:bg-base-600 transition-colors"
@@ -372,10 +373,11 @@ const ImageCropEditor: React.FC<ImageCropEditorProps> = ({
             </div>
 
             {/* Instructions */}
-            <div className="p-3 bg-base-800 text-center text-white/60 text-sm">
+            <div className="p-3 bg-base-800 text-center text-white/60 text-sm shrink-0">
                 Arraste para posicionar • Pinça ou scroll para zoom
             </div>
-        </div>
+        </div>,
+        document.body
     );
 };
 
