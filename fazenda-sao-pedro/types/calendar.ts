@@ -86,4 +86,7 @@ export interface ManagementBatch {
 
   // Para Pesagem: tipo de pesagem
   weighingType?: WeighingType;
+
+  /** Data real da pesagem (ex: importada da balança). Se ausente, usa a data de conclusão. */
+  weighingDate?: Date;
 }

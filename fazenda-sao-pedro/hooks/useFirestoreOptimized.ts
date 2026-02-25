@@ -2234,6 +2234,8 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
                 if (!mergedBatch.animalWeights) break;
 
                 const weighingTypeValue = mergedBatch.weighingType || WeighingType.None;
+                // Usa a data real da pesagem (ex: importada da balança) ou a data atual
+                const weighingDate = mergedBatch.weighingDate ? new Date(mergedBatch.weighingDate) : now;
 
                 for (const animalId of mergedBatch.animalIds) {
                     const weight = mergedBatch.animalWeights[animalId];
@@ -2244,7 +2246,7 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
 
                     const newWeightEntry = {
                         id: `batch_${batchId}_${animalId}`,
-                        date: now,
+                        date: weighingDate,
                         weightKg: weight,
                         type: weighingTypeValue,
                     };

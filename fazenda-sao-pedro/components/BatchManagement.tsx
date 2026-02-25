@@ -24,10 +24,16 @@ interface MedicationEntry {
   subType: MedicationSubType;
 }
 
+interface CsvAnimalRow {
+  idv: string;
+  peso: number;
+  data: string;
+}
+
 interface BatchManagementProps {
   batches: ManagementBatch[];
   animals: Animal[];
-  onCreateBatch: (batch: Omit<ManagementBatch, 'id'>) => void;
+  onCreateBatch: (batch: Omit<ManagementBatch, 'id'>) => Promise<ManagementBatch | void> | ManagementBatch | void;
   onUpdateBatch: (batchId: string, data: Partial<ManagementBatch>) => void;
   onDeleteBatch: (batchId: string) => void;
   onCompleteBatch: (batchId: string, completionData?: Partial<ManagementBatch>) => Promise<void> | void;
@@ -68,6 +74,15 @@ const BatchManagement: React.FC<BatchManagementProps> = ({
   const [animalWeights, setAnimalWeights] = useState<Record<string, string>>({});
   const [weighingType, setWeighingType] = useState<WeighingType>(WeighingType.None);
 
+  // Estado do import CSV da balança
+  const [csvImportOpen, setCsvImportOpen] = useState(false);
+  const [csvRows, setCsvRows] = useState<CsvAnimalRow[]>([]);
+  const [csvFileName, setCsvFileName] = useState('');
+  const [csvBatchName, setCsvBatchName] = useState('');
+  const [csvWeighingType, setCsvWeighingType] = useState<WeighingType>(WeighingType.None);
+  const [csvImporting, setCsvImporting] = useState(false);
+  const csvFileInputRef = React.useRef<HTMLInputElement>(null);
+
   const activeBatches = useMemo(() =>
     batches.filter(b => b.status === 'active'),
     [batches]
@@ -99,6 +114,138 @@ const BatchManagement: React.FC<BatchManagementProps> = ({
       a.nome?.toLowerCase().includes(term)
     ).slice(0, 50);
   }, [animals, editSearchTerm]);
+
+  // Dados do CSV matchados com animais do sistema
+  const csvMatchedData = useMemo(() => {
+    if (csvRows.length === 0) return { matched: [], unmatched: [] };
+
+    const matched: { animal: Animal; peso: number; data: string }[] = [];
+    const unmatched: CsvAnimalRow[] = [];
+
+    for (const row of csvRows) {
+      const animal = animals.find(a =>
+        a.brinco.toLowerCase() === row.idv.toLowerCase()
+      );
+      if (animal) {
+        matched.push({ animal, peso: row.peso, data: row.data });
+      } else {
+        unmatched.push(row);
+      }
+    }
+
+    return { matched, unmatched };
+  }, [csvRows, animals]);
+
+  // Parser do CSV da balança Tru-Test (separador ;)
+  const parseCsvFile = (file: File) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const text = e.target?.result as string;
+      if (!text) return;
+
+      const lines = text.trim().split('\n').map(l => l.trim()).filter(Boolean);
+      if (lines.length < 2) return;
+
+      // Detecta header e indices das colunas IDV, Peso, Data
+      const header = lines[0].split(';').map(h => h.trim().toLowerCase());
+      const idvIdx = header.findIndex(h => h === 'idv');
+      const pesoIdx = header.findIndex(h => h === 'peso');
+      const dataIdx = header.findIndex(h => h === 'data');
+
+      if (idvIdx === -1 || pesoIdx === -1 || dataIdx === -1) {
+        alert('CSV invalido: colunas IDV, Peso e Data nao encontradas.');
+        return;
+      }
+
+      const rows: CsvAnimalRow[] = [];
+      for (let i = 1; i < lines.length; i++) {
+        const cols = lines[i].split(';');
+        const idv = cols[idvIdx]?.trim();
+        const peso = parseFloat(cols[pesoIdx]?.trim());
+        const data = cols[dataIdx]?.trim() || '';
+
+        if (idv && !isNaN(peso) && peso > 0) {
+          rows.push({ idv, peso, data });
+        }
+      }
+
+      if (rows.length === 0) {
+        alert('Nenhum registro valido encontrado no CSV.');
+        return;
+      }
+
+      setCsvRows(rows);
+      setCsvFileName(file.name);
+
+      // Auto-gera nome do lote a partir do nome do arquivo
+      const nameFromFile = file.name
+        .replace(/\.csv$/i, '')
+        .replace(/^Tru-Test_\d{4}-\d{2}-\d{2}_/, '');
+      const dateFromRows = rows[0]?.data || '';
+      const formattedDate = dateFromRows
+        ? new Date(dateFromRows).toLocaleDateString('pt-BR')
+        : new Date().toLocaleDateString('pt-BR');
+      setCsvBatchName(`Pesagem ${nameFromFile} - ${formattedDate}`);
+      setCsvWeighingType(WeighingType.None);
+      setCsvImportOpen(true);
+    };
+    reader.readAsText(file);
+  };
+
+  const handleCsvFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      parseCsvFile(file);
+    }
+    // Limpa o input para permitir re-selecao do mesmo arquivo
+    e.target.value = '';
+  };
+
+  const handleCsvImport = async () => {
+    if (csvImporting || csvMatchedData.matched.length === 0) return;
+    setCsvImporting(true);
+
+    try {
+      const matchedAnimalIds = csvMatchedData.matched.map(m => m.animal.id);
+      const weights: Record<string, number> = {};
+      csvMatchedData.matched.forEach(m => {
+        weights[m.animal.id] = m.peso;
+      });
+
+      // Cria o lote
+      const newBatchResult = await onCreateBatch({
+        name: csvBatchName || 'Pesagem Balanca',
+        description: `Importado de ${csvFileName}`,
+        purpose: BatchPurpose.Pesagem,
+        animalIds: matchedAnimalIds,
+        createdAt: new Date(),
+        status: 'active',
+      });
+
+      // Se retornou o batch com ID, conclui automaticamente
+      if (newBatchResult && 'id' in newBatchResult) {
+        // Usa a data da balança (coluna Data do CSV) em vez da data atual
+        const csvDate = csvMatchedData.matched[0]?.data;
+        const weighingDate = csvDate ? new Date(csvDate) : undefined;
+
+        await onCompleteBatch(newBatchResult.id, {
+          animalWeights: weights,
+          weighingType: csvWeighingType,
+          ...(weighingDate ? { weighingDate } : {}),
+        });
+      }
+
+      // Limpa estado do import
+      setCsvImportOpen(false);
+      setCsvRows([]);
+      setCsvFileName('');
+      setCsvBatchName('');
+    } catch (error: any) {
+      alert(error?.message || 'Erro ao importar dados da balanca.');
+    } finally {
+      setCsvImporting(false);
+    }
+  };
 
   const handleCreateBatch = () => {
     if (!newBatch.name.trim()) return;
@@ -594,15 +741,36 @@ const BatchManagement: React.FC<BatchManagementProps> = ({
 
   return (
     <div className="space-y-6">
+      {/* Input oculto para seleção de arquivo CSV */}
+      <input
+        ref={csvFileInputRef}
+        type="file"
+        accept=".csv"
+        onChange={handleCsvFileSelect}
+        className="hidden"
+      />
+
       {/* Header */}
       <div className="flex justify-between items-center">
         <h2 className="text-xl font-bold text-white">Lotes de Manejo</h2>
-        <button
-          onClick={() => setIsCreateModalOpen(true)}
-          className="px-4 py-2 bg-brand-primary text-white rounded-lg hover:bg-brand-primary-dark transition-colors"
-        >
-          + Novo Lote
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={() => csvFileInputRef.current?.click()}
+            className="px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm flex items-center gap-1.5"
+            title="Importar CSV da balanca"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+            </svg>
+            Importar Balanca
+          </button>
+          <button
+            onClick={() => setIsCreateModalOpen(true)}
+            className="px-4 py-2 bg-brand-primary text-white rounded-lg hover:bg-brand-primary-dark transition-colors"
+          >
+            + Novo Lote
+          </button>
+        </div>
       </div>
 
       {/* Lotes Ativos */}
@@ -1014,6 +1182,129 @@ const BatchManagement: React.FC<BatchManagementProps> = ({
             </div>
           </div>
         )}
+      </Modal>
+
+      {/* Modal de Import CSV da Balanca */}
+      <Modal
+        isOpen={csvImportOpen}
+        onClose={() => { setCsvImportOpen(false); setCsvRows([]); }}
+        title="Importar Balanca"
+      >
+        <div className="space-y-4">
+          {/* Resumo do arquivo */}
+          <div className="bg-base-900 rounded-lg p-3 space-y-1">
+            <div className="flex items-center gap-2">
+              <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              <span className="text-gray-300 text-sm">{csvFileName}</span>
+            </div>
+            <p className="text-xs text-gray-500">
+              {csvRows.length} registros no CSV &middot;{' '}
+              <span className="text-green-400">{csvMatchedData.matched.length} encontrados</span>
+              {csvMatchedData.unmatched.length > 0 && (
+                <> &middot; <span className="text-amber-400">{csvMatchedData.unmatched.length} nao encontrados</span></>
+              )}
+            </p>
+            {csvRows[0]?.data && (
+              <p className="text-xs text-gray-500">
+                Data: {new Date(csvRows[0].data).toLocaleDateString('pt-BR')}
+              </p>
+            )}
+          </div>
+
+          {/* Nome do lote */}
+          <div>
+            <label className="block text-sm text-gray-400 mb-1">Nome do Lote</label>
+            <input
+              type="text"
+              value={csvBatchName}
+              onChange={(e) => setCsvBatchName(e.target.value)}
+              className="w-full px-3 py-2 bg-base-700 border border-base-600 rounded-lg text-white"
+            />
+          </div>
+
+          {/* Tipo de pesagem */}
+          <div>
+            <label className="block text-sm text-gray-400 mb-1">Tipo de Pesagem</label>
+            <div className="flex flex-wrap gap-2">
+              {Object.values(WeighingType).map(t => (
+                <button
+                  key={t}
+                  type="button"
+                  onClick={() => setCsvWeighingType(t)}
+                  className={`px-3 py-1.5 text-xs rounded-lg ${
+                    csvWeighingType === t
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-base-700 text-gray-300 hover:bg-base-600'
+                  }`}
+                >
+                  {t}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Lista de animais encontrados */}
+          <div>
+            <h4 className="text-sm font-semibold text-green-400 mb-2">
+              Animais Encontrados ({csvMatchedData.matched.length})
+            </h4>
+            <div className="max-h-48 overflow-y-auto space-y-1">
+              {csvMatchedData.matched.map(({ animal, peso }) => (
+                <div key={animal.id} className="flex justify-between items-center p-2 bg-base-700 rounded">
+                  <div className="flex items-center gap-2">
+                    <span className="text-white text-sm font-medium">{animal.brinco}</span>
+                    {animal.nome && <span className="text-gray-400 text-xs">({animal.nome})</span>}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {animal.pesoKg > 0 && (
+                      <span className="text-gray-500 text-xs">{animal.pesoKg}kg →</span>
+                    )}
+                    <span className="text-white text-sm font-bold">{peso}kg</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Animais nao encontrados */}
+          {csvMatchedData.unmatched.length > 0 && (
+            <div>
+              <h4 className="text-sm font-semibold text-amber-400 mb-2">
+                Nao Encontrados ({csvMatchedData.unmatched.length})
+              </h4>
+              <div className="max-h-32 overflow-y-auto space-y-1">
+                {csvMatchedData.unmatched.map((row, i) => (
+                  <div key={i} className="flex justify-between items-center p-2 bg-amber-900/20 border border-amber-800/30 rounded">
+                    <span className="text-amber-300 text-sm">{row.idv}</span>
+                    <span className="text-gray-400 text-sm">{row.peso}kg</span>
+                  </div>
+                ))}
+              </div>
+              <p className="text-xs text-gray-500 mt-1">
+                Estes brincos nao foram encontrados no sistema e serao ignorados.
+              </p>
+            </div>
+          )}
+
+          {/* Botoes */}
+          <div className="flex gap-2 pt-4 border-t border-base-700">
+            <button
+              onClick={() => { setCsvImportOpen(false); setCsvRows([]); }}
+              className="flex-1 px-4 py-2 bg-base-700 text-white rounded-lg hover:bg-base-600"
+            >
+              Cancelar
+            </button>
+            <button
+              onClick={handleCsvImport}
+              disabled={csvMatchedData.matched.length === 0 || csvImporting}
+              className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
+            >
+              {csvImporting ? 'Importando...' : `Importar ${csvMatchedData.matched.length} Pesagens`}
+            </button>
+          </div>
+        </div>
       </Modal>
     </div>
   );
