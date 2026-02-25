@@ -91,6 +91,29 @@ export interface OffspringWeightRecord {
   birthWeightKg?: number;
   weaningWeightKg?: number;
   yearlingWeightKg?: number;
+  // Dados biométricos da progênie para cálculo de DEP
+  ribeyeAreaCm2?: number;       // Área de Olho de Lombo (cm²)
+  fatThicknessMm?: number;      // Espessura de Gordura Subcutânea (mm)
+  scrotalCircumferenceCm?: number; // Perímetro Escrotal (cm)
+}
+
+export type BiometricType = 'ribeyeArea' | 'fatThickness' | 'scrotalCircumference';
+
+/**
+ * Registro de medição biométrica (ultrassom de carcaça ou perímetro escrotal)
+ * Armazenado em historicoBiometria[] no Animal
+ */
+export interface BiometricRecord {
+  id: string;
+  date: Date;
+  /** Tipo da medição biométrica */
+  type: BiometricType;
+  /** Valor numérico (AOL em cm², gordura em mm, PE em cm) */
+  value: number;
+  /** Método de medição */
+  method?: 'ultrasound' | 'manual';
+  /** Observações opcionais */
+  notes?: string;
 }
 
 export interface Animal {
@@ -109,6 +132,8 @@ export interface Animal {
   historicoPrenhez?: PregnancyRecord[];
   historicoAborto?: AbortionRecord[];
   historicoProgenie?: OffspringWeightRecord[];
+  /** Histórico de medições biométricas (AOL, gordura subcutânea, perímetro escrotal) */
+  historicoBiometria?: BiometricRecord[];
   // Vínculos genealógicos por ID (mais confiável - preferência)
   paiId?: string;
   maeId?: string;

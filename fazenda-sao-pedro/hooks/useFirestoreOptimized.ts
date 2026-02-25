@@ -580,6 +580,7 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
             historicoPrenhez: entity.historicoPrenhez || [],
             historicoAborto: entity.historicoAborto || [],
             historicoProgenie: entity.historicoProgenie || [],
+            historicoBiometria: entity.historicoBiometria || [],
         };
     };
 
@@ -1008,6 +1009,7 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
                 historicoPrenhez: [],
                 historicoAborto: [],
                 historicoProgenie: [],
+                historicoBiometria: [],
             };
 
             // remove qualquer campo undefined, incluindo dataNascimento se vier vazio

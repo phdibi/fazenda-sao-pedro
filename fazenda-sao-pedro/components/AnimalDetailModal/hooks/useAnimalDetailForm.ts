@@ -18,6 +18,8 @@ import {
   createEmptyMedicationItem,
   formStateToMedicationItems,
 } from '../../../types';
+import { BiometricRecord } from '../../../types/animal';
+import { BiometricFormState, createInitialBiometricFormState } from '../../../types/forms';
 import { autoClassifyWeightTypes } from '../../../utils/gmdCalculations';
 import { deletePhotoFromStorage, isValidFirebaseStorageUrl } from '../../../services/storageService';
 
@@ -41,6 +43,7 @@ export interface UseAnimalDetailFormReturn {
   pregnancyForm: Omit<PregnancyRecord, 'id'>;
   abortionDate: string;
   offspringForm: OffspringFormState;
+  biometricForm: BiometricFormState;
 
   // Ações de estado
   setIsEditing: (editing: boolean) => void;
@@ -50,6 +53,7 @@ export interface UseAnimalDetailFormReturn {
   setPregnancyForm: React.Dispatch<React.SetStateAction<Omit<PregnancyRecord, 'id'>>>;
   setAbortionDate: React.Dispatch<React.SetStateAction<string>>;
   setOffspringForm: React.Dispatch<React.SetStateAction<OffspringFormState>>;
+  setBiometricForm: React.Dispatch<React.SetStateAction<BiometricFormState>>;
 
   // Handlers
   handleSaveChanges: () => void;
@@ -82,6 +86,11 @@ export interface UseAnimalDetailFormReturn {
   // Progênie
   handleAddOrUpdateOffspringSubmit: (e: React.FormEvent) => void;
   handleDeleteOffspringRecord: (recordId: string) => void;
+
+  // Biometria
+  handleAddBiometric: (e: React.FormEvent) => void;
+  handleDeleteBiometric: (recordId: string) => void;
+  handleBiometricDateChange: (recordId: string, newDateString: string) => void;
 
   // Fotos
   handleDeletePhoto: () => Promise<{ success: boolean; error?: string; freedSpace?: number }>;
@@ -123,6 +132,8 @@ export const useAnimalDetailForm = ({
     yearlingWeightKg: '',
   });
 
+  const [biometricForm, setBiometricForm] = useState<BiometricFormState>(createInitialBiometricFormState());
+
   // Efeito para sincronizar dados do animal
   useEffect(() => {
     if (animal && !isEditing) {
@@ -141,6 +152,9 @@ export const useAnimalDetailForm = ({
           (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
         ),
         historicoProgenie: [...(animal.historicoProgenie || [])],
+        historicoBiometria: [...(animal.historicoBiometria || [])].sort(
+          (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
+        ),
       };
       const formState = { ...sortedAnimal, pesoKg: String(sortedAnimal.pesoKg) };
       setEditableAnimal(formState);
@@ -639,6 +653,53 @@ export const useAnimalDetailForm = ({
     });
   }, []);
 
+  // === HANDLERS DE BIOMETRIA ===
+
+  const handleAddBiometric = useCallback((e: React.FormEvent) => {
+    e.preventDefault();
+    const numericValue = parseFloat(biometricForm.value);
+    if (isNaN(numericValue) || numericValue <= 0) return;
+
+    const newRecord: BiometricRecord = {
+      id: `bio-${Date.now()}`,
+      date: biometricForm.date,
+      type: biometricForm.type,
+      value: numericValue,
+      method: biometricForm.method,
+      ...(biometricForm.notes.trim() && { notes: biometricForm.notes.trim() }),
+    };
+
+    setEditableAnimal((prev) => {
+      if (!prev) return null;
+      const newHistory = [...(prev.historicoBiometria || []), newRecord].sort(
+        (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
+      );
+      return { ...prev, historicoBiometria: newHistory };
+    });
+
+    setBiometricForm(createInitialBiometricFormState());
+  }, [biometricForm]);
+
+  const handleDeleteBiometric = useCallback((recordId: string) => {
+    setEditableAnimal((prev) => {
+      if (!prev) return null;
+      return { ...prev, historicoBiometria: (prev.historicoBiometria || []).filter(r => r.id !== recordId) };
+    });
+  }, []);
+
+  const handleBiometricDateChange = useCallback((recordId: string, newDateString: string) => {
+    setEditableAnimal((prev) => {
+      if (!prev || !newDateString || newDateString.trim() === '') return prev;
+      const parsedDate = new Date(newDateString + 'T00:00:00');
+      if (isNaN(parsedDate.getTime())) return prev;
+      const updatedHistory = (prev.historicoBiometria || []).map(entry =>
+        entry.id === recordId ? { ...entry, date: parsedDate } : entry
+      );
+      updatedHistory.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+      return { ...prev, historicoBiometria: updatedHistory };
+    });
+  }, []);
+
   // === HANDLER DE DELEÇÃO DE FOTO ===
 
   const handleDeletePhoto = useCallback(async (): Promise<{ success: boolean; error?: string; freedSpace?: number }> => {
@@ -708,6 +769,7 @@ export const useAnimalDetailForm = ({
     pregnancyForm,
     abortionDate,
     offspringForm,
+    biometricForm,
 
     // Ações de estado
     setIsEditing,
@@ -717,6 +779,7 @@ export const useAnimalDetailForm = ({
     setPregnancyForm,
     setAbortionDate,
     setOffspringForm,
+    setBiometricForm,
 
     // Handlers
     handleSaveChanges,
@@ -749,6 +812,11 @@ export const useAnimalDetailForm = ({
     // Progênie
     handleAddOrUpdateOffspringSubmit,
     handleDeleteOffspringRecord,
+
+    // Biometria
+    handleAddBiometric,
+    handleDeleteBiometric,
+    handleBiometricDateChange,
 
     // Fotos
     handleDeletePhoto,

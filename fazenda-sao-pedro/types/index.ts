@@ -346,6 +346,12 @@ export interface DEPReport {
     yearlingWeight: number;
     milkProduction: number;
     totalMaternal: number;
+    // Carcaça
+    ribeyeArea?: number;
+    fatThickness?: number;
+    // Fertilidade
+    scrotalCircumference?: number;
+    stayability?: number;
   };
   // Percentis dentro do rebanho
   percentile: {
@@ -354,6 +360,12 @@ export interface DEPReport {
     yearlingWeight: number;
     milkProduction: number;
     totalMaternal: number;
+    // Carcaça
+    ribeyeArea?: number;
+    fatThickness?: number;
+    // Fertilidade
+    scrotalCircumference?: number;
+    stayability?: number;
   };
   // Informações usadas no cálculo
   dataSource: {
@@ -373,6 +385,11 @@ export interface HerdDEPBaseline {
     birthWeight: { mean: number; stdDev: number };
     weaningWeight: { mean: number; stdDev: number };
     yearlingWeight: { mean: number; stdDev: number };
+    // Carcaça (condicionais - só existem se há medições suficientes)
+    ribeyeArea?: { mean: number; stdDev: number };
+    fatThickness?: { mean: number; stdDev: number };
+    // Fertilidade (só machos)
+    scrotalCircumference?: { mean: number; stdDev: number };
   };
   updatedAt: Date;
 }

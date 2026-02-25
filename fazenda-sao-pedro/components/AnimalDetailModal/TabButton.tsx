@@ -1,6 +1,6 @@
 import React from 'react';
 
-export type TabName = 'general' | 'health' | 'weight' | 'reproduction' | 'progeny' | 'genealogy';
+export type TabName = 'general' | 'health' | 'weight' | 'biometry' | 'reproduction' | 'progeny' | 'genealogy';
 
 interface TabButtonProps {
   tabName: TabName;

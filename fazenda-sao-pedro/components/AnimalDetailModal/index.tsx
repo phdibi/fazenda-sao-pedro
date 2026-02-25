@@ -7,7 +7,7 @@ import Spinner from '../common/Spinner';
 
 // Tabs
 import { TabButton, TabName } from './TabButton';
-import { GeneralTab, HealthTab, WeightTab, ReproductionTab, ProgenyTab } from './tabs';
+import { GeneralTab, HealthTab, WeightTab, BiometryTab, ReproductionTab, ProgenyTab } from './tabs';
 
 // Hook centralizado
 import { useAnimalDetailForm } from './hooks/useAnimalDetailForm';
@@ -87,6 +87,11 @@ const AnimalDetailModal: React.FC<AnimalDetailModalProps> = ({
     handleDeleteOffspringRecord,
     handleDeletePhoto,
     isDeletingPhoto,
+    biometricForm,
+    setBiometricForm,
+    handleAddBiometric,
+    handleDeleteBiometric,
+    handleBiometricDateChange,
   } = form;
 
   // Handlers de delete
@@ -126,6 +131,7 @@ const AnimalDetailModal: React.FC<AnimalDetailModalProps> = ({
             <TabButton tabName="general" label="Dados Gerais" activeTab={activeTab} onClick={setActiveTab} />
             <TabButton tabName="health" label="Histórico Sanitário" activeTab={activeTab} onClick={setActiveTab} />
             <TabButton tabName="weight" label="Histórico de Pesagens" activeTab={activeTab} onClick={setActiveTab} />
+            <TabButton tabName="biometry" label="Biometria" activeTab={activeTab} onClick={setActiveTab} />
             {animal.sexo === Sexo.Femea && (
               <TabButton tabName="reproduction" label="Reprodução" activeTab={activeTab} onClick={setActiveTab} />
             )}
@@ -178,6 +184,18 @@ const AnimalDetailModal: React.FC<AnimalDetailModalProps> = ({
               onDeleteWeight={handleDeleteWeight}
               onWeightDateChange={handleWeightDateChange}
               onAutoClassifyWeights={handleAutoClassifyWeights}
+            />
+          )}
+
+          {activeTab === 'biometry' && (
+            <BiometryTab
+              editableAnimal={editableAnimal}
+              isEditing={isEditing}
+              biometricForm={biometricForm}
+              setBiometricForm={setBiometricForm}
+              onAddBiometric={handleAddBiometric}
+              onDeleteBiometric={handleDeleteBiometric}
+              onBiometricDateChange={handleBiometricDateChange}
             />
           )}
 

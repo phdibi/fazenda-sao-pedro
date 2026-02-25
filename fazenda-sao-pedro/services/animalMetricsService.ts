@@ -15,6 +15,7 @@ import {
   AnimalStatus,
   Sexo,
   WeighingType,
+  BiometricType,
   GainMetrics,
   BreedingSeason,
   DEPReport,
@@ -32,6 +33,8 @@ import {
 import {
   calculateAccuracy,
   calculateSingleDEP,
+  getLatestBiometric,
+  getAgeInMonths as getAgeInMonthsFromAnimal,
   HERITABILITIES,
 } from './depCalculator';
 
@@ -643,12 +646,38 @@ export class AnimalMetricsService {
         .map(a => getWeightByType(a, WeighingType.Yearling))
         .filter((w): w is number => w !== null && w > 0);
 
+      // Biometria - Carcaça (todos os animais com medição)
+      const ribeyeAreas = raceAnimalsInPeriod
+        .map(a => getLatestBiometric(a, 'ribeyeArea'))
+        .filter((v): v is number => v !== null && v > 0);
+
+      const fatThicknesses = raceAnimalsInPeriod
+        .map(a => getLatestBiometric(a, 'fatThickness'))
+        .filter((v): v is number => v !== null && v > 0);
+
+      // Biometria - Fertilidade (PE apenas machos)
+      const scrotalCircumferences = raceAnimalsInPeriod
+        .filter(a => a.sexo === Sexo.Macho)
+        .map(a => getLatestBiometric(a, 'scrotalCircumference'))
+        .filter((v): v is number => v !== null && v > 0);
+
       baselines.push({
         raca,
         metrics: {
           birthWeight: { mean: mean(birthWeights), stdDev: stdDev(birthWeights) },
           weaningWeight: { mean: mean(weaningWeights), stdDev: stdDev(weaningWeights) },
           yearlingWeight: { mean: mean(yearlingWeights), stdDev: stdDev(yearlingWeights) },
+          // Carcaça (condicional: só se há medições suficientes para baseline)
+          ...(ribeyeAreas.length >= 2 && {
+            ribeyeArea: { mean: mean(ribeyeAreas), stdDev: stdDev(ribeyeAreas) },
+          }),
+          ...(fatThicknesses.length >= 2 && {
+            fatThickness: { mean: mean(fatThicknesses), stdDev: stdDev(fatThicknesses) },
+          }),
+          // Fertilidade
+          ...(scrotalCircumferences.length >= 2 && {
+            scrotalCircumference: { mean: mean(scrotalCircumferences), stdDev: stdDev(scrotalCircumferences) },
+          }),
         },
         updatedAt: new Date(),
       });
@@ -686,13 +715,6 @@ export class AnimalMetricsService {
     const siblingWeaningWeights = siblings
       .map(s => getWeightByType(s, WeighingType.Weaning))
       .filter((w): w is number => w !== null && w > 0);
-
-    // Contagem de registros
-    const dataSource = {
-      ownRecords: (ownBirthWeight ? 1 : 0) + (ownWeaningWeight ? 1 : 0) + (ownYearlingWeight ? 1 : 0),
-      progenyRecords: progeny.length,
-      siblingsRecords: siblings.length,
-    };
 
     // Calcula DEPs usando a mesma fórmula do depCalculator (importada)
     const depValues: DEPValues = {
@@ -736,6 +758,114 @@ export class AnimalMetricsService {
       }
     }
 
+    // ============================================
+    // DEPs DE CARCAÇA (AOL e Espessura de Gordura)
+    // ============================================
+    // Calculados apenas se há baseline para a raça (mínimo 2 medições no rebanho)
+
+    let ownRibeyeArea: number | null = null;
+    let progenyRibeyeAreas: number[] = [];
+    let ownFatThickness: number | null = null;
+    let progenyFatThicknesses: number[] = [];
+
+    if (baseline.metrics.ribeyeArea) {
+      ownRibeyeArea = animalInPeriod ? getLatestBiometric(animal, 'ribeyeArea') : null;
+      progenyRibeyeAreas = progeny
+        .map(p => getLatestBiometric(p, 'ribeyeArea'))
+        .filter((v): v is number => v !== null && v > 0);
+
+      depValues.ribeyeArea = calculateSingleDEP(
+        ownRibeyeArea,
+        progenyRibeyeAreas,
+        baseline.metrics.ribeyeArea.mean,
+        HERITABILITIES.ribeyeArea
+      );
+    }
+
+    if (baseline.metrics.fatThickness) {
+      ownFatThickness = animalInPeriod ? getLatestBiometric(animal, 'fatThickness') : null;
+      progenyFatThicknesses = progeny
+        .map(p => getLatestBiometric(p, 'fatThickness'))
+        .filter((v): v is number => v !== null && v > 0);
+
+      depValues.fatThickness = calculateSingleDEP(
+        ownFatThickness,
+        progenyFatThicknesses,
+        baseline.metrics.fatThickness.mean,
+        HERITABILITIES.fatThickness
+      );
+    }
+
+    // ============================================
+    // DEPs DE FERTILIDADE (PE e Stayability)
+    // ============================================
+
+    let ownScrotalCirc: number | null = null;
+    let progenyScrotalCircs: number[] = [];
+
+    // Perímetro Escrotal: só para machos (medição própria + filhos machos)
+    if (baseline.metrics.scrotalCircumference && animal.sexo === Sexo.Macho) {
+      ownScrotalCirc = animalInPeriod ? getLatestBiometric(animal, 'scrotalCircumference') : null;
+      progenyScrotalCircs = progeny
+        .filter(p => p.sexo === Sexo.Macho)
+        .map(p => getLatestBiometric(p, 'scrotalCircumference'))
+        .filter((v): v is number => v !== null && v > 0);
+
+      depValues.scrotalCircumference = calculateSingleDEP(
+        ownScrotalCirc,
+        progenyScrotalCircs,
+        baseline.metrics.scrotalCircumference.mean,
+        HERITABILITIES.scrotalCircumference
+      );
+    }
+
+    // Stayability (Permanência): calculada automaticamente
+    // Para fêmeas: verifica se a própria vaca está ativa com 6+ anos
+    // Para machos: verifica suas filhas com 6+ anos
+    // É uma característica binária (ativa=1, inativa=0)
+    {
+      const STAYABILITY_AGE_MONTHS = 72; // 6 anos
+
+      // Valor próprio (somente fêmeas com idade >= 6 anos)
+      let ownStayValue: number | null = null;
+      if (animal.sexo === Sexo.Femea) {
+        const ageMonths = getAgeInMonthsFromAnimal(animal);
+        if (ageMonths !== null && ageMonths >= STAYABILITY_AGE_MONTHS) {
+          ownStayValue = animal.status === AnimalStatus.Ativo ? 1 : 0;
+        }
+      }
+
+      // Progênie: filhas com 6+ anos (tanto para touros quanto para matrizes)
+      const qualifiedDaughters = progeny.filter(p => {
+        if (p.sexo !== Sexo.Femea) return false;
+        const age = getAgeInMonthsFromAnimal(p);
+        return age !== null && age >= STAYABILITY_AGE_MONTHS;
+      });
+
+      if (ownStayValue !== null || qualifiedDaughters.length > 0) {
+        const daughterStayValues = qualifiedDaughters.map(d =>
+          d.status === AnimalStatus.Ativo ? 1 : 0
+        );
+
+        // Para stayability, a baseline é a taxa média de permanência do rebanho
+        // Usamos 0.5 como default quando não há dados suficientes
+        const allFemales = progeny.length > 0 ? qualifiedDaughters : [];
+        const baselineStayRate = allFemales.length > 0
+          ? mean(allFemales.map(d => d.status === AnimalStatus.Ativo ? 1 : 0))
+          : 0.5;
+
+        const stayDep = calculateSingleDEP(
+          ownStayValue,
+          daughterStayValues,
+          baselineStayRate > 0 ? baselineStayRate : 0.5,
+          HERITABILITIES.stayability
+        );
+
+        // Converte para percentual (multiplica por 100 para exibição como %)
+        depValues.stayability = stayDep * 100;
+      }
+    }
+
     // Acurácias usando fórmula baseada em PEV (importada de depCalculator)
     const nOwnBirth = ownBirthWeight ? 1 : 0;
     const nOwnWeaning = ownWeaningWeight ? 1 : 0;
@@ -753,6 +883,48 @@ export class AnimalMetricsService {
         nSibWeaning,
         (HERITABILITIES.weaningWeight + HERITABILITIES.maternalWeaning) / 2
       ),
+      // Carcaça
+      ...(depValues.ribeyeArea !== undefined && {
+        ribeyeArea: calculateAccuracy(
+          ownRibeyeArea ? 1 : 0,
+          progenyRibeyeAreas.length,
+          0,
+          HERITABILITIES.ribeyeArea
+        ),
+      }),
+      ...(depValues.fatThickness !== undefined && {
+        fatThickness: calculateAccuracy(
+          ownFatThickness ? 1 : 0,
+          progenyFatThicknesses.length,
+          0,
+          HERITABILITIES.fatThickness
+        ),
+      }),
+      // Fertilidade
+      ...(depValues.scrotalCircumference !== undefined && {
+        scrotalCircumference: calculateAccuracy(
+          ownScrotalCirc ? 1 : 0,
+          progenyScrotalCircs.length,
+          0,
+          HERITABILITIES.scrotalCircumference
+        ),
+      }),
+      ...(depValues.stayability !== undefined && {
+        stayability: calculateAccuracy(
+          animal.sexo === Sexo.Femea && getAgeInMonthsFromAnimal(animal) !== null && getAgeInMonthsFromAnimal(animal)! >= 72 ? 1 : 0,
+          progeny.filter(p => p.sexo === Sexo.Femea && getAgeInMonthsFromAnimal(p) !== null && getAgeInMonthsFromAnimal(p)! >= 72).length,
+          0,
+          HERITABILITIES.stayability
+        ),
+      }),
+    };
+
+    // Contagem de registros para exibição
+    const nOwnBiometric = (ownRibeyeArea ? 1 : 0) + (ownFatThickness ? 1 : 0) + (ownScrotalCirc ? 1 : 0);
+    const dataSource = {
+      ownRecords: (ownBirthWeight ? 1 : 0) + (ownWeaningWeight ? 1 : 0) + (ownYearlingWeight ? 1 : 0) + nOwnBiometric,
+      progenyRecords: progeny.length,
+      siblingsRecords: siblings.length,
     };
 
     // Percentis provisórios (serão atualizados no computeAll com a distribuição completa)
@@ -780,6 +952,20 @@ export class AnimalMetricsService {
         yearlingWeight: Math.round(depValues.yearlingWeight * 10) / 10,
         milkProduction: Math.round(depValues.milkProduction * 10) / 10,
         totalMaternal: Math.round(depValues.totalMaternal * 10) / 10,
+        // Carcaça
+        ...(depValues.ribeyeArea !== undefined && {
+          ribeyeArea: Math.round(depValues.ribeyeArea * 10) / 10,
+        }),
+        ...(depValues.fatThickness !== undefined && {
+          fatThickness: Math.round(depValues.fatThickness * 10) / 10,
+        }),
+        // Fertilidade
+        ...(depValues.scrotalCircumference !== undefined && {
+          scrotalCircumference: Math.round(depValues.scrotalCircumference * 10) / 10,
+        }),
+        ...(depValues.stayability !== undefined && {
+          stayability: Math.round(depValues.stayability * 10) / 10,
+        }),
       },
       accuracy,
       percentile,
@@ -838,11 +1024,23 @@ export class AnimalMetricsService {
       yearling: number[];
       maternal: number[];
       milk: number[];
+      ribeyeArea: number[];
+      fatThickness: number[];
+      scrotalCircumference: number[];
+      stayability: number[];
     }>();
 
     this.indices.byRaca.forEach((animals, raca) => {
-      const racaDeps: { birth: number[]; weaning: number[]; yearling: number[]; maternal: number[]; milk: number[] } = {
-        birth: [], weaning: [], yearling: [], maternal: [], milk: [],
+      const racaDeps = {
+        birth: [] as number[],
+        weaning: [] as number[],
+        yearling: [] as number[],
+        maternal: [] as number[],
+        milk: [] as number[],
+        ribeyeArea: [] as number[],
+        fatThickness: [] as number[],
+        scrotalCircumference: [] as number[],
+        stayability: [] as number[],
       };
       for (const a of animals) {
         const dep = this.allDEPs.get(a.id);
@@ -853,6 +1051,20 @@ export class AnimalMetricsService {
           if (a.sexo === Sexo.Femea) {
             racaDeps.maternal.push(dep.dep.totalMaternal);
             racaDeps.milk.push(dep.dep.milkProduction);
+          }
+          // Carcaça
+          if (dep.dep.ribeyeArea !== undefined) {
+            racaDeps.ribeyeArea.push(dep.dep.ribeyeArea);
+          }
+          if (dep.dep.fatThickness !== undefined) {
+            racaDeps.fatThickness.push(dep.dep.fatThickness);
+          }
+          // Fertilidade
+          if (a.sexo === Sexo.Macho && dep.dep.scrotalCircumference !== undefined) {
+            racaDeps.scrotalCircumference.push(dep.dep.scrotalCircumference);
+          }
+          if (dep.dep.stayability !== undefined) {
+            racaDeps.stayability.push(dep.dep.stayability);
           }
         }
       }
@@ -886,14 +1098,47 @@ export class AnimalMetricsService {
             dep.percentile.totalMaternal = calculatePercentile(dep.dep.totalMaternal, racaDeps.maternal);
             dep.percentile.milkProduction = calculatePercentile(dep.dep.milkProduction, racaDeps.milk);
           }
+
+          // Percentis de carcaça
+          if (dep.dep.ribeyeArea !== undefined && racaDeps.ribeyeArea.length > 0) {
+            dep.percentile.ribeyeArea = calculatePercentile(dep.dep.ribeyeArea, racaDeps.ribeyeArea);
+          }
+          if (dep.dep.fatThickness !== undefined && racaDeps.fatThickness.length > 0) {
+            dep.percentile.fatThickness = calculatePercentile(dep.dep.fatThickness, racaDeps.fatThickness);
+          }
+
+          // Percentis de fertilidade
+          if (dep.dep.scrotalCircumference !== undefined && racaDeps.scrotalCircumference.length > 0) {
+            dep.percentile.scrotalCircumference = calculatePercentile(dep.dep.scrotalCircumference, racaDeps.scrotalCircumference);
+          }
+          if (dep.dep.stayability !== undefined && racaDeps.stayability.length > 0) {
+            dep.percentile.stayability = calculatePercentile(dep.dep.stayability, racaDeps.stayability);
+          }
         }
 
         depWeaningPercentile = dep.percentile.weaningWeight;
         depYearlingPercentile = dep.percentile.yearlingWeight;
 
         // Recalcula recomendação com percentis reais
-        const avgPercentile = (dep.percentile.weaningWeight + dep.percentile.yearlingWeight) / 2;
+        // Combina crescimento (60%) + carcaça/fertilidade (40%) quando dados disponíveis
+        const growthPercentile = (dep.percentile.weaningWeight + dep.percentile.yearlingWeight) / 2;
         const avgAccuracy = (dep.accuracy.weaningWeight + dep.accuracy.yearlingWeight) / 2;
+
+        // Coleta percentis complementares (carcaça + fertilidade) quando disponíveis
+        const extraPercentiles: number[] = [];
+        if (dep.percentile.ribeyeArea !== undefined) extraPercentiles.push(dep.percentile.ribeyeArea);
+        if (dep.percentile.fatThickness !== undefined) extraPercentiles.push(dep.percentile.fatThickness);
+        if (dep.percentile.scrotalCircumference !== undefined) extraPercentiles.push(dep.percentile.scrotalCircumference);
+        if (dep.percentile.stayability !== undefined) extraPercentiles.push(dep.percentile.stayability);
+
+        // Se há dados complementares, combina 60% crescimento + 40% carcaça/fertilidade
+        let avgPercentile: number;
+        if (extraPercentiles.length > 0) {
+          const avgExtraPercentile = mean(extraPercentiles);
+          avgPercentile = growthPercentile * 0.6 + avgExtraPercentile * 0.4;
+        } else {
+          avgPercentile = growthPercentile;
+        }
 
         if (animal.sexo === Sexo.Macho) {
           if (avgPercentile >= 80 && avgAccuracy >= 0.5) dep.recommendation = 'reprodutor_elite';

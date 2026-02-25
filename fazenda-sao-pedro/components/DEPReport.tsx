@@ -130,6 +130,60 @@ const AnimalDEPCard: React.FC<{
         )}
       </div>
 
+      {/* DEPs de Carcaça (se disponíveis) */}
+      {(report.dep.ribeyeArea !== undefined || report.dep.fatThickness !== undefined) && (
+        <div className="mb-4">
+          <div className="text-xs text-gray-500 font-medium mb-2 uppercase tracking-wide">Carcaça</div>
+          <div className="grid grid-cols-2 gap-2">
+            {report.dep.ribeyeArea !== undefined && (
+              <DEPValue
+                value={report.dep.ribeyeArea}
+                accuracy={report.accuracy.ribeyeArea || 0}
+                percentile={report.percentile.ribeyeArea ?? 50}
+                label="AOL (Olho de Lombo)"
+                unit="cm²"
+              />
+            )}
+            {report.dep.fatThickness !== undefined && (
+              <DEPValue
+                value={report.dep.fatThickness}
+                accuracy={report.accuracy.fatThickness || 0}
+                percentile={report.percentile.fatThickness ?? 50}
+                label="Espessura Gordura"
+                unit="mm"
+              />
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* DEPs de Fertilidade (se disponíveis) */}
+      {(report.dep.scrotalCircumference !== undefined || report.dep.stayability !== undefined) && (
+        <div className="mb-4">
+          <div className="text-xs text-gray-500 font-medium mb-2 uppercase tracking-wide">Fertilidade</div>
+          <div className="grid grid-cols-2 gap-2">
+            {report.sexo === 'Macho' && report.dep.scrotalCircumference !== undefined && (
+              <DEPValue
+                value={report.dep.scrotalCircumference}
+                accuracy={report.accuracy.scrotalCircumference || 0}
+                percentile={report.percentile.scrotalCircumference ?? 50}
+                label="Perímetro Escrotal"
+                unit="cm"
+              />
+            )}
+            {report.dep.stayability !== undefined && (
+              <DEPValue
+                value={report.dep.stayability}
+                accuracy={report.accuracy.stayability || 0}
+                percentile={report.percentile.stayability ?? 50}
+                label="Permanência"
+                unit="%"
+              />
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Fonte de dados */}
       <div className="flex items-center gap-4 text-xs text-gray-500">
         <span>Registros: {report.dataSource.ownRecords} próprios</span>
@@ -275,6 +329,10 @@ const DEPReportComponent: React.FC<DEPReportProps> = ({ animals, onSelectAnimal,
               <option value="weaningWeight">Peso Desmame</option>
               <option value="yearlingWeight">Peso Sobreano</option>
               <option value="totalMaternal">Habilidade Materna</option>
+              <option value="ribeyeArea">AOL (Olho de Lombo)</option>
+              <option value="fatThickness">Espessura de Gordura</option>
+              <option value="scrotalCircumference">Perímetro Escrotal</option>
+              <option value="stayability">Permanência (Stayability)</option>
             </select>
           </div>
 
@@ -360,19 +418,35 @@ const DEPReportComponent: React.FC<DEPReportProps> = ({ animals, onSelectAnimal,
               <strong className="text-white">DEP (Diferença Esperada na Progênie):</strong> Predição
               de quanto os filhos de um animal devem diferir da média da raça.
             </p>
-            <p>
+            <p className="mb-2">
               <strong className="text-white">Acurácia:</strong> Confiabilidade do DEP. Aumenta com
               mais informações (próprias, de progênie, de parentes).
+            </p>
+            <p>
+              <strong className="text-white">Percentil:</strong> Posição do animal no ranking da
+              raça. Top 20% são os 20% melhores.
             </p>
           </div>
           <div>
             <p className="mb-2">
-              <strong className="text-white">Percentil:</strong> Posição do animal no ranking da
-              raça. Top 20% são os 20% melhores.
-            </p>
-            <p>
               <strong className="text-white">Habilidade Materna:</strong> Capacidade da fêmea de
               criar bezerros mais pesados ao desmame.
+            </p>
+            <p className="mb-2">
+              <strong className="text-white">AOL (Área de Olho de Lombo):</strong> Medida da musculosidade
+              do animal (cm²). Medido por ultrassom entre a 12ª e 13ª costela.
+            </p>
+            <p className="mb-2">
+              <strong className="text-white">Espessura de Gordura (EGS):</strong> Gordura subcutânea (mm).
+              Indica acabamento de carcaça. Ideal para abate: 3-6 mm.
+            </p>
+            <p className="mb-2">
+              <strong className="text-white">Perímetro Escrotal (PE):</strong> Circunferência escrotal (cm).
+              Correlacionado com fertilidade e precocidade sexual. Apenas machos.
+            </p>
+            <p>
+              <strong className="text-white">Permanência (Stayability):</strong> Probabilidade de uma
+              matriz permanecer produtiva no rebanho até 6+ anos. Calculada automaticamente.
             </p>
           </div>
         </div>

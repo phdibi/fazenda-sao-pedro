@@ -2,7 +2,7 @@
 // TIPOS PARA FORMULÁRIOS
 // ============================================
 
-import { Animal, MedicationAdministration, MedicationItem, WeighingType } from './animal';
+import { Animal, MedicationAdministration, MedicationItem, WeighingType, BiometricType } from './animal';
 
 /**
  * Estado editável de Animal (pesoKg como string para inputs)
@@ -89,6 +89,28 @@ export interface WeightFormState {
   weight: string;
   type: WeighingType;
 }
+
+/**
+ * Estado de formulário de biometria (AOL, gordura, perímetro escrotal)
+ */
+export interface BiometricFormState {
+  type: BiometricType;
+  value: string;          // string para input field
+  date: Date;
+  method: 'ultrasound' | 'manual';
+  notes: string;
+}
+
+/**
+ * Helper para criar o estado inicial do formulário de biometria
+ */
+export const createInitialBiometricFormState = (): BiometricFormState => ({
+  type: 'ribeyeArea',
+  value: '',
+  date: new Date(),
+  method: 'ultrasound',
+  notes: '',
+});
 
 /**
  * Tipo para validação de formulário
