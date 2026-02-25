@@ -155,12 +155,41 @@ body.modal-open {
     height: 100% !important;
 }
 
+.modal-max-h {
+    max-height: 90vh;
+    max-height: 90dvh;
+}
+
+@media (max-width: 639px) {
+    .modal-max-h {
+        max-height: 85vh;
+        max-height: 85dvh;
+    }
+}
+
 .overflow-y-auto {
     -webkit-overflow-scrolling: touch;
 }
 
 .overscroll-contain {
     overscroll-behavior: contain;
+}
+
+/* ============================================ */
+/* 🎨 PREVENIR ZOOM NO iOS EM INPUTS          */
+/* ============================================ */
+@media screen and (max-width: 767px) {
+    input[type="text"],
+    input[type="number"],
+    input[type="search"],
+    input[type="email"],
+    input[type="tel"],
+    input[type="url"],
+    input[type="password"],
+    select,
+    textarea {
+        font-size: 16px !important;
+    }
 }
 
 /* ============================================ */
