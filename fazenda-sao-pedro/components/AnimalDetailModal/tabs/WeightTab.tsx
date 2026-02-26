@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { EditableAnimalState, WeighingType } from '../../../types';
 import { TrashIcon } from '../../common/Icons';
 import { formatDate, dateToInputValue } from '../../../utils/dateHelpers';
+import { calcularGMDDePesagens, classificarGMD } from '../../../utils/gmdCalculations';
 
 interface WeightTabProps {
   editableAnimal: EditableAnimalState;
@@ -27,6 +28,13 @@ const WeightTab: React.FC<WeightTabProps> = ({
   const hasDateNascimento = !!editableAnimal.dataNascimento;
   const hasWeights = editableAnimal.historicoPesagens.length > 0;
 
+  const gmdMetrics = useMemo(
+    () => calcularGMDDePesagens(editableAnimal.historicoPesagens),
+    [editableAnimal.historicoPesagens]
+  );
+
+  const hasGMDData = (gmdMetrics.diasAcompanhamento ?? 0) > 0;
+
   return (
     <div className="mt-6">
       <div className="flex items-center justify-between mb-4">
@@ -42,6 +50,64 @@ const WeightTab: React.FC<WeightTabProps> = ({
           </button>
         )}
       </div>
+      {hasGMDData && (
+        <div className="mb-4 grid grid-cols-2 md:grid-cols-4 gap-3">
+          {/* GMD Total */}
+          {gmdMetrics.gmdTotal !== undefined && (
+            <div className="bg-base-900 rounded-lg p-3">
+              <p className="text-xs text-gray-400 mb-1">GMD Total</p>
+              <p className={`text-lg font-bold ${classificarGMD(gmdMetrics.gmdTotal).color}`}>
+                {gmdMetrics.gmdTotal.toFixed(3)} kg/d
+              </p>
+              <p className={`text-xs ${classificarGMD(gmdMetrics.gmdTotal).color}`}>
+                {classificarGMD(gmdMetrics.gmdTotal).label}
+              </p>
+            </div>
+          )}
+
+          {/* GMD Último Período */}
+          {gmdMetrics.gmdUltimoPeriodo !== undefined && (
+            <div className="bg-base-900 rounded-lg p-3">
+              <p className="text-xs text-gray-400 mb-1">GMD Último Período</p>
+              <p className={`text-lg font-bold ${classificarGMD(gmdMetrics.gmdUltimoPeriodo).color}`}>
+                {gmdMetrics.gmdUltimoPeriodo.toFixed(3)} kg/d
+              </p>
+              <p className={`text-xs ${classificarGMD(gmdMetrics.gmdUltimoPeriodo).color}`}>
+                {classificarGMD(gmdMetrics.gmdUltimoPeriodo).label}
+              </p>
+            </div>
+          )}
+
+          {/* Dias desde última pesagem */}
+          {gmdMetrics.diasDesdeUltimaPesagem !== undefined && (
+            <div className="bg-base-900 rounded-lg p-3">
+              <p className="text-xs text-gray-400 mb-1">Última Pesagem</p>
+              <p className="text-lg font-bold text-white">
+                {gmdMetrics.diasDesdeUltimaPesagem}d atrás
+              </p>
+              {gmdMetrics.dataUltimaPesagem && (
+                <p className="text-xs text-gray-400">
+                  {formatDate(gmdMetrics.dataUltimaPesagem)}
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* Peso Estimado Hoje */}
+          {gmdMetrics.pesoEstimadoHoje !== undefined && gmdMetrics.diasDesdeUltimaPesagem !== undefined && gmdMetrics.diasDesdeUltimaPesagem > 0 && (
+            <div className="bg-base-900 rounded-lg p-3">
+              <p className="text-xs text-gray-400 mb-1">Peso Estimado Hoje</p>
+              <p className="text-lg font-bold text-brand-accent">
+                {gmdMetrics.pesoEstimadoHoje.toFixed(1)} kg
+              </p>
+              <p className="text-xs text-gray-400">
+                baseado no últ. período
+              </p>
+            </div>
+          )}
+        </div>
+      )}
+
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <div className="max-h-60 overflow-y-auto bg-base-900 p-2 rounded-lg">
           {editableAnimal.historicoPesagens.length === 0 ? (

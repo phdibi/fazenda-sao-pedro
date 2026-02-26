@@ -147,7 +147,7 @@ export const useAdvancedFilters = ({
         ...animal,
         _cachedGMD: {
           gmdTotal: gmd.gmdTotal ?? null,
-          gmdRecente: gmd.gmdUltimos30Dias ?? null
+          gmdRecente: gmd.gmdUltimoPeriodo ?? null
         }
       };
     });

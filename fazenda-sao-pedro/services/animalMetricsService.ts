@@ -37,6 +37,7 @@ import {
   getAgeInMonths as getAgeInMonthsFromAnimal,
   HERITABILITIES,
 } from './depCalculator';
+import { calcularGMDDePesagens } from '../utils/gmdCalculations';
 
 // ============================================
 // TIPOS DE DADOS DERIVADOS
@@ -452,83 +453,7 @@ export class AnimalMetricsService {
   // ============================================
 
   private calculateGMD(animal: Animal): GainMetrics {
-    const pesagens = animal.historicoPesagens || [];
-
-    if (pesagens.length < 2) {
-      return { gmdTotal: 0, diasAcompanhamento: 0 };
-    }
-
-    // Ordenar por data
-    const sorted = [...pesagens].sort(
-      (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
-    );
-
-    const primeiro = sorted[0];
-    const ultimo = sorted[sorted.length - 1];
-
-    // GMD Total
-    const diasTotal = Math.ceil(
-      (new Date(ultimo.date).getTime() - new Date(primeiro.date).getTime()) / (1000 * 60 * 60 * 24)
-    );
-
-    const gmdTotal = diasTotal > 0
-      ? Number(((ultimo.weightKg - primeiro.weightKg) / diasTotal).toFixed(3))
-      : 0;
-
-    // GMD Nascimento -> Desmame
-    const pesoNascimento = sorted.find(p => p.type === WeighingType.Birth);
-    const pesoDesmame = sorted.find(p => p.type === WeighingType.Weaning);
-
-    let gmdNascimentoDesmame: number | undefined;
-    if (pesoNascimento && pesoDesmame) {
-      const dias = Math.ceil(
-        (new Date(pesoDesmame.date).getTime() - new Date(pesoNascimento.date).getTime()) / (1000 * 60 * 60 * 24)
-      );
-      if (dias > 0) {
-        gmdNascimentoDesmame = Number(((pesoDesmame.weightKg - pesoNascimento.weightKg) / dias).toFixed(3));
-      }
-    }
-
-    // GMD Desmame -> Sobreano
-    const pesoSobreano = sorted.find(p => p.type === WeighingType.Yearling);
-
-    let gmdDesmameSobreano: number | undefined;
-    if (pesoDesmame && pesoSobreano) {
-      const dias = Math.ceil(
-        (new Date(pesoSobreano.date).getTime() - new Date(pesoDesmame.date).getTime()) / (1000 * 60 * 60 * 24)
-      );
-      if (dias > 0) {
-        gmdDesmameSobreano = Number(((pesoSobreano.weightKg - pesoDesmame.weightKg) / dias).toFixed(3));
-      }
-    }
-
-    // GMD últimos 30 dias
-    const hoje = new Date();
-    const trintaDiasAtras = new Date(hoje.getTime() - 30 * 24 * 60 * 60 * 1000);
-
-    const pesagensRecentes = sorted.filter(p => new Date(p.date) >= trintaDiasAtras);
-
-    let gmdUltimos30Dias: number | undefined;
-    if (pesagensRecentes.length >= 2) {
-      const primeiraRecente = pesagensRecentes[0];
-      const ultimaRecente = pesagensRecentes[pesagensRecentes.length - 1];
-      const dias = Math.ceil(
-        (new Date(ultimaRecente.date).getTime() - new Date(primeiraRecente.date).getTime()) / (1000 * 60 * 60 * 24)
-      );
-      if (dias > 0) {
-        gmdUltimos30Dias = Number(((ultimaRecente.weightKg - primeiraRecente.weightKg) / dias).toFixed(3));
-      }
-    }
-
-    return {
-      gmdTotal,
-      gmdNascimentoDesmame,
-      gmdDesmameSobreano,
-      gmdUltimos30Dias,
-      diasAcompanhamento: diasTotal,
-      pesoInicial: primeiro.weightKg,
-      pesoFinal: ultimo.weightKg,
-    };
+    return calcularGMDDePesagens(animal.historicoPesagens || []);
   }
 
   // ============================================

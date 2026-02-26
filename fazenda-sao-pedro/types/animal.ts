@@ -166,9 +166,17 @@ export interface GainMetrics {
   gmdDesmameSobreano?: number;
   gmdTotal?: number;
   gmdUltimos30Dias?: number;
+  /** GMD entre as duas últimas pesagens registradas (independente de data) */
+  gmdUltimoPeriodo?: number;
   diasAcompanhamento?: number;
   pesoInicial?: number;
   pesoFinal?: number;
+  /** Dias corridos desde a última pesagem até hoje */
+  diasDesdeUltimaPesagem?: number;
+  /** Data da última pesagem */
+  dataUltimaPesagem?: Date;
+  /** Peso estimado hoje = último peso + gmdUltimoPeriodo × diasDesdeUltimaPesagem */
+  pesoEstimadoHoje?: number;
 }
 
 // Predição de peso

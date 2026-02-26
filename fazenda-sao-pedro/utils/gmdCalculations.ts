@@ -21,11 +21,11 @@ export const calcularGMDEntrePesagens = (
 };
 
 /**
- * Calcula todas as métricas de GMD de um animal
+ * Calcula todas as métricas de GMD a partir de um array de pesagens.
+ * Versão pura que não depende do objeto Animal completo — pode ser chamada
+ * diretamente do WeightTab ou de qualquer componente com acesso às pesagens.
  */
-export const calcularGMDAnimal = (animal: Animal): GainMetrics => {
-  const pesagens = animal.historicoPesagens || [];
-  
+export const calcularGMDDePesagens = (pesagens: WeightEntry[]): GainMetrics => {
   if (pesagens.length < 2) {
     return {
       gmdTotal: 0,
@@ -33,7 +33,7 @@ export const calcularGMDAnimal = (animal: Animal): GainMetrics => {
     };
   }
 
-  // Ordenar por data
+  // Ordena cronologicamente
   const sorted = [...pesagens].sort(
     (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
   );
@@ -41,71 +41,93 @@ export const calcularGMDAnimal = (animal: Animal): GainMetrics => {
   const primeiro = sorted[0];
   const ultimo = sorted[sorted.length - 1];
 
-  // GMD Total
+  // GMD Total (primeira → última pesagem)
   const diasTotal = Math.ceil(
     (new Date(ultimo.date).getTime() - new Date(primeiro.date).getTime()) / (1000 * 60 * 60 * 24)
   );
-
-  const gmdTotal = diasTotal > 0 
+  const gmdTotal = diasTotal > 0
     ? Number(((ultimo.weightKg - primeiro.weightKg) / diasTotal).toFixed(3))
     : 0;
 
-  // GMD Nascimento -> Desmame
+  // GMD Nascimento → Desmame
   const pesoNascimento = sorted.find(p => p.type === WeighingType.Birth);
   const pesoDesmame = sorted.find(p => p.type === WeighingType.Weaning);
-  
   let gmdNascimentoDesmame: number | undefined;
   if (pesoNascimento && pesoDesmame) {
     gmdNascimentoDesmame = calcularGMDEntrePesagens(
-      pesoNascimento.weightKg,
-      pesoDesmame.weightKg,
-      pesoNascimento.date,
-      pesoDesmame.date
+      pesoNascimento.weightKg, pesoDesmame.weightKg,
+      pesoNascimento.date, pesoDesmame.date
     );
   }
 
-  // GMD Desmame -> Sobreano
+  // GMD Desmame → Sobreano
   const pesoSobreano = sorted.find(p => p.type === WeighingType.Yearling);
-  
   let gmdDesmameSobreano: number | undefined;
   if (pesoDesmame && pesoSobreano) {
     gmdDesmameSobreano = calcularGMDEntrePesagens(
-      pesoDesmame.weightKg,
-      pesoSobreano.weightKg,
-      pesoDesmame.date,
-      pesoSobreano.date
+      pesoDesmame.weightKg, pesoSobreano.weightKg,
+      pesoDesmame.date, pesoSobreano.date
     );
   }
 
-  // GMD últimos 30 dias
+  // GMD últimos 30 dias (apenas se houver 2 pesagens nesse janela)
   const hoje = new Date();
   const trintaDiasAtras = new Date(hoje.getTime() - 30 * 24 * 60 * 60 * 1000);
-  
-  const pesagensRecentes = sorted.filter(
-    p => new Date(p.date) >= trintaDiasAtras
-  );
-
+  const pesagensRecentes = sorted.filter(p => new Date(p.date) >= trintaDiasAtras);
   let gmdUltimos30Dias: number | undefined;
   if (pesagensRecentes.length >= 2) {
     const primeiraRecente = pesagensRecentes[0];
     const ultimaRecente = pesagensRecentes[pesagensRecentes.length - 1];
     gmdUltimos30Dias = calcularGMDEntrePesagens(
-      primeiraRecente.weightKg,
-      ultimaRecente.weightKg,
-      primeiraRecente.date,
-      ultimaRecente.date
+      primeiraRecente.weightKg, ultimaRecente.weightKg,
+      primeiraRecente.date, ultimaRecente.date
     );
   }
+
+  // GMD do último período: entre as duas últimas pesagens registradas.
+  // Reflete a fase de criação atual (recria, engorda, etc.) de forma mais
+  // precisa do que o GMD total, que dilui a fase atual com toda a vida do animal.
+  let gmdUltimoPeriodo: number | undefined;
+  if (sorted.length >= 2) {
+    const penultimo = sorted[sorted.length - 2];
+    gmdUltimoPeriodo = calcularGMDEntrePesagens(
+      penultimo.weightKg, ultimo.weightKg,
+      penultimo.date, ultimo.date
+    );
+  }
+
+  // Dias desde a última pesagem e peso estimado hoje.
+  // O peso estimado usa gmdUltimoPeriodo (fase atual) com fallback para gmdTotal.
+  const diasDesdeUltimaPesagem = Math.max(
+    0,
+    Math.floor((hoje.getTime() - new Date(ultimo.date).getTime()) / (1000 * 60 * 60 * 24))
+  );
+  const gmdParaEstimativa = gmdUltimoPeriodo ?? gmdTotal;
+  const pesoEstimadoHoje = gmdParaEstimativa !== undefined
+    ? Math.max(0, Number((ultimo.weightKg + gmdParaEstimativa * diasDesdeUltimaPesagem).toFixed(1)))
+    : undefined;
 
   return {
     gmdTotal,
     gmdNascimentoDesmame,
     gmdDesmameSobreano,
     gmdUltimos30Dias,
+    gmdUltimoPeriodo,
     diasAcompanhamento: diasTotal,
     pesoInicial: primeiro.weightKg,
     pesoFinal: ultimo.weightKg,
+    diasDesdeUltimaPesagem,
+    dataUltimaPesagem: new Date(ultimo.date),
+    pesoEstimadoHoje,
   };
+};
+
+/**
+ * Calcula todas as métricas de GMD de um animal.
+ * Wrapper sobre calcularGMDDePesagens que lê o historicoPesagens do animal.
+ */
+export const calcularGMDAnimal = (animal: Animal): GainMetrics => {
+  return calcularGMDDePesagens(animal.historicoPesagens || []);
 };
 
 /**
