@@ -26,8 +26,6 @@ interface AppRouterProps {
     onQuickWeight: (animal: Animal) => void;
     onQuickMedication: (animal: Animal) => void;
     onLongPress: (animal: Animal) => void;
-    setShowScaleImportModal: (show: boolean) => void;
-
 }
 
 const AppRouter: React.FC<AppRouterProps> = ({
@@ -38,7 +36,6 @@ const AppRouter: React.FC<AppRouterProps> = ({
     onQuickWeight,
     onQuickMedication,
     onLongPress,
-    setShowScaleImportModal,
 }) => {
     const { firestore, filters: advancedFilters, dashboardConfig } = useFarmData();
 
@@ -104,13 +101,6 @@ const AppRouter: React.FC<AppRouterProps> = ({
                 <div className="flex flex-col sm:flex-row justify-between sm:items-center mb-4 md:mb-6 gap-3">
                     <h1 className="text-2xl md:text-3xl font-bold text-white">Painel do Rebanho</h1>
                     <div className="hidden sm:flex items-center gap-3">
-                        <button
-                            onClick={() => setShowScaleImportModal(true)}
-                            className="flex items-center gap-2 px-4 py-2 rounded-md bg-base-700 hover:bg-base-600 text-sm text-white border border-base-600"
-                        >
-                            <span role="img" aria-label="balança">⚖️</span>
-                            Importar Balança
-                        </button>
                         {costlyActionsEnabled ? (
                             <ExportButtons
                                 animals={filteredAnimals}
@@ -183,31 +173,18 @@ const AppRouter: React.FC<AppRouterProps> = ({
                 />
 
                 <div className="sm:hidden mt-6">
-                    <div className="grid grid-cols-3 gap-2">
-                        <button
-                            onClick={() => setShowScaleImportModal(true)}
-                            className="flex items-center justify-center gap-2 px-3 py-3 rounded-lg bg-base-700 hover:bg-base-600 text-xs font-semibold text-white border border-base-600"
-                        >
-                            <span role="img" aria-label="balança">⚖️</span>
-                            <span className="leading-tight text-left">Importar
-                                <br />Balança
-                            </span>
-                        </button>
-                        {costlyActionsEnabled ? (
-                            <div className="col-span-2">
-                                <ExportButtons
-                                    animals={filteredAnimals}
-                                    stats={stats}
-                                    areas={state.managementAreas}
-                                    variant="compact"
-                                />
-                            </div>
-                        ) : (
-                            <div className="col-span-2 text-xs text-yellow-300 border border-yellow-700 rounded px-3 py-2 bg-yellow-900/20 flex items-center justify-center text-center">
-                                Configure o Firebase para habilitar exportação.
-                            </div>
-                        )}
-                    </div>
+                    {costlyActionsEnabled ? (
+                        <ExportButtons
+                            animals={filteredAnimals}
+                            stats={stats}
+                            areas={state.managementAreas}
+                            variant="compact"
+                        />
+                    ) : (
+                        <div className="text-xs text-yellow-300 border border-yellow-700 rounded px-3 py-2 bg-yellow-900/20 text-center">
+                            Configure o Firebase para habilitar exportação.
+                        </div>
+                    )}
                 </div>
             </Suspense>
         );

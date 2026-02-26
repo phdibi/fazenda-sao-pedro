@@ -19,7 +19,6 @@ import QuotaIndicator from './components/common/QuotaIndicator';
 // Modais globais (permanecem aqui)
 const AnimalDetailModal = lazy(() => import('./components/AnimalDetailModal'));
 const AddAnimalModal = lazy(() => import('./components/AddAnimalModal'));
-const ScaleImportModal = lazy(() => import('./components/ScaleImportModal'));
 const Chatbot = lazy(() => import('./components/Chatbot'));
 
 interface AppProps {
@@ -39,7 +38,6 @@ const InnerApp = ({ user, firebaseReady }: AppProps) => {
         handleDeleteAnimal,
         handleQuickWeightSave,
         handleQuickMedicationSave,
-        handleScaleImportComplete
     } = useAnimalActions(user.uid);
 
     // Destruturando dados do Firestore
@@ -66,7 +64,6 @@ const InnerApp = ({ user, firebaseReady }: AppProps) => {
     const [selectedAnimalId, setSelectedAnimalId] = useState<string | null>(null);
     const [isAddAnimalModalOpen, setIsAddAnimalModalOpen] = useState(false);
     const [showDashboardSettings, setShowDashboardSettings] = useState(false);
-    const [showScaleImportModal, setShowScaleImportModal] = useState(false);
 
     // Estados para ações rápidas (swipe)
     const [quickWeightAnimal, setQuickWeightAnimal] = useState<Animal | null>(null);
@@ -220,7 +217,6 @@ const InnerApp = ({ user, firebaseReady }: AppProps) => {
                     onQuickWeight={(animal) => setQuickWeightAnimal(animal)}
                     onQuickMedication={(animal) => setQuickMedicationAnimal(animal)}
                     onLongPress={(animal) => setSelectedAnimalId(animal.id)}
-                    setShowScaleImportModal={setShowScaleImportModal}
                 />
             </main>
 
@@ -241,13 +237,6 @@ const InnerApp = ({ user, firebaseReady }: AppProps) => {
                     onClose={() => setIsAddAnimalModalOpen(false)}
                     onAddAnimal={handleAddAnimalWrapper}
                     animals={state.animals}
-                />
-
-                <ScaleImportModal
-                    isOpen={showScaleImportModal}
-                    onClose={() => setShowScaleImportModal(false)}
-                    animals={state.animals}
-                    onImportComplete={handleScaleImportComplete}
                 />
 
                 <Chatbot animals={state.animals} />

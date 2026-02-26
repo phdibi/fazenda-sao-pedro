@@ -182,9 +182,13 @@ const BatchManagement: React.FC<BatchManagementProps> = ({
         .replace(/\.csv$/i, '')
         .replace(/^Tru-Test_\d{4}-\d{2}-\d{2}_/, '');
       const dateFromRows = rows[0]?.data || '';
-      const formattedDate = dateFromRows
-        ? new Date(dateFromRows).toLocaleDateString('pt-BR')
-        : new Date().toLocaleDateString('pt-BR');
+      let formattedDate = new Date().toLocaleDateString('pt-BR');
+      if (dateFromRows) {
+        const dp = dateFromRows.split('-').map(Number);
+        if (dp.length === 3) {
+          formattedDate = new Date(dp[0], dp[1] - 1, dp[2], 12, 0, 0).toLocaleDateString('pt-BR');
+        }
+      }
       setCsvBatchName(`Pesagem ${nameFromFile} - ${formattedDate}`);
       setCsvWeighingType(WeighingType.None);
       setCsvImportOpen(true);
@@ -225,8 +229,16 @@ const BatchManagement: React.FC<BatchManagementProps> = ({
       // Se retornou o batch com ID, conclui automaticamente
       if (newBatchResult && 'id' in newBatchResult) {
         // Usa a data da balança (coluna Data do CSV) em vez da data atual
+        // Parseia manualmente para evitar problema de timezone
+        // (new Date('2026-02-24') cria meia-noite UTC, que no Brasil vira dia anterior)
         const csvDate = csvMatchedData.matched[0]?.data;
-        const weighingDate = csvDate ? new Date(csvDate) : undefined;
+        let weighingDate: Date | undefined;
+        if (csvDate) {
+          const parts = csvDate.split('-').map(Number);
+          if (parts.length === 3) {
+            weighingDate = new Date(parts[0], parts[1] - 1, parts[2], 12, 0, 0);
+          }
+        }
 
         await onCompleteBatch(newBatchResult.id, {
           animalWeights: weights,
@@ -1208,7 +1220,11 @@ const BatchManagement: React.FC<BatchManagementProps> = ({
             </p>
             {csvRows[0]?.data && (
               <p className="text-xs text-gray-500">
-                Data: {new Date(csvRows[0].data).toLocaleDateString('pt-BR')}
+                Data: {(() => {
+                  const dp = csvRows[0].data.split('-').map(Number);
+                  const d = dp.length === 3 ? new Date(dp[0], dp[1] - 1, dp[2], 12, 0, 0) : new Date(csvRows[0].data);
+                  return d.toLocaleDateString('pt-BR');
+                })()}
               </p>
             )}
           </div>

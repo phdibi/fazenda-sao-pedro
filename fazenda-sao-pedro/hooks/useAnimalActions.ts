@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useCallback } from 'react';
 import { Animal, WeighingType, WeightEntry, MedicationAdministration, MedicationItem } from '../types';
 import { useFarmData } from '../contexts/FarmContext';
 import { offlineQueue } from '../utils/offlineSync';
@@ -139,46 +139,11 @@ export const useAnimalActions = (userUid: string) => {
         }
     };
 
-    const handleScaleImportComplete = async (
-        weightsMap: Map<string, { weight: number; date: Date; type: WeighingType }>
-    ) => {
-        try {
-            const updates: Promise<void>[] = [];
-
-            weightsMap.forEach((data, animalId) => {
-                const animal = getAnimal(animalId);
-                if (!animal) return;
-
-                const newEntry: WeightEntry = {
-                    id: `scale-${Date.now()}-${animalId}`,
-                    date: data.date,
-                    weightKg: data.weight,
-                    type: data.type === WeighingType.None ? undefined : data.type,
-                };
-
-                const historicoPesagens = [...(animal.historicoPesagens || []), newEntry]
-                    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-
-                updates.push(updateAnimal(animalId, {
-                    historicoPesagens,
-                    pesoKg: data.weight,
-                }));
-            });
-
-            await Promise.all(updates);
-            alert('Pesagens importadas da balança com sucesso!');
-        } catch (error) {
-            console.error('Erro ao importar pesagens:', error);
-            alert('Não foi possível concluir a importação da balança.');
-        }
-    };
-
     return {
         handleAddAnimal,
         handleUpdateAnimal,
         handleDeleteAnimal,
         handleQuickWeightSave,
         handleQuickMedicationSave,
-        handleScaleImportComplete
     };
 };

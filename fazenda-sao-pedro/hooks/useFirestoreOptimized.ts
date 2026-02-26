@@ -10,6 +10,7 @@ import { removeUndefined } from '../utils/objectHelpers';
 import { migrateHealthHistory, needsMigration } from '../utils/medicationMigration';
 import { log } from '../utils/logger';
 import { AnimalIndex, buildAnimalIndex } from '../utils/animalIndex';
+import { autoClassifyWeightTypes } from '../utils/gmdCalculations';
 
 // ============================================
 // 🔧 CONSTANTES DE TIPO DE COBERTURA
@@ -2133,6 +2134,9 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
         if (completionData?.medicationDataList) {
             completedFields.medicationDataList = completionData.medicationDataList;
         }
+        if (completionData?.weighingDate) {
+            completedFields.weighingDate = completionData.weighingDate;
+        }
         const wb0 = getWriteBatch();
         wb0.update(batchRef, { ...convertDatesToTimestamps(completedFields), updatedAt: now });
 
@@ -2238,6 +2242,7 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
                 const weighingTypeValue = mergedBatch.weighingType || WeighingType.None;
                 // Usa a data real da pesagem (ex: importada da balança) ou a data atual
                 const weighingDate = mergedBatch.weighingDate ? new Date(mergedBatch.weighingDate) : now;
+                const shouldAutoClassify = weighingTypeValue === WeighingType.None;
 
                 for (const animalId of mergedBatch.animalIds) {
                     const weight = mergedBatch.animalWeights[animalId];
@@ -2246,28 +2251,43 @@ export const useFirestoreOptimized = (user: AppUser | null) => {
                     const animal = animalsMap.get(animalId);
                     if (!animal) continue;
 
-                    const newWeightEntry = {
+                    const newWeightEntry: WeightEntry = {
                         id: `batch_${batchId}_${animalId}`,
                         date: weighingDate,
                         weightKg: weight,
                         type: weighingTypeValue,
                     };
 
-                    // 🔧 OTIMIZAÇÃO: arrayUnion envia apenas o novo registro
+                    const allPesagens = [...(animal.historicoPesagens || []), newWeightEntry];
+                    // Reclassifica Desmame/Sobreano por idade quando tipo = Nenhum
+                    const finalPesagens = shouldAutoClassify
+                        ? autoClassifyWeightTypes(allPesagens, animal.dataNascimento)
+                        : allPesagens;
+
                     const wb = getWriteBatch();
                     const animalRef = db.collection('animals').doc(animalId);
-                    wb.update(animalRef, {
-                        historicoPesagens: FieldValue.arrayUnion(convertDatesToTimestamps(newWeightEntry)),
-                        pesoKg: weight,
-                        updatedAt: now
-                    });
 
-                    const updatedPesagens = [...(animal.historicoPesagens || []), newWeightEntry];
+                    if (shouldAutoClassify) {
+                        // Grava array completo pois tipos de entradas existentes podem ter mudado
+                        wb.update(animalRef, {
+                            historicoPesagens: finalPesagens.map(p => convertDatesToTimestamps(p)),
+                            pesoKg: weight,
+                            updatedAt: now
+                        });
+                    } else {
+                        // 🔧 OTIMIZAÇÃO: arrayUnion envia apenas o novo registro
+                        wb.update(animalRef, {
+                            historicoPesagens: FieldValue.arrayUnion(convertDatesToTimestamps(newWeightEntry)),
+                            pesoKg: weight,
+                            updatedAt: now
+                        });
+                    }
+
                     dispatch({
                         type: 'LOCAL_UPDATE_ANIMAL',
                         payload: {
                             animalId,
-                            updatedData: { historicoPesagens: updatedPesagens, pesoKg: weight }
+                            updatedData: { historicoPesagens: finalPesagens, pesoKg: weight }
                         }
                     });
                 }
