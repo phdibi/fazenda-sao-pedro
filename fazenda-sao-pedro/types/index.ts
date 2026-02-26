@@ -372,6 +372,7 @@ export interface DEPReport {
     ownRecords: number;       // Registros próprios
     progenyRecords: number;   // Registros de progênie
     siblingsRecords: number;  // Registros de irmãos
+    estimatedYearlingProgenyRecords?: number; // Progênies com sobreano estimado (vendidos antes da pesagem)
   };
   // Recomendação de uso
   recommendation: 'reprodutor_elite' | 'reprodutor' | 'descarte' | 'matriz_elite' | 'matriz' | 'indefinido';

@@ -185,10 +185,18 @@ const AnimalDEPCard: React.FC<{
       )}
 
       {/* Fonte de dados */}
-      <div className="flex items-center gap-4 text-xs text-gray-500">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-500">
         <span>Registros: {report.dataSource.ownRecords} próprios</span>
         <span>{report.dataSource.progenyRecords} progênie</span>
         <span>{report.dataSource.siblingsRecords} irmãos</span>
+        {(report.dataSource.estimatedYearlingProgenyRecords ?? 0) > 0 && (
+          <span
+            className="text-amber-500/70"
+            title="Sobreano estimado pela razão desmame/sobreano de fêmeas do mesmo ano de nascimento. Contribui para o valor da DEP mas não para a acurácia."
+          >
+            {report.dataSource.estimatedYearlingProgenyRecords} sobreano estimado
+          </span>
+        )}
       </div>
     </div>
   );

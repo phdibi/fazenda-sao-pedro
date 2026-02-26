@@ -48,6 +48,16 @@ const HERITABILITIES = {
   stayability: 0.15,       // Permanência: h² baixa (característica limiar/binária)
 };
 
+// Número mínimo de fêmeas com ambas as medições para calcular a razão sobreano/desmame.
+// Abaixo desse limiar o ratio é descartado para evitar estimativas baseadas em poucos dados.
+const MIN_FEMALES_FOR_YEARLING_RATIO = 3;
+
+/** Resultado da razão sobreano/desmame calculada a partir de fêmeas de um dado ano */
+export interface YearlingRatioEntry {
+  ratio: number; // razão média: peso_sobreano / peso_desmame
+  n: number;     // número de fêmeas usadas no cálculo
+}
+
 // ============================================
 // CÁLCULO DE ACURÁCIA SIMPLIFICADA
 // ============================================
@@ -245,6 +255,103 @@ const calculatePercentile = (value: number, allValues: number[]): number => {
   }
 
   return Math.round((below / sorted.length) * 100);
+};
+
+// ============================================
+// ESTIMATIVA DE PESO AO SOBREANO (ANTI-VIÉS)
+// ============================================
+
+/**
+ * Constrói uma tabela de razões sobreano/desmame por ano de nascimento.
+ *
+ * MOTIVAÇÃO: Terneiros vendidos antes da pesagem ao sobreano causam viés nos DEPs
+ * dos pais, pois seus pesos "faltantes" são tratados como ausência de dados.
+ * A solução é estimar o sobreano desses animais usando a razão média
+ * (peso_sobreano / peso_desmame) calculada sobre fêmeas do mesmo ano que
+ * permaneceram no plantel e foram pesadas em ambas as etapas.
+ *
+ * IMPORTANTE: Usa SOMENTE fêmeas como base do cálculo. Machos são frequentemente
+ * suplementados com ração, o que infla o peso ao sobreano e enviesa a razão.
+ * A razão feminina é então aplicada a todos os filhos sem medição (machos e fêmeas),
+ * removendo o efeito da suplementação da estimativa.
+ *
+ * @param animals - Lista completa de animais do rebanho
+ * @returns Mapa de ano → YearlingRatioEntry (apenas anos com dados suficientes)
+ */
+export const buildYearlingRatioTable = (animals: Animal[]): Map<number, YearlingRatioEntry> => {
+  const ratiosByYear = new Map<number, number[]>();
+
+  for (const animal of animals) {
+    if (animal.sexo !== Sexo.Femea) continue;
+    if (!animal.dataNascimento) continue;
+
+    const weaningWeight = getWeightByType(animal, WeighingType.Weaning);
+    const yearlingWeight = getWeightByType(animal, WeighingType.Yearling);
+
+    // Precisa das duas medições e valores positivos
+    if (!weaningWeight || weaningWeight <= 0 || !yearlingWeight || yearlingWeight <= 0) continue;
+
+    const birthYear = new Date(animal.dataNascimento).getFullYear();
+    if (!ratiosByYear.has(birthYear)) ratiosByYear.set(birthYear, []);
+    ratiosByYear.get(birthYear)!.push(yearlingWeight / weaningWeight);
+  }
+
+  const ratioTable = new Map<number, YearlingRatioEntry>();
+  for (const [year, ratios] of ratiosByYear) {
+    if (ratios.length >= MIN_FEMALES_FOR_YEARLING_RATIO) {
+      ratioTable.set(year, { ratio: mean(ratios), n: ratios.length });
+    }
+  }
+
+  return ratioTable;
+};
+
+/**
+ * Estima o peso ao sobreano de um animal que não foi pesado nessa etapa.
+ *
+ * Aplica a razão sobreano/desmame do ano de nascimento ao peso ao desmame
+ * conhecido do animal. Se não houver ratio para o ano exato, tenta anos
+ * adjacentes (até 2 anos de diferença) como fallback.
+ *
+ * @returns O peso estimado em kg, ou null se não houver dados suficientes
+ */
+const getEstimatedYearlingWeight = (
+  animal: Animal,
+  ratioTable: Map<number, YearlingRatioEntry>,
+): number | null => {
+  // Só estima para animais VENDIDOS.
+  // O viés ocorre quando terneiros são vendidos antes de serem pesados ao sobreano.
+  // Animais ainda ativos podem simplesmente não ter atingido a idade (~18 meses)
+  // ou ter dado entrada faltante — ambos os casos NÃO devem gerar estimativas.
+  // Animais mortos (Óbito) tampouco: a morte não é viés de seleção.
+  if (animal.status !== AnimalStatus.Vendido) return null;
+
+  // Não estima se já há peso real registrado (vendido após a pesagem)
+  const actual = getWeightByType(animal, WeighingType.Yearling);
+  if (actual !== null && actual > 0) return null;
+
+  // Precisa do peso ao desmame como âncora da estimativa
+  // (se foi vendido antes do desmame, não há base para calcular)
+  const weaningWeight = getWeightByType(animal, WeighingType.Weaning);
+  if (!weaningWeight || weaningWeight <= 0) return null;
+
+  if (!animal.dataNascimento) return null;
+  const birthYear = new Date(animal.dataNascimento).getFullYear();
+
+  // Busca razão para o ano exato; cai para anos vizinhos se necessário
+  let entry = ratioTable.get(birthYear);
+  if (!entry) {
+    for (let delta = 1; delta <= 2; delta++) {
+      entry = ratioTable.get(birthYear - delta);
+      if (entry) break;
+      entry = ratioTable.get(birthYear + delta);
+      if (entry) break;
+    }
+  }
+
+  if (!entry) return null;
+
+  return weaningWeight * entry.ratio;
 };
 
 // ============================================
@@ -461,6 +568,7 @@ interface DEPCalculationInput {
   animal: Animal;
   baseline: HerdDEPBaseline;
   indices: DEPIndices;
+  yearlingRatioTable: Map<number, YearlingRatioEntry>;
 }
 
 /**
@@ -541,6 +649,7 @@ export const calculateAnimalDEP = ({
   animal,
   baseline,
   indices,
+  yearlingRatioTable,
 }: DEPCalculationInput): DEPReport => {
   const animalInPeriod = isInReferencePeriod(animal);
   const ownBirthWeight = animalInPeriod ? getWeightByType(animal, WeighingType.Birth) : null;
@@ -559,9 +668,24 @@ export const calculateAnimalDEP = ({
     .map((p) => getWeightByType(p, WeighingType.Weaning))
     .filter((w): w is number => w !== null && w > 0);
 
-  const progenyYearlingWeights = progeny
-    .map((p) => getWeightByType(p, WeighingType.Yearling))
-    .filter((w): w is number => w !== null && w > 0);
+  // Para cada progênie: usa peso real se disponível; caso contrário, estima
+  // usando a razão sobreano/desmame de fêmeas do mesmo ano.
+  // Isso reduz o viés nos DEPs de pais cujos filhos foram vendidos antes
+  // da pesagem ao sobreano.
+  let estimatedYearlingProgenyRecords = 0;
+  const progenyYearlingWeights: number[] = [];
+  for (const p of progeny) {
+    const actualYearling = getWeightByType(p, WeighingType.Yearling);
+    if (actualYearling !== null && actualYearling > 0) {
+      progenyYearlingWeights.push(actualYearling);
+    } else {
+      const estimated = getEstimatedYearlingWeight(p, yearlingRatioTable);
+      if (estimated !== null) {
+        progenyYearlingWeights.push(estimated);
+        estimatedYearlingProgenyRecords++;
+      }
+    }
+  }
 
   // Irmãos filtrados
   const allSiblings = getSiblings(animal, indices);
@@ -754,6 +878,11 @@ export const calculateAnimalDEP = ({
   const nOwnWeaning = ownWeaningWeight ? 1 : 0;
   const nOwnYearling = ownYearlingWeight ? 1 : 0;
 
+  // Conta apenas medições REAIS para a acurácia do sobreano.
+  // Pesos estimados contribuem para o valor da DEP (menos viés) mas não
+  // para a acurácia, que deve refletir honestamente a quantidade de dados reais.
+  const actualProgenyYearlingCount = progenyYearlingWeights.length - estimatedYearlingProgenyRecords;
+
   const nSibWeaning = siblingWeaningWeights.length;
 
   const accuracy = {
@@ -771,7 +900,7 @@ export const calculateAnimalDEP = ({
     ),
     yearlingWeight: calculateAccuracy(
       nOwnYearling,
-      progenyYearlingWeights.length,
+      actualProgenyYearlingCount, // apenas medições reais — estimativas não contam para acurácia
       0,
       HERITABILITIES.yearlingWeight
     ),
@@ -831,6 +960,7 @@ export const calculateAnimalDEP = ({
       (ownBirthWeight ? 1 : 0) + (ownWeaningWeight ? 1 : 0) + (ownYearlingWeight ? 1 : 0) + nOwnBiometric,
     progenyRecords: progeny.length,
     siblingsRecords: siblings.length,
+    estimatedYearlingProgenyRecords,
   };
 
   // Percentis são calculados depois no batch (quando temos todos os DEPs)
@@ -897,6 +1027,10 @@ export const calculateAllDEPs = (animals: Animal[]): DEPReport[] => {
   const indices = buildIndices(animals);
   const baselines = calculateHerdBaseline(animals, indices);
 
+  // Constrói tabela de razões sobreano/desmame para estimativa de sobreano não pesado.
+  // A tabela é calculada uma vez e reutilizada para todos os animais do rebanho.
+  const yearlingRatioTable = buildYearlingRatioTable(animals);
+
   // Passagem 1: Calcula DEPs individuais
   const reports = animals.map((animal) => {
     const baseline = baselines.find((b) => b.raca === (animal.raca || Raca.Outros)) || baselines[0];
@@ -911,13 +1045,13 @@ export const calculateAllDEPs = (animals: Animal[]): DEPReport[] => {
         dep: { birthWeight: 0, weaningWeight: 0, yearlingWeight: 0, milkProduction: 0, totalMaternal: 0 },
         accuracy: { birthWeight: 0, weaningWeight: 0, yearlingWeight: 0, milkProduction: 0, totalMaternal: 0 },
         percentile: { birthWeight: 50, weaningWeight: 50, yearlingWeight: 50, milkProduction: 50, totalMaternal: 50 },
-        dataSource: { ownRecords: 0, progenyRecords: 0, siblingsRecords: 0 },
+        dataSource: { ownRecords: 0, progenyRecords: 0, siblingsRecords: 0, estimatedYearlingProgenyRecords: 0 },
         recommendation: 'indefinido' as const,
         calculatedAt: new Date(),
       };
     }
 
-    return calculateAnimalDEP({ animal, baseline, indices });
+    return calculateAnimalDEP({ animal, baseline, indices, yearlingRatioTable });
   });
 
   // Passagem 2: Calcula percentis por raça usando a distribuição real dos DEPs
