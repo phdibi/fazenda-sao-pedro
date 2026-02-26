@@ -168,6 +168,8 @@ export interface GainMetrics {
   gmdUltimos30Dias?: number;
   /** GMD entre as duas últimas pesagens registradas (independente de data) */
   gmdUltimoPeriodo?: number;
+  /** Dias entre as duas últimas pesagens (denominador de gmdUltimoPeriodo) */
+  diasUltimoPeriodo?: number;
   diasAcompanhamento?: number;
   pesoInicial?: number;
   pesoFinal?: number;

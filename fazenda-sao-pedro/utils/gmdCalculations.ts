@@ -88,12 +88,18 @@ export const calcularGMDDePesagens = (pesagens: WeightEntry[]): GainMetrics => {
   // Reflete a fase de criação atual (recria, engorda, etc.) de forma mais
   // precisa do que o GMD total, que dilui a fase atual com toda a vida do animal.
   let gmdUltimoPeriodo: number | undefined;
+  let diasUltimoPeriodo: number | undefined;
   if (sorted.length >= 2) {
     const penultimo = sorted[sorted.length - 2];
-    gmdUltimoPeriodo = calcularGMDEntrePesagens(
-      penultimo.weightKg, ultimo.weightKg,
-      penultimo.date, ultimo.date
+    diasUltimoPeriodo = Math.ceil(
+      (new Date(ultimo.date).getTime() - new Date(penultimo.date).getTime()) / (1000 * 60 * 60 * 24)
     );
+    if (diasUltimoPeriodo > 0) {
+      gmdUltimoPeriodo = calcularGMDEntrePesagens(
+        penultimo.weightKg, ultimo.weightKg,
+        penultimo.date, ultimo.date
+      );
+    }
   }
 
   // Dias desde a última pesagem e peso estimado hoje.
@@ -113,6 +119,7 @@ export const calcularGMDDePesagens = (pesagens: WeightEntry[]): GainMetrics => {
     gmdDesmameSobreano,
     gmdUltimos30Dias,
     gmdUltimoPeriodo,
+    diasUltimoPeriodo,
     diasAcompanhamento: diasTotal,
     pesoInicial: primeiro.weightKg,
     pesoFinal: ultimo.weightKg,

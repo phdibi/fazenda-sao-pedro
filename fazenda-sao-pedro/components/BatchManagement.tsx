@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { ManagementBatch, BatchPurpose, Animal, WeighingType, MedicationSubType } from '../types';
 import Modal from './common/Modal';
+import { calcularGMDDePesagens, classificarGMD } from '../utils/gmdCalculations';
 
 const COMMON_MEDICATIONS = [
   'Ivermectina',
@@ -135,6 +136,28 @@ const BatchManagement: React.FC<BatchManagementProps> = ({
 
     return { matched, unmatched };
   }, [csvRows, animals]);
+
+  // GMD médio do lote para o modal de import CSV (estado atual, antes de salvar os novos pesos)
+  const csvLotGMD = useMemo(() => {
+    if (csvMatchedData.matched.length === 0) return null;
+    const totals: number[] = [];
+    const ultimos: number[] = [];
+    for (const { animal } of csvMatchedData.matched) {
+      const m = calcularGMDDePesagens(animal.historicoPesagens || []);
+      if (m.gmdTotal !== undefined && (m.diasAcompanhamento ?? 0) > 0) totals.push(m.gmdTotal);
+      // Só inclui gmdUltimoPeriodo se o período entre as duas últimas pesagens for > 0 dias
+      if (m.gmdUltimoPeriodo !== undefined && (m.diasUltimoPeriodo ?? 0) > 0) ultimos.push(m.gmdUltimoPeriodo);
+    }
+    if (totals.length === 0 && ultimos.length === 0) return null;
+    const avg = (arr: number[]) => arr.reduce((a, b) => a + b, 0) / arr.length;
+    return {
+      avgGMDTotal: totals.length > 0 ? avg(totals) : null,
+      avgGMDUltimoPeriodo: ultimos.length > 0 ? avg(ultimos) : null,
+      nTotal: totals.length,
+      nUltimo: ultimos.length,
+      total: csvMatchedData.matched.length,
+    };
+  }, [csvMatchedData.matched]);
 
   // Parser do CSV da balança Tru-Test (separador ;)
   const parseCsvFile = (file: File) => {
@@ -294,6 +317,36 @@ const BatchManagement: React.FC<BatchManagementProps> = ({
   };
 
   const getAnimalById = (id: string) => animals.find(a => a.id === id);
+
+  // GMD médio do lote para o modal de detalhes do lote concluído
+  const selectedBatchGMD = useMemo(() => {
+    if (!selectedBatch || selectedBatch.status !== 'completed') return null;
+    if (
+      selectedBatch.purpose !== BatchPurpose.Pesagem &&
+      selectedBatch.purpose !== BatchPurpose.Desmame
+    ) return null;
+    // Mapa local O(1) para evitar animals.find() O(n) por animal do lote
+    const animalMap = new Map(animals.map(a => [a.id, a]));
+    const totals: number[] = [];
+    const ultimos: number[] = [];
+    for (const id of selectedBatch.animalIds) {
+      const animal = animalMap.get(id);
+      if (!animal) continue;
+      const m = calcularGMDDePesagens(animal.historicoPesagens || []);
+      if (m.gmdTotal !== undefined && (m.diasAcompanhamento ?? 0) > 0) totals.push(m.gmdTotal);
+      // Só inclui gmdUltimoPeriodo se o período entre as duas últimas pesagens for > 0 dias
+      if (m.gmdUltimoPeriodo !== undefined && (m.diasUltimoPeriodo ?? 0) > 0) ultimos.push(m.gmdUltimoPeriodo);
+    }
+    if (totals.length === 0 && ultimos.length === 0) return null;
+    const avg = (arr: number[]) => arr.reduce((a, b) => a + b, 0) / arr.length;
+    return {
+      avgGMDTotal: totals.length > 0 ? avg(totals) : null,
+      avgGMDUltimoPeriodo: ultimos.length > 0 ? avg(ultimos) : null,
+      nTotal: totals.length,
+      nUltimo: ultimos.length,
+      total: selectedBatch.animalIds.length,
+    };
+  }, [selectedBatch, animals]);
 
   // Abre o modal de detalhes (para edição ou visualização)
   const openBatchDetail = (batch: ManagementBatch) => {
@@ -1039,6 +1092,36 @@ const BatchManagement: React.FC<BatchManagementProps> = ({
                     <span className="text-gray-400">Tipo pesagem: </span>{selectedBatch.weighingType}
                   </p>
                 )}
+                {/* GMD médio do lote */}
+                {selectedBatchGMD && (
+                  <div className="mt-2 pt-2 border-t border-base-700">
+                    <p className="text-xs text-gray-400 mb-1.5">GMD médio do lote</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      {selectedBatchGMD.avgGMDTotal !== null && (
+                        <div className="bg-base-800 rounded p-2">
+                          <p className="text-[10px] text-gray-500 mb-0.5">GMD Total</p>
+                          <p className={`text-sm font-bold ${classificarGMD(selectedBatchGMD.avgGMDTotal).color}`}>
+                            {selectedBatchGMD.avgGMDTotal.toFixed(3)} kg/d
+                          </p>
+                          <p className="text-[10px] text-gray-500">
+                            {selectedBatchGMD.nTotal}/{selectedBatchGMD.total} animais
+                          </p>
+                        </div>
+                      )}
+                      {selectedBatchGMD.avgGMDUltimoPeriodo !== null && (
+                        <div className="bg-base-800 rounded p-2">
+                          <p className="text-[10px] text-gray-500 mb-0.5">GMD Último Período</p>
+                          <p className={`text-sm font-bold ${classificarGMD(selectedBatchGMD.avgGMDUltimoPeriodo).color}`}>
+                            {selectedBatchGMD.avgGMDUltimoPeriodo.toFixed(3)} kg/d
+                          </p>
+                          <p className="text-[10px] text-gray-500">
+                            {selectedBatchGMD.nUltimo}/{selectedBatchGMD.total} animais
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
@@ -1301,6 +1384,37 @@ const BatchManagement: React.FC<BatchManagementProps> = ({
               <p className="text-xs text-gray-500 mt-1">
                 Estes brincos nao foram encontrados no sistema e serao ignorados.
               </p>
+            </div>
+          )}
+
+          {/* GMD atual do lote (antes dos novos pesos serem salvos) */}
+          {csvLotGMD && (
+            <div className="bg-base-900 rounded-lg p-3">
+              <p className="text-xs text-gray-400 mb-1.5">GMD atual do lote</p>
+              <div className="grid grid-cols-2 gap-2">
+                {csvLotGMD.avgGMDTotal !== null && (
+                  <div className="bg-base-800 rounded p-2">
+                    <p className="text-[10px] text-gray-500 mb-0.5">GMD Total</p>
+                    <p className={`text-sm font-bold ${classificarGMD(csvLotGMD.avgGMDTotal).color}`}>
+                      {csvLotGMD.avgGMDTotal.toFixed(3)} kg/d
+                    </p>
+                    <p className="text-[10px] text-gray-500">
+                      {csvLotGMD.nTotal}/{csvLotGMD.total} animais
+                    </p>
+                  </div>
+                )}
+                {csvLotGMD.avgGMDUltimoPeriodo !== null && (
+                  <div className="bg-base-800 rounded p-2">
+                    <p className="text-[10px] text-gray-500 mb-0.5">GMD Último Período</p>
+                    <p className={`text-sm font-bold ${classificarGMD(csvLotGMD.avgGMDUltimoPeriodo).color}`}>
+                      {csvLotGMD.avgGMDUltimoPeriodo.toFixed(3)} kg/d
+                    </p>
+                    <p className="text-[10px] text-gray-500">
+                      {csvLotGMD.nUltimo}/{csvLotGMD.total} animais
+                    </p>
+                  </div>
+                )}
+              </div>
             </div>
           )}
 
